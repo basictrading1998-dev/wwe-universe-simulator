@@ -51,6 +51,31 @@ function saveFighters(list = fighters) {
     localStorage.setItem('wwe_fighters', JSON.stringify(normalized));
 }
 
+// Keep a datalist of fighter names for quick autofill in the Master Roster form
+function refreshFighterNameDatalist() {
+    try {
+        const names = loadFighters().map(f => f.name).filter(Boolean);
+        let data = document.getElementById('fighterNamesList');
+        if (!data) {
+            data = document.createElement('datalist');
+            data.id = 'fighterNamesList';
+            document.body.appendChild(data);
+        }
+        data.innerHTML = '';
+        names.forEach(n => {
+            const opt = document.createElement('option');
+            opt.value = n;
+            data.appendChild(opt);
+        });
+
+        const nameInput = document.getElementById('fighterName');
+        if (nameInput) nameInput.setAttribute('list', 'fighterNamesList');
+    } catch (e) {
+        // non-fatal
+        console.error('datalist refresh failed', e);
+    }
+}
+
 window.downloadAppBackup = function() {
     const backup = {};
     for (let i = 0; i < localStorage.length; i++) {
@@ -140,6 +165,7 @@ window.restoreLegacyRoster = function() {
 
 document.addEventListener('DOMContentLoaded', () => {
     fighters = loadFighters();
+    refreshFighterNameDatalist();
     renderRosterGrid();
     buildMasterRankingsPanel();
     setupSidebarFormEngine();
@@ -153,6 +179,7 @@ function renderRosterGrid() {
     if (!grid) return;
 
     fighters = loadFighters();
+    refreshFighterNameDatalist();
     const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
 
     buildMasterRankingsPanel();
@@ -418,6 +445,7 @@ function setupSidebarFormEngine() {
 
             fighters.push(normalizeFighterRecord(newFighter));
             saveFighters(fighters);
+            refreshFighterNameDatalist();
             
             if (nameInput) nameInput.value = '';
             if (divisionInput) divisionInput.value = '';
@@ -489,6 +517,7 @@ window.importBulkSuperstars = function() {
     });
 
     saveFighters(fighters);
+    refreshFighterNameDatalist();
     renderRosterGrid();
     textarea.value = '';
     alert(`${added} ${added === 1 ? 'superstar' : 'superstars'} imported successfully.`);
@@ -549,6 +578,27 @@ window.editSuperstar = function(id) {
         </div>
     `;
     card.appendChild(editPanel);
+    // Ensure input values are set programmatically to avoid HTML attribute parsing issues
+    try {
+        const nameEl = document.getElementById(`edit-name-${id}`);
+        const divEl = document.getElementById(`edit-division-${id}`);
+        const winsEl = document.getElementById(`edit-wins-${id}`);
+        const lossesEl = document.getElementById(`edit-losses-${id}`);
+        const pinsEl = document.getElementById(`edit-pins-${id}`);
+        const kosEl = document.getElementById(`edit-kos-${id}`);
+        const subsEl = document.getElementById(`edit-subs-${id}`);
+        const fightsEl = document.getElementById(`edit-fights-${id}`);
+        if (nameEl) nameEl.value = f.name || '';
+        if (divEl) divEl.value = f.division || '';
+        if (winsEl) winsEl.value = f.wins || 0;
+        if (lossesEl) lossesEl.value = f.losses || 0;
+        if (pinsEl) pinsEl.value = f.win_pinfall || 0;
+        if (kosEl) kosEl.value = f.win_ko || 0;
+        if (subsEl) subsEl.value = f.win_submission || 0;
+        if (fightsEl) fightsEl.value = f.title_fights || 0;
+    } catch (err) {
+        console.error('failed to set inline editor values', err);
+    }
 };
 
 window.saveInlineEdit = function(id) {
@@ -604,7 +654,8 @@ window.saveInlineEdit = function(id) {
         }
 
         localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
-        renderRosterGrid();
+            renderRosterGrid();
+            refreshFighterNameDatalist();
     }
 };
 
