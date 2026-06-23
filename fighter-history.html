@@ -6,46 +6,59 @@
     <title>WWE Universe - Fight History Log</title>
     <style>
         body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; margin: 0; padding-bottom: 32px; }
-        nav { background-color: #1e293b; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); }
+        
+        /* UNIFIED PREMIUM HEADER NAVBAR (CENTER ALIGNED) */
+        nav { background-color: #1e293b; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); font-family: sans-serif; }
         .logo { color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px; }
         .nav-links { display: flex; gap: 16px; justify-content: center; flex: 1; }
         .nav-btn { background: transparent; border: none; color: #94a3b8; padding: 8px 14px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-transform: uppercase; }
         .nav-btn:hover { color: #f8fafc; background: rgba(255,255,255,0.05); }
         .nav-btn.active { background: #ef4444; color: white; box-shadow: 0 2px 8px rgba(239,68,68,0.3); }
+        
         .subheader-controls { max-width: 1400px; margin: 20px auto 0 auto; padding: 0 24px; display: flex; gap: 16px; align-items: center; }
-        .search-box { width: 280px; padding: 8px 12px; border: 1px solid #334155; border-radius: 6px; font-size: 0.8rem; background: #1e293b; color: white; outline: none; }
+        .search-wrapper { position: relative; width: 280px; }
+        .search-box { width: 100%; padding: 8px 12px; border: 1px solid #334155; border-radius: 6px; font-size: 0.8rem; background: #1e293b; color: white; outline: none; box-sizing: border-box; }
+        .search-box:focus { border-color: #38bdf8; }
         .count-badge { font-size: 0.75rem; font-weight: bold; color: #64748b; text-transform: uppercase; }
+
         main { max-width: 1400px; margin: 16px auto; padding: 0 24px; box-sizing: border-box; }
         .log-table-wrapper { border: 1px solid #334155; border-radius: 8px; overflow: hidden; background: #111827; }
+        
         .table-header { display: grid; grid-template-columns: 240px 1fr; background: #1e293b; border-bottom: 1px solid #334155; font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; }
+        
         .fighter-history-row { display: grid; grid-template-columns: 240px 1fr; border-bottom: 1px solid #1e293b; padding: 12px 16px; align-items: center; }
+        .fighter-history-row:hover { background: rgba(255,255,255,0.02); }
         .fighter-history-row:nth-of-type(even) { background: #161e2e; }
+        .fighter-history-row:nth-of-type(even):hover { background: rgba(255,255,255,0.02); }
+
         .fighter-profile-block { display: flex; align-items: center; gap: 12px; }
-        .avatar-circle { width: 36px; height: 36px; background: #1e293b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; overflow: hidden; }
-        .avatar-circle img { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .fighter-name { font-size: 0.85rem; font-weight: 800; margin: 0; color: white; }
+        .avatar-circle { width: 36px; height: 36px; background: #1e293b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+        .name-wrapper { display: flex; flex-direction: column; }
+        .fighter-name { font-size: 0.85rem; font-weight: 800; margin: 0; color: white; display: flex; align-items: center; gap: 6px; }
         .record-subtext { font-size: 0.68rem; font-weight: 800; color: #64748b; margin-top: 2px; text-transform: uppercase; }
-        .history-slider-deck { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; width: 100%; }
+
+        .history-slider-deck { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; box-sizing: border-box; width: 100%; }
         .history-slider-deck::-webkit-scrollbar { height: 4px; }
         .history-slider-deck::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        .history-badge-brick { flex: 0 0 140px; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; border-left: 3px solid transparent; background: #1e293b; }
-        .brick-win { background: rgba(22, 163, 74, 0.08); border: 1px solid rgba(22, 163, 74, 0.15); border-left-color: #16a34a; }
-        .brick-loss { background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.15); border-left-color: #dc2626; }
-        .brick-status-lbl { font-size: 0.55rem; font-weight: 900; color: white; display: inline-block; padding: 1px 4px; border-radius: 3px; max-width: max-content; margin-bottom: 2px; }
+
+        .history-badge-brick { flex: 0 0 110px; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; font-family: sans-serif; box-sizing: border-box; border-left: 3px solid transparent; }
+        .brick-win { background: rgba(22, 163, 74, 0.1); border: 1px solid rgba(22, 163, 74, 0.2); border-left-color: #16a34a; }
+        .brick-loss { background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.2); border-left-color: #dc2626; }
+
+        .brick-status-lbl { font-size: 0.58rem; font-weight: 900; color: white; display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 3px; font-family: monospace; }
         .lbl-w { background: #16a34a; }
         .lbl-l { background: #dc2626; }
-        .brick-opponent { font-size: 0.78rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .brick-opponent.win { color: #22c55e; }
-        .brick-opponent.loss { color: #ef4444; }
-        .brick-opp-record { font-size: 0.65rem; font-weight: 800; color: #94a3b8; }
-        .brick-opp-record.win { color: #86efac; }
-        .brick-opp-record.loss { color: #fecaca; }
-        .brick-method { font-size: 0.58rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 1px; }
+
+        .brick-opponent { font-size: 0.72rem; font-weight: bold; color: #f8fafc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+        .brick-method { font-size: 0.58rem; font-weight: bold; color: #64748b; text-transform: uppercase; }
         .brick-show { font-size: 0.55rem; font-weight: bold; color: #475569; }
+
         .empty-history-text { font-size: 0.7rem; color: #475569; font-style: italic; font-weight: bold; }
     </style>
 </head>
 <body>
+
+    <!-- NAV BAR UNIFIED HEADER -->
     <nav>
         <h1 class="logo">WWE Universe</h1>
         <div class="nav-links">
@@ -58,8 +71,11 @@
         <div style="flex: 0 0 200px;"></div>
     </nav>
 
+    <!-- LIVE FILTER UTILITY HEADER BAR -->
     <div class="subheader-controls">
-        <input type="text" id="historyFilterBox" placeholder="Filter by fighter name..." class="search-box" onkeyup="liveFilterHistoryRows()">
+        <div class="search-wrapper">
+            <input type="text" id="historyFilterBox" placeholder="Filter by fighter name..." class="search-box" onkeyup="liveFilterHistoryRows()">
+        </div>
         <div class="count-badge" id="historyTotalCount">0 fighters</div>
     </div>
 
@@ -74,11 +90,10 @@
     </main>
 
     <script>
-        // SMART DETECTOR: Parses all possible variations of the local storage keys so nothing gets skipped
-        let fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || JSON.parse(localStorage.getItem('fighters')) || [];
+        let fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
 
         document.addEventListener('DOMContentLoaded', () => {
-            fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || JSON.parse(localStorage.getItem('fighters')) || [];
+            fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
             fighters.sort((a, b) => a.name.localeCompare(b.name));
             renderWidescreenHistoryMatrix();
         });
@@ -95,22 +110,18 @@
                 const row = document.createElement('div');
                 row.className = 'fighter-history-row';
 
-                let avatarHtml = '<div class="avatar-circle">👤</div>';
-                if (f.photo) {
-                    avatarHtml = `<div class="avatar-circle"><img src="${f.photo}" alt="${f.name}"></div>`;
-                }
+                let genderSym = f.gender === 'male' ? '<span style="color:#0284c7; font-size:0.65rem;">M</span>' : '<span style="color:#db2777; font-size:0.65rem;">F</span>';
 
                 let leftProfileHtml = `
                     <div class="fighter-profile-block">
-                        ${avatarHtml}
+                        <div class="avatar-circle">👤</div>
                         <div class="name-wrapper">
-                            <h3 class="fighter-name">${f.name}</h3>
-                            <div class="record-subtext">${f.wins || 0}W ${f.losses || 0}L</div>
+                            <h3 class="fighter-name">${f.name} ${genderSym}</h3>
+                            <div class="record-subtext">${f.wins}W ${f.losses}L</div>
                         </div>
                     </div>`;
 
-                // Searches through fallback histories to catch old logs safely
-                let historyArray = f.compiled_history_deck || f.history_deck || f.history || [];
+                let historyArray = f.compiled_history_deck || [];
                 let rightDeckHtml = '<div class="history-slider-deck">';
 
                 if (historyArray.length === 0) {
@@ -118,25 +129,17 @@
                 } else {
                     for (let i = historyArray.length - 1; i >= 0; i--) {
                         const fight = historyArray[i];
-                        const outcome = (fight.outcome || '').toLowerCase();
-                        const isWin = outcome === 'win';
+                        const isWin = fight.outcome === 'win';
                         const classBrick = isWin ? 'brick-win' : 'brick-loss';
                         const statusLetter = isWin ? 'W' : 'L';
                         const statusClass = isWin ? 'lbl-w' : 'lbl-l';
-                        const opponentClass = isWin ? 'win' : 'loss';
-                        const recordClass = isWin ? 'win' : 'loss';
-
-                        // CROSS-REFERENCE ENGINE: Pulls the OPPONENT'S live win/loss record directly out of the main roster data
-                        const oppObj = fighters.find(item => item.name === fight.opponent);
-                        let oppLiveRecord = oppObj ? `${oppObj.wins || 0}W ${oppObj.losses || 0}L` : "0W 0L";
 
                         rightDeckHtml += `
                             <div class="history-badge-brick ${classBrick}">
                                 <div class="brick-status-lbl ${statusClass}">${statusLetter}</div>
-                                <div class="brick-opponent ${opponentClass}" title="${fight.opponent}">${fight.opponent}</div>
-                                <div class="brick-opp-record ${recordClass}">${oppLiveRecord}</div>
-                                <div class="brick-method">${fight.method || 'Result'}</div>
-                                <div class="brick-show">${fight.showName || 'Show'}</div>
+                                <div class="brick-opponent" title="${fight.opponent}">${fight.opponent}</div>
+                                <div class="brick-method">${fight.method}</div>
+                                <div class="brick-show">${fight.showName}</div>
                             </div>`;
                     }
                 }
@@ -155,6 +158,5 @@
             });
         };
     </script>
-    <script src="auth.js"></script>
 </body>
 </html>
