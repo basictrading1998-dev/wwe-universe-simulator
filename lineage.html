@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Universe - Championship Lineage History</title>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; margin: 0; padding-bottom: 32px; }
+        
+        /* UNIFIED PREMIUM HEADER NAVBAR (CENTER ALIGNED) */
+        nav { background-color: #1e293b; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); font-family: sans-serif; }
+        .logo { color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px; }
+        .nav-links { display: flex; gap: 16px; justify-content: center; flex: 1; }
+        .nav-btn { background: transparent; border: none; color: #94a3b8; padding: 8px 14px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-transform: uppercase; }
+        .nav-btn:hover { color: #f8fafc; background: rgba(255,255,255,0.05); }
+        .nav-btn.active { background: #ef4444; color: white; box-shadow: 0 2px 8px rgba(239,68,68,0.3); }
+        
+        /* SEARCH & SUBHEADER UTILITIES */
+        .subheader-controls { max-width: 1400px; margin: 20px auto 0 auto; padding: 0 24px; display: flex; gap: 16px; align-items: center; }
+        .search-wrapper { position: relative; width: 280px; }
+        .search-box { width: 100%; padding: 8px 12px; border: 1px solid #334155; border-radius: 6px; font-size: 0.8rem; background: #1e293b; color: white; outline: none; box-sizing: border-box; }
+        .search-box:focus { border-color: #38bdf8; }
+        .count-badge { font-size: 0.75rem; font-weight: bold; color: #64748b; text-transform: uppercase; }
+        .lineage-action-panel { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+        .lineage-action-panel input,
+        .lineage-action-panel select { padding: 8px 10px; border-radius: 6px; border: 1px solid #334155; background: #111827; color: #f8fafc; font-size: 0.8rem; outline: none; }
+        .lineage-action-panel button { background: #ef4444; border: none; color: white; padding: 10px 16px; border-radius: 8px; font-size: 0.8rem; font-weight: 800; cursor: pointer; text-transform: uppercase; }
+        .lineage-action-panel button:hover { background: #dc2626; }
+        .delete-title-btn { background: transparent; border: 1px solid rgba(255,255,255,0.18); color: #f8fafc; padding: 6px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; cursor: pointer; text-transform: uppercase; transition: background 0.2s ease; }
+        .delete-title-btn:hover { background: rgba(239,68,68,0.15); border-color: #ef4444; }
+        .title-gender-badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 9999px; font-size: 0.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+        .title-gender-badge.male { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.2); }
+        .title-gender-badge.female { background: rgba(236,72,153,0.15); color: #f472b6; border: 1px solid rgba(236,72,153,0.2); }
+        .champion-details { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+        .champion-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.72rem; color: #cbd5e1; }
+        .champion-name { font-weight: 900; }
+        .champion-male { color: #22c55e; }
+        .champion-female { color: #f472b6; }
+        .champion-lost { color: #ef4444; }
+        .record-pill { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); border-radius: 999px; padding: 2px 8px; font-size: 0.65rem; font-weight: 800; color: #cbd5e1; }
+        .vacant-pill { color: #94a3b8; font-weight: 800; }
+
+        /* HORIZONTAL LIST TABLE MATRIX GRAPHICS */
+        main { max-width: 1400px; margin: 16px auto; padding: 0 24px; box-sizing: border-box; }
+        .log-table-wrapper { border: 1px solid #334155; border-radius: 8px; overflow: hidden; background: #111827; }
+        
+        .table-header { display: grid; grid-template-columns: 260px 1fr; background: #1e293b; border-bottom: 1px solid #334155; font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; }
+        
+        /* THE HORIZONTAL CARD FEED ROW CONTAINER BLOCK */
+        .lineage-belt-row { display: grid; grid-template-columns: 260px 1fr; border-bottom: 1px solid #1e293b; padding: 12px 16px; align-items: center; }
+        .lineage-belt-row:hover { background: rgba(255,255,255,0.02); }
+        .lineage-belt-row:nth-of-type(even) { background: #161e2e; }
+        .lineage-belt-row:nth-of-type(even):hover { background: rgba(255,255,255,0.02); }
+
+        /* LEFT SIDE BELT DESCRIPTOR PACK GRID */
+        .belt-profile-block { display: flex; align-items: center; gap: 12px; }
+        .gold-avatar-circle { width: 36px; height: 36px; background: rgba(234,179,8,0.15); border: 1px solid rgba(234,179,8,0.3); color: #facc15; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+        .name-wrapper { display: flex; flex-direction: column; }
+        .belt-display-title { font-size: 0.85rem; font-weight: 800; margin: 0; color: #facc15; text-transform: uppercase; }
+        .reigning-champ-subtext { font-size: 0.68rem; font-weight: 800; color: #94a3b8; margin-top: 2px; }
+
+        /* RIGHT SIDE HORIZONTAL DECK REIGN SLIDER TRACKS */
+        .reigns-slider-deck { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; box-sizing: border-box; width: 100%; }
+        .reigns-slider-deck::-webkit-scrollbar { height: 4px; }
+        .reigns-slider-deck::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+
+        /* HORIZONTAL TIMELINE BRICKS */
+        .reign-badge-brick { flex: 0 0 130px; background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.15); border-left: 3px solid #eab308; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; gap: 1px; font-family: sans-serif; box-sizing: border-box; }
+        .reign-badge-brick.newest-holder { background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.2); border-left-color: #10b981; }
+
+        .brick-status-lbl { font-size: 0.52rem; font-weight: 900; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.02em; }
+        .brick-wrestler-name { font-size: 0.78rem; font-weight: 800; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+        .brick-event-name { font-size: 0.58rem; font-weight: bold; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .brick-finish-method { font-size: 0.52rem; font-weight: bold; color: #475569; text-transform: uppercase; }
+
+        .empty-lineage-text { font-size: 0.7rem; color: #475569; font-style: italic; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <!-- NAV BAR UNIFIED HEADER -->
+    <nav>
+        <h1 class="logo">WWE Universe</h1>
+        <div class="nav-links">
+            <a href="index.html" class="nav-btn">Fight Cards</a>
+            <a href="fighters.html" class="nav-btn">Master Roster</a>
+            <a href="history.html" class="nav-btn">Event History</a>
+            <a href="fighter-history.html" class="nav-btn">Fight History Log</a>
+            <a href="lineage.html" class="nav-btn active">Championship Lineage</a>
+        </div>
+        <div style="flex: 0 0 200px;"></div>
+    </nav>
+
+    <!-- LIVE FILTER FIELD HEADER BAR -->
+    <div class="subheader-controls">
+        <div class="search-wrapper">
+            <input type="text" id="lineageFilterBox" placeholder="Filter by championship name..." class="search-box" onkeyup="liveFilterLineageRows()">
+        </div>
+        <div class="count-badge" id="lineageTotalCount">0 championships</div>
+    </div>
+    <div class="subheader-controls" style="margin-top: 12px; gap: 10px;">
+        <div class="lineage-action-panel">
+            <input type="text" id="newBeltName" placeholder="New title name" style="min-width:240px;" />
+            <select id="newBeltGender">
+                <option value="male">Men's Title</option>
+                <option value="female">Women's Title</option>
+            </select>
+            <button onclick="createNewChampionship()">Create Title</button>
+        </div>
+    </div>
+
+    <main>
+        <div class="log-table-wrapper">
+            <div class="table-header">
+                <div>Championship Title</div>
+                <div>Title Reigns Lineage History <span style="color:#475569; font-weight:bold; margin-left:6px; text-transform:lowercase; font-size:0.6rem;">• oldest to newest ➡️</span></div>
+            </div>
+            <!-- Dynamic Horizontal Grid Container -->
+            <div id="lineageMasterTableContainer"></div>
+        </div>
+    </main>
+
+    <script>
+        let fighters = [];
+        let championships = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
+            championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+            championships.sort((a, b) => a.name.localeCompare(b.name));
+            renderHorizontalLineageMatrix();
+        });
+
+        function normalizeTitleName(name) {
+            return String(name || '').trim().toLowerCase();
+        }
+
+        function renderHorizontalLineageMatrix() {
+            championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+            const container = document.getElementById('lineageMasterTableContainer');
+            const totalBadge = document.getElementById('lineageTotalCount');
+            if (!container) return;
+
+            container.innerHTML = '';
+            if (totalBadge) totalBadge.textContent = `${championships.length} Championships`;
+
+            if (championships.length === 0) {
+                container.innerHTML = `<div style="padding: 40px; text-align: center; color: #475569; font-weight: bold; font-size: 0.85rem; font-style: italic;">No custom titles have been crowned yet. Use the title creator above or fight for a championship on your fight cards to add one.</div>`;
+                return;
+            }
+
+            championships.forEach(b => {
+                const row = document.createElement('div');
+                row.className = 'lineage-belt-row';
+
+                const currentChampObj = fighters.find(f => f.id === b.championId);
+                const currentChampName = currentChampObj ? currentChampObj.name : 'VACANT';
+                const defenseStreak = b.defenses || 0;
+                const subtitleText = currentChampObj ? `👑 Holder: ${currentChampName} (${defenseStreak} Def.)` : '❌ Title Status: VACANT';
+                const titleGender = b.gender === 'female' ? "Women's Title" : "Men's Title";
+                const genderClass = b.gender === 'female' ? 'female' : 'male';
+
+                const historyLog = Array.isArray(b.history) ? b.history : [];
+                const currentChampionLine = currentChampObj ? `<span class="champion-status"><span class="champion-name ${currentChampObj.gender === 'female' ? 'champion-female' : 'champion-male'}" onclick="openFighter('${currentChampObj.id}')" style="cursor:pointer; text-decoration:underline;">${currentChampObj.name}</span><span class="record-pill">${currentChampObj.wins || 0}-${currentChampObj.losses || 0}</span><span>Current holder</span></span>` : `<span class="champion-status"><span class="vacant-pill">VACANT</span></span>`;
+                const previousChampion = historyLog.length > 1 ? fighters.find(f => f.name === historyLog[historyLog.length - 2].wrestlerName) : null;
+                const previousChampionLine = previousChampion ? `<span class="champion-status champion-lost"><span class="champion-name champion-lost" onclick="openFighter('${previousChampion.id}')" style="cursor:pointer; text-decoration:underline;">${previousChampion.name}</span><span class="record-pill">${previousChampion.wins || 0}-${previousChampion.losses || 0}</span><span>Lost title</span></span>` : '';
+
+                const leftBeltHtml = `
+                    <div class="belt-profile-block">
+                        <div class="gold-avatar-circle">🏆</div>
+                        <div class="name-wrapper">
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <h3 class="belt-display-title" style="margin:0;">${b.name}</h3>
+                                    <span class="title-gender-badge ${genderClass}">${titleGender}</span>
+                                </div>
+                                <button class="delete-title-btn" onclick="deleteChampionship('${b.id}')">Delete</button>
+                            </div>
+                            <div class="reigning-champ-subtext">${subtitleText}</div>
+                            <div class="champion-details">${currentChampionLine}${previousChampionLine}</div>
+                        </div>
+                    </div>`;
+
+                let rightDeckHtml = '<div class="reigns-slider-deck">';
+
+                if (historyLog.length === 0) {
+                    rightDeckHtml += `<span class="empty-lineage-text">No lineage data recorded yet</span>`;
+                } else {
+                    // Render oldest -> newest but visually show newest as last brick (match fighter-history ordering)
+                    for (let i = 0; i < historyLog.length; i++) {
+                        const reign = historyLog[i];
+                        const isLatest = i === historyLog.length - 1 && b.championId !== '';
+                        const isPrevious = i === historyLog.length - 2;
+
+                        // Map to fighter object if available to pull live record
+                        const holder = fighters.find(f => f.name === reign.wrestlerName) || null;
+                        const holderRecord = holder ? `${holder.wins || 0}W ${holder.losses || 0}L` : '0W 0L';
+
+                        // Use brick classes similar to fighter-history for consistent UI
+                        const classBrick = isLatest ? 'reign-badge-brick newest-holder' : (isPrevious ? 'reign-badge-brick' : 'reign-badge-brick');
+                        const statusLetter = isLatest ? 'W' : (isPrevious ? 'L' : '');
+                        const statusClass = isLatest ? 'lbl-w' : (isPrevious ? 'lbl-l' : '');
+
+                        const opponentClass = isLatest ? 'win' : (isPrevious ? 'loss' : '');
+                        const recordClass = isLatest ? 'win' : (isPrevious ? 'loss' : '');
+
+                        rightDeckHtml += `
+                            <div class="reign-badge-brick ${isLatest ? 'newest-holder' : ''}">
+                                ${statusLetter ? `<span class="brick-status-lbl">${isLatest ? 'Current Champion' : (isPrevious ? 'Previous Holder' : `Reign #${i+1}`)}</span>` : `<span class="brick-status-lbl">Reign #${i+1}</span>`}
+                                <div class="brick-wrestler-name" title="${reign.wrestlerName}">${reign.wrestlerName}</div>
+                                <div class="brick-event-name">${reign.showTitle || 'Show'}</div>
+                                <div class="brick-finish-method">${reign.winMethod || ''}</div>
+                            </div>`;
+                    }
+                }
+                rightDeckHtml += '</div>';
+
+                row.innerHTML = `<div>${leftBeltHtml}</div><div>${rightDeckHtml}</div>`;
+                container.appendChild(row);
+            });
+        }
+
+        window.createNewChampionship = function() {
+            const nameInput = document.getElementById('newBeltName');
+            const genderSelect = document.getElementById('newBeltGender');
+            const titleName = nameInput ? nameInput.value.trim() : '';
+            const gender = genderSelect ? genderSelect.value : 'male';
+
+            if (!titleName) {
+                return alert('Enter a title name before creating a championship.');
+            }
+
+            championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+            const normalizedName = normalizeTitleName(titleName);
+            const existing = championships.find(b => normalizeTitleName(b.name) === normalizedName);
+            if (existing) {
+                return alert('A title with that name already exists. Pick a different name or edit the existing one.');
+            }
+
+            const newTitle = {
+                id: 'title-' + Date.now() + Math.random().toString(36).substr(2, 5),
+                name: titleName,
+                gender: gender,
+                championId: '',
+                history: [],
+                defenses: 0
+            };
+            championships.push(newTitle);
+            championships.sort((a, b) => a.name.localeCompare(b.name));
+            localStorage.setItem('wwe_titles', JSON.stringify(championships));
+            renderHorizontalLineageMatrix();
+            if (nameInput) nameInput.value = '';
+            if (genderSelect) genderSelect.value = 'male';
+            alert(`Created new championship: ${titleName} (${gender === 'female' ? "Women's" : "Men's"} Title)`);
+        };
+
+        window.deleteChampionship = function(id) {
+            const target = championships.find(b => b.id === id);
+            if (!target) return;
+            if (!confirm(`Delete the championship "${target.name}"? This cannot be undone.`)) return;
+
+            championships = championships.filter(b => b.id !== id);
+            localStorage.setItem('wwe_titles', JSON.stringify(championships));
+            renderHorizontalLineageMatrix();
+        };
+
+        window.liveFilterLineageRows = function() {
+            const query = document.getElementById('lineageFilterBox').value.toLowerCase();
+            document.querySelectorAll('#lineageMasterTableContainer .lineage-belt-row').forEach(row => {
+                const titleText = row.querySelector('.belt-display-title')?.textContent.toLowerCase() || '';
+                row.style.display = titleText.includes(query) ? 'grid' : 'none';
+            });
+        };
+
+        window.openFighter = function(fId) {
+            if (!fId) return;
+            localStorage.setItem('wwe_selected_fighter', fId);
+            window.location.href = 'fighters.html';
+        };
+    </script>
+    <script src="auth.js"></script>
+</body>
+</html>

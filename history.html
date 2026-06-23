@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Universe - Event History Archive</title>
+    <style>
+        body { background-color: #e0f2fe; color: #1f2937; font-family: sans-serif; margin: 0; padding-bottom: 64px; }
+        nav { background-color: #0284c7; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .logo { color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; }
+        .nav-links { display: flex; gap: 12px; }
+        .nav-btn { background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-transform: uppercase; }
+        .nav-btn:hover { color: white; background: rgba(255,255,255,0.1); }
+        .nav-btn.active { background: #ef4444; color: white; box-shadow: 0 2px 4px rgba(239,68,68,0.2); }
+        
+        main { max-width: 1200px; margin: 32px auto; padding: 0 24px; }
+        .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 2px solid #bae6fd; padding-bottom: 12px; }
+        .page-title { margin: 0; color: #0f172a; font-size: 1.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+        
+        .event-log-card { background: white; border: 1px solid #bae6fd; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+        .event-header-row { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 16px; }
+        .event-title-badge { font-size: 1.25rem; font-weight: 900; color: #0369a1; text-transform: uppercase; margin: 0; }
+        .event-date-stamp { font-size: 0.75rem; font-weight: bold; color: #64748b; background: #f1f5f9; padding: 4px 10px; border-radius: 9999px; }
+        
+        .history-match-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+        .history-match-cell { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; position: relative; }
+        .tier-tag { font-size: 0.58rem; font-weight: 800; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 6px; }
+        .tier-tag.main-event { background: #fee2e2; color: #ef4444; }
+        .tier-tag.undercard { background: #e0f2fe; color: #0284c7; }
+        .title-fight-gold-tag { position: absolute; top: 12px; right: 12px; font-size: 0.7rem; font-weight: bold; color: #b45309; }
+        
+        .winner-line { font-size: 0.9rem; font-weight: bold; color: #16a34a; margin: 2px 0; }
+        .method-line { font-size: 0.65rem; font-weight: 800; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.05em; margin: 1px 0; }
+        .loser-line { font-size: 0.85rem; font-weight: 600; color: #94a3b8; text-decoration: line-through; opacity: 0.7; margin: 2px 0; }
+        .clear-btn { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.75rem; cursor: pointer; text-transform: uppercase; box-shadow: 0 2px 4px rgba(239,68,68,0.1); }
+    </style>
+</head>
+<body>
+
+       <!-- MASTER SYNCED NAV HEADER (CENTER ALIGNED) -->
+    <nav style="background-color: #0284c7; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-family: sans-serif;">
+        <h1 class="logo" style="color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px;">WWE Universe</h1>
+        
+        <!-- CENTERED LINKS DECK -->
+        <div class="nav-links" style="display: flex; gap: 16px; justify-content: center; flex: 1;">
+            <a href="index.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fight Cards</a>
+            <a href="fighters.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Master Roster</a>
+            <a href="history.html" style="background: #ef4444; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase; box-shadow: 0 2px 4px rgba(239,68,68,0.2);">Event History</a>
+            <a href="fighter-history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fighter History</a>
+            <a href="lineage.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Championship Lineage</a>
+        </div>
+
+        <div style="flex: 0 0 200px;"></div>
+    </nav>
+
+
+    <main>
+        <div class="page-header">
+            <h2 class="page-title">📅 Event History Log</h2>
+            <button onclick="clearAllHistoricalLogs()" class="clear-btn">Wipe History</button>
+        </div>
+
+        <div id="historicalEventsContainer"></div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            renderHistoricalCalendar();
+        });
+
+        function renderHistoricalCalendar() {
+            const container = document.getElementById('historicalEventsContainer');
+            if (!container) return;
+
+            let historyLog = JSON.parse(localStorage.getItem("wwe_event_history")) || [];
+            container.innerHTML = '';
+
+            if (historyLog.length === 0) {
+                container.innerHTML = `<div style="background:white; border:1px dashed #bae6fd; border-radius:12px; padding:40px; text-align:center; color:#64748b; font-weight:bold;">
+                    <p style="margin:0; font-size:1.1rem;">Your Event History log is currently empty.</p>
+                    <p style="margin:4px 0 0 0; font-size:0.8rem; font-weight:600; color:#94a3b8;">Go complete all 14 fight slots on a Card draft and click Finalize to log your first show!</p>
+                </div>`;
+                return;
+            }
+
+            historyLog.sort((a, b) => b.id.localeCompare(a.id));
+
+            historyLog.forEach(event => {
+                const eventCard = document.createElement('div');
+                eventCard.className = 'event-log-card';
+
+                const eventName = event.name || event.showTitle || 'Event';
+                const eventDate = event.date || (event.completedAt ? new Date(event.completedAt).toLocaleString() : 'Unknown');
+                const openCardButton = event.showId ? `<button class="show-link-btn" onclick="openShowCard('${event.showId}')">Open Show</button>` : '';
+
+                let matchesHtml = '';
+                event.matches.forEach(m => {
+                    const isMain = m.tierName.toLowerCase().includes('main event') || m.tierName.toLowerCase().includes('co-main');
+                    const tagClass = isMain ? 'main-event' : 'undercard';
+                    const goldTitleBadge = m.isTitle ? '🏆 Title Fight' : '';
+
+                    matchesHtml += `
+                        <div class="history-match-cell">
+                            <span class="tier-tag ${tagClass}">${m.tierName}</span>
+                            <span class="title-fight-gold-tag">${goldTitleBadge}</span>
+                            <div class="winner-line">👑 ${m.winner}</div>
+                            <div class="method-line">${m.method}</div>
+                            <div class="loser-line">Defeated ${m.loser}</div>
+                        </div>`;
+                });
+
+                eventCard.innerHTML = `
+                    <div class="event-header-row">
+                        <div>
+                            <h3 class="event-title-badge">🎬 ${eventName}</h3>
+                            <div style="margin-top:6px; color:#475569; font-size:0.8rem;">Show ID: ${event.showId || 'N/A'}</div>
+                        </div>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+                            <span class="event-date-stamp">📅 Logged: ${eventDate}</span>
+                            ${openCardButton}
+                        </div>
+                    </div>
+                    <div class="history-match-grid">${matchesHtml}</div>`;
+                
+                container.appendChild(eventCard);
+            });
+        }
+
+        function clearAllHistoricalLogs() {
+            if (confirm("Are you sure you want to permanently delete your Event History log?")) {
+                localStorage.removeItem("wwe_event_history");
+                renderHistoricalCalendar();
+            }
+        }
+
+        function openShowCard(showId) {
+            localStorage.setItem('wwe_active_show_id', showId);
+            window.location.href = 'index.html';
+        }
+    </script>
+    <script src="auth.js"></script>
+</body>
+</html>
