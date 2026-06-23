@@ -545,7 +545,12 @@ window.editSuperstar = function(id) {
         </div>
         <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
             <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Weight Class:</label>
-            <input type="text" id="edit-division-${id}" value="${f.division}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
+            <select id="edit-division-${id}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
+                <option value="Cruiser Weight">Cruiser Weight</option>
+                <option value="Light HeavyWeight">Light HeavyWeight</option>
+                <option value="HeavyWeight">HeavyWeight</option>
+                <option value="Super HeavyWeight">Super HeavyWeight</option>
+            </select>
         </div>
         <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
             <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Wins:</label>
@@ -589,7 +594,19 @@ window.editSuperstar = function(id) {
         const subsEl = document.getElementById(`edit-subs-${id}`);
         const fightsEl = document.getElementById(`edit-fights-${id}`);
         if (nameEl) nameEl.value = f.name || '';
-        if (divEl) divEl.value = f.division || '';
+        if (divEl) {
+            const currentDivision = f.division || 'HeavyWeight';
+            const optionExists = Array.from(divEl.options).some(option => option.value === currentDivision);
+            if (optionExists) {
+                divEl.value = currentDivision;
+            } else {
+                const customOption = document.createElement('option');
+                customOption.value = currentDivision;
+                customOption.textContent = currentDivision;
+                customOption.selected = true;
+                divEl.prepend(customOption);
+            }
+        }
         if (winsEl) winsEl.value = f.wins || 0;
         if (lossesEl) lossesEl.value = f.losses || 0;
         if (pinsEl) pinsEl.value = f.win_pinfall || 0;
