@@ -511,6 +511,14 @@ window.editSuperstar = function(id) {
     editPanel.innerHTML = `
         <span style="grid-column: span 2; font-size: 0.68rem; font-weight: 800; color: #eab308; text-transform: uppercase; margin-bottom: 2px;">✏️ Adjust ${f.name}</span>
         <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
+            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Fighter Name:</label>
+            <input type="text" id="edit-name-${id}" value="${f.name}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
+        </div>
+        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
+            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Weight Class:</label>
+            <input type="text" id="edit-division-${id}" value="${f.division}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
+        </div>
+        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
             <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Wins:</label>
             <input type="number" id="edit-wins-${id}" value="${f.wins}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
         </div>
@@ -547,6 +555,8 @@ window.saveInlineEdit = function(id) {
     const f = fighters.find(fighter => fighter.id === id);
     if (!f) return;
 
+    const nameInput = document.getElementById(`edit-name-${id}`);
+    const divisionInput = document.getElementById(`edit-division-${id}`);
     const winsInput = document.getElementById(`edit-wins-${id}`);
     const lossesInput = document.getElementById(`edit-losses-${id}`);
     const pinsInput = document.getElementById(`edit-pins-${id}`);
@@ -554,13 +564,19 @@ window.saveInlineEdit = function(id) {
     const subsInput = document.getElementById(`edit-subs-${id}`);
     const fightsInput = document.getElementById(`edit-fights-${id}`);
 
-    if (winsInput && lossesInput && pinsInput && kosInput && subsInput && fightsInput) {
+    if (nameInput && divisionInput && winsInput && lossesInput && pinsInput && kosInput && subsInput && fightsInput) {
+        const newName = nameInput.value.trim();
+        const newDivision = divisionInput.value.trim() || 'Heavyweight';
         const newWins = parseInt(winsInput.value) || 0;
         const newLosses = parseInt(lossesInput.value) || 0;
         const newPinfalls = parseInt(pinsInput.value) || 0;
         const newKOs = parseInt(kosInput.value) || 0;
         const newSubs = parseInt(subsInput.value) || 0;
         const newTitleFights = parseInt(fightsInput.value) || 0;
+
+        if (!newName) {
+            return alert('Fighter name cannot be empty.');
+        }
 
         const statsChanged = (
             newWins !== f.wins ||
@@ -570,7 +586,10 @@ window.saveInlineEdit = function(id) {
             newSubs !== (f.win_submission || 0) ||
             newTitleFights !== (f.title_fights || 0)
         );
+        const identityChanged = (newName !== f.name || newDivision !== f.division);
 
+        f.name = newName;
+        f.division = newDivision;
         f.wins = newWins;
         f.losses = newLosses;
         f.win_pinfall = newPinfalls;
