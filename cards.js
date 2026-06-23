@@ -1031,8 +1031,11 @@ window.updateWinnerDropdown = function(matchRowId) {
     saveCurrentCardDraft();
 };
 
+function getCurrentDraftStorageKey() {
+    return activeShowId ? `wwe_draft_${activeShowId}` : 'wwe_draft_default';
+}
+
 function saveCurrentCardDraft() {
-    if (!activeShowId) return;
     let draftData = {};
     document.querySelectorAll('.match-row').forEach(row => {
         const id = row.id;
@@ -1046,12 +1049,14 @@ function saveCurrentCardDraft() {
             f2Id: s2 ? s2.getAttribute('data-fighter-id') : ''
         };
     });
-    localStorage.setItem("wwe_draft_" + activeShowId, JSON.stringify(draftData));
+    localStorage.setItem(getCurrentDraftStorageKey(), JSON.stringify(draftData));
 }
 
 function restoreCurrentCardDraft() {
-    if (!activeShowId) return;
-    let draftData = JSON.parse(localStorage.getItem("wwe_draft_" + activeShowId)) || {};
+    let draftData = JSON.parse(localStorage.getItem(getCurrentDraftStorageKey())) || {};
+    if (!activeShowId && Object.keys(draftData).length === 0) {
+        draftData = JSON.parse(localStorage.getItem('wwe_draft_default')) || {};
+    }
     Object.keys(draftData).forEach(id => {
         const row = document.getElementById(id);
         if (!row || completedMatches[id]) return;

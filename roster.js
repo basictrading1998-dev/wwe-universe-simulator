@@ -1,5 +1,427 @@
 let fighters = [];
 
+const femaleFighterTemplates = [
+    { name: 'Abigail', division: 'Cruiser Weight' },
+    { name: 'Akane Kobayashi', division: 'Cruiser Weight' },
+    { name: 'Alba Fyre', division: 'Cruiser Weight' },
+    { name: 'Alexa Bliss', division: 'Cruiser Weight' },
+    { name: 'Alice Link', division: 'Cruiser Weight' },
+    { name: 'Ashley', division: 'Cruiser Weight' },
+    { name: 'Asuka', division: 'Light HeavyWeight' },
+    { name: 'Azrael Faria', division: 'Light HeavyWeight' },
+    { name: 'Bayley', division: 'Cruiser Weight' },
+    { name: 'Becky Lynch', division: 'Light HeavyWeight' },
+    { name: "Becky Lynch '19", division: 'Light HeavyWeight' },
+    { name: 'Beth Phoenix', division: 'HeavyWeight' },
+    { name: 'Bianca Belair', division: 'HeavyWeight' },
+    { name: "Bianca Belair '17", division: 'HeavyWeight' },
+    { name: 'Black Cat', division: 'Cruiser Weight' },
+    { name: 'Blair Davenport', division: 'Light HeavyWeight' },
+    { name: 'Candice LeRAE', division: 'Cruiser Weight' },
+    { name: 'Carmella', division: 'Cruiser Weight' },
+    { name: 'Charlotte Flair', division: 'HeavyWeight' },
+    { name: "Charlotte Flair '17", division: 'HeavyWeight' },
+    { name: "Charlotte Flair '19", division: 'HeavyWeight' },
+    { name: 'Chelsea Green', division: 'Light HeavyWeight' },
+    { name: 'Chyna', division: 'HeavyWeight' },
+    { name: 'Cora Jade', division: 'Light HeavyWeight' },
+    { name: 'Dakota Kai', division: 'Cruiser Weight' },
+    { name: 'Despair', division: 'Light HeavyWeight' },
+    { name: 'Elisabeth Olsen', division: 'Light HeavyWeight' },
+    { name: 'Elodie Diep', division: 'Light HeavyWeight' },
+    { name: 'EVE Torres', division: 'Light HeavyWeight' },
+    { name: 'Fallon Henley', division: 'Light HeavyWeight' },
+    { name: 'GIGI Dolin', division: 'Cruiser Weight' },
+    { name: 'Indi Hartwell', division: 'Light HeavyWeight' },
+    { name: 'Isabela Merced', division: 'Cruiser Weight' },
+    { name: 'Isla Dawn', division: 'HeavyWeight' },
+    { name: 'IVY Nile', division: 'Light HeavyWeight' },
+    { name: 'IYO Sky', division: 'Cruiser Weight' },
+    { name: 'Jackie IVY', division: 'Cruiser Weight' },
+    { name: 'Jacy Jane', division: 'Cruiser Weight' },
+    { name: 'Jade Cargill', division: 'HeavyWeight' },
+    { name: 'Jayce Harris', division: 'Cruiser Weight' },
+    { name: 'Jazmyn', division: 'Cruiser Weight' },
+    { name: 'Jenna Ortega', division: 'Cruiser Weight' },
+    { name: 'Kairi Sane', division: 'Cruiser Weight' },
+    { name: 'Katana Chance', division: 'Cruiser Weight' },
+    { name: 'Kayden Carter', division: 'Cruiser Weight' },
+    { name: 'Kimberly Garcia', division: 'Cruiser Weight' },
+    { name: 'LITA', division: 'Light HeavyWeight' },
+    { name: 'Liv Morgan', division: 'Cruiser Weight' },
+    { name: 'LYRA Valkyria', division: 'Light HeavyWeight' },
+    { name: 'Madison Lanza', division: 'Cruiser Weight' },
+    { name: 'Marilyn Breaker', division: 'Cruiser Weight' },
+    { name: 'Maryse', division: 'Cruiser Weight' },
+    { name: 'Maxxine Dupri', division: 'Light HeavyWeight' },
+    { name: 'Michelle McCool', division: 'Light HeavyWeight' },
+    { name: 'Michin', division: 'Cruiser Weight' },
+    { name: 'Mighty Molly', division: 'Light HeavyWeight' },
+    { name: 'Molly Holly', division: 'Light HeavyWeight' },
+    { name: 'Mrs. Wuggy', division: 'Light HeavyWeight' },
+    { name: 'Natalya', division: 'Light HeavyWeight' },
+    { name: 'Nebula', division: 'Cruiser Weight' },
+    { name: 'Nia Jax', division: 'Super HeavyWeight' },
+    { name: 'Nikki Cross', division: 'Cruiser Weight' },
+    { name: 'Nikkita Lyons', division: 'Light HeavyWeight' },
+    { name: 'Piper Niven', division: 'HeavyWeight' },
+    { name: 'Rachel Page', division: 'Light HeavyWeight' },
+    { name: 'Raquel Rodriguez', division: 'HeavyWeight' },
+    { name: 'Rhea Ripley', division: 'HeavyWeight' },
+    { name: "Rhea Ripley '17", division: 'HeavyWeight' },
+    { name: "Rhea Ripley '20", division: 'HeavyWeight' },
+    { name: 'Ronda Rousey', division: 'Light HeavyWeight' },
+    { name: 'Roxxan Perez', division: 'Cruiser Weight' },
+    { name: 'Samantha Ramirez', division: 'Cruiser Weight' },
+    { name: 'Scarlett', division: 'Light HeavyWeight' },
+    { name: 'Sensational Sherri', division: 'Light HeavyWeight' },
+    { name: 'Shayna Basler', division: 'Light HeavyWeight' },
+    { name: 'Shotzi', division: 'Light HeavyWeight' },
+    { name: 'Skylar Reks', division: 'Cruiser Weight' },
+    { name: 'Sofia Merced', division: 'Light HeavyWeight' },
+    { name: 'Sonya Deville', division: 'Light HeavyWeight' },
+    { name: 'Stacy Keibler', division: 'Light HeavyWeight' },
+    { name: 'Stephanie McMahon', division: 'Light HeavyWeight' },
+    { name: 'Tamina', division: 'HeavyWeight' },
+    { name: 'Tegan Nox', division: 'Light HeavyWeight' },
+    { name: 'Thea Hail', division: 'Light HeavyWeight' },
+    { name: 'Tiffany Stratton', division: 'Light HeavyWeight' },
+    { name: 'Trish Stratus', division: 'Light HeavyWeight' },
+    { name: 'Valhalla', division: 'Light HeavyWeight' },
+    { name: 'Weeping Angel', division: 'HeavyWeight' },
+    { name: 'Wendy Choo', division: 'Light HeavyWeight' },
+    { name: 'XIA LI', division: 'Light HeavyWeight' },
+    { name: 'Zelina Vega', division: 'Cruiser Weight' },
+    { name: 'Ziggy', division: 'Cruiser Weight' },
+    { name: 'Zoey Stark', division: 'Light HeavyWeight' }
+];
+
+const maleDivisionLookup = {
+  "AJ Hawk": "Heavyweight",
+  "AJ Styles": "Light Heavyweight",
+  "Akira Tozawa": "Cruiserweight",
+  "Alba Fyre": "Cruiserweight",
+  "Alexa Bliss": "Cruiserweight",
+  "Andre Chase": "Light Heavyweight",
+  "Andre the Giant": "Super Heavyweight",
+  "Angel Garza": "Cruiserweight",
+  "Angelo Dawkins": "Heavyweight",
+  "Apollo Crews": "Heavyweight",
+  "Ashante “Thee” Adonis": "Light Heavyweight",
+  "Asuka": "Light Heavyweight",
+  "Asuka 64-Bit": "???",
+  "Austin Theory": "Light Heavyweight",
+  "Axiom": "Cruiserweight",
+  "Bad Bunny": "Cruiserweight",
+  "Baron Corbin": "Heavyweight",
+  "Batista": "Heavyweight",
+  "Bayley": "Cruiserweight",
+  "Becky Lynch": "Light Heavyweight",
+  "Becky Lynch '18": "Light Heavyweight",
+  "Becky Lynch '19": "Light Heavyweight",
+  "Beth Phoenix": "Heavyweight",
+  "Bianca Belair": "Heavyweight",
+  "Bianca Belair '17": "Heavyweight",
+  "Bianca Belair 64-Bit": "???",
+  "Big Boss Man": "Super Heavyweight",
+  "Big E": "Heavyweight",
+  "Blair Davenport": "Light Heavyweight",
+  "Bobby Lashley": "Heavyweight",
+  "Boogeyman": "Heavyweight",
+  "Booker T": "Heavyweight",
+  "Boston Connor": "Heavyweight",
+  "Braun Strowman": "Super Heavyweight",
+  "Bray Wyatt": "Heavyweight",
+  "Bray Wyatt '20": "Heavyweight",
+  "Bray Wyatt '20 (nWo)": "Heavyweight",
+  "Bray Wyatt '20 (SNME)": "Heavyweight",
+  "Bret “Hit Man” Hart": "Light Heavyweight",
+  "Bret “Hit Man” Hart '92": "Light Heavyweight",
+  "British Bulldog": "Heavyweight",
+  "Bron Breakker": "Light Heavyweight",
+  "Bronson Reed": "Super Heavyweight",
+  "Brooks Jensen": "Heavyweight",
+  "Bruno Sammartino": "Heavyweight",
+  "Brutus Creed": "Heavyweight",
+  "Bubba Ray Dudley": "Super Heavyweight",
+  "Butch": "Cruiserweight",
+  "Cactus Jack": "Heavyweight",
+  "Cameron Grimes": "Light Heavyweight",
+  "Candice LeRae": "Cruiserweight",
+  "Carmella": "Cruiserweight",
+  "Carmelo Hayes": "Light Heavyweight",
+  "Cedric Alexander": "Cruiserweight",
+  "Chad Gable": "Cruiserweight",
+  "Chad Gable '16": "Cruiserweight",
+  "Channing “Stacks” Lorenzo": "Light Heavyweight",
+  "Charlotte Flair": "Heavyweight",
+  "Charlotte Flair '17": "Heavyweight",
+  "Charlotte Flair '19": "Heavyweight",
+  "Chelsea Green": "Light Heavyweight",
+  "Chyna": "Heavyweight",
+  "CM Punk": "Light Heavyweight",
+  "Cody Rhodes": "Light Heavyweight",
+  "Cora Jade": "Light Heavyweight",
+  "Cruz del Toro": "Cruiserweight",
+  "Dakota Kai": "Cruiserweight",
+  "Damian Priest": "Heavyweight",
+  "Damon Kemp": "Light Heavyweight",
+  "Darius Butler": "Cruiserweight",
+  "Dexter Lumis": "Light Heavyweight",
+  "Diamond Dallas Page": "???",
+  "Diesel": "Super Heavyweight",
+  "Dijak": "Heavyweight",
+  "Doink the Clown": "Heavyweight",
+  "Drew Gulak": "Cruiserweight",
+  "Drew McIntyre": "Heavyweight",
+  "Dude Love": "Heavyweight",
+  "Duke Hudson": "Heavyweight",
+  "Dusty Rhodes": "Heavyweight",
+  "D-Von Dudley": "Heavyweight",
+  "Eddie Guerrero": "Light Heavyweight",
+  "Eddie Guerrero '97": "Cruiserweight",
+  "Elton Prince": "Cruiserweight",
+  "Eric Bischoff": "Cruiserweight",
+  "Erik": "Heavyweight",
+  "Eve Torres": "Light Heavyweight",
+  "Faarooq": "Heavyweight",
+  "Fallon Henley": "Light Heavyweight",
+  "The Fiend Bray Wyatt": "Heavyweight",
+  "Finn Bálor": "Cruiserweight",
+  "Finn BÃ¡lor": "Cruiserweight",
+  "George “The Animal” Steele": "Heavyweight",
+  "Gigi Dolin": "Cruiserweight",
+  "Giovanni Vinci": "Light Heavyweight",
+  "Grayson Waller": "Light Heavyweight",
+  "Great Muta": "???",
+  "Gunther": "Heavyweight",
+  "Harley Race": "Heavyweight",
+  "Hollywood Hogan": "Heavyweight",
+  "Honky Tonk Man": "Heavyweight",
+  "Hulk Hogan": "Heavyweight",
+  "Hulk Hogan '02": "Heavyweight",
+  "Humberto Carrillo": "Cruiserweight",
+  "Ilja Dragunov": "Cruiserweight",
+  "Indi Hartwell": "Light Heavyweight",
+  "Iron Sheik": "???",
+  "Isla Dawn": "Heavyweight",
+  "Ivar": "Super Heavyweight",
+  "Ivy Nile": "Light Heavyweight",
+  "IYO SKY": "Cruiserweight",
+  "Jacy Jayne": "Cruiserweight",
+  "Jake “The Snake” Roberts": "Heavyweight",
+  "JBL": "Heavyweight",
+  "JD McDonagh": "Cruiserweight",
+  "Jean-Paul Levesque": "Heavyweight",
+  "Jerry “The King” Lawler": "Light Heavyweight",
+  "Jey Uso": "Heavyweight",
+  "Jim “The Anvil” Neidhart": "Heavyweight",
+  "Jimmy Uso": "Heavyweight",
+  "Jinder Mahal": "Light Heavyweight",
+  "Joaquin Wilde": "Cruiserweight",
+  "Joe Coffey": "Heavyweight",
+  "Joe Gacy": "Heavyweight",
+  "John Cena": "Heavyweight",
+  "John Cena '20": "Heavyweight",
+  "John Cena '20 (2002)": "Heavyweight",
+  "John Cena '20 (DOC)": "Heavyweight",
+  "John Cena '20 (nWo)": "Heavyweight",
+  "John Cena '20 (SNME)": "Heavyweight",
+  "John Cena '20 (WM30)": "Heavyweight",
+  "Johnny Gargano": "Cruiserweight",
+  "Josh Briggs": "Heavyweight",
+  "Julius Creed": "Light Heavyweight",
+  "Kane": "Super Heavyweight",
+  "Kane '08": "Super Heavyweight",
+  "Karl Anderson": "Light Heavyweight",
+  "Karrion Kross": "Heavyweight",
+  "Katana Chance": "Cruiserweight",
+  "Kayden Carter": "Cruiserweight",
+  "Ken Shamrock": "Light Heavyweight",
+  "Kevin Nash": "Super Heavyweight",
+  "Kevin Owens": "Heavyweight",
+  "Kit Wilson": "Cruiserweight",
+  "Kofi Kingston": "Light Heavyweight",
+  "Kurt Angle": "Light Heavyweight",
+  "LA Knight": "Heavyweight",
+  "Lex Luger": "???",
+  "Lita": "Light Heavyweight",
+  "Liv Morgan": "Cruiserweight",
+  "Logan Paul": "Cruiserweight",
+  "Ludwig Kaiser": "Light Heavyweight",
+  "Luke Gallows": "Heavyweight",
+  "Mankind": "Heavyweight",
+  "Mark Coffey": "Light Heavyweight",
+  "Maryse": "Cruiserweight",
+  "Michin": "Cruiserweight",
+  "Michin 64-Bit": "???",
+  "Mighty Molly": "Light Heavyweight",
+  "Molly Holly": "Light Heavyweight",
+  "Montez Ford": "Light Heavyweight",
+  "Mosh": "Heavyweight",
+  "Mr. Perfect": "???",
+  "Muhammad Ali": "Light Heavyweight",
+  "MVP": "Heavyweight",
+  "Natalya": "Light Heavyweight",
+  "Nathan Frazer": "Cruiserweight",
+  "Nikki Cross": "Cruiserweight",
+  "Nikkita Lyons": "Light Heavyweight",
+  "Noam Dar": "Cruiserweight",
+  "Omos": "Super Heavyweight",
+  "Otis": "Super Heavyweight",
+  "Pat McAfee": "Light Heavyweight",
+  "Piper Niven": "Heavyweight",
+  "Post Malone": "Cruiserweight",
+  "Randy Orton": "Heavyweight",
+  "Randy Orton '02": "Heavyweight",
+  "Randy Orton '09": "???",
+  "Randy Orton '15": "Heavyweight",
+  "Raquel Rodriguez": "Heavyweight",
+  "Raquel Rodriguez 64-Bit": "???",
+  "Razor Ramon": "Heavyweight",
+  "Rey Mysterio": "Cruiserweight",
+  "Rey Mysterio '06": "Cruiserweight",
+  "Rey Mysterio Jr.": "Cruiserweight",
+  "Rhea Ripley": "Heavyweight",
+  "Rhea Ripley '17": "Heavyweight",
+  "Rhea Ripley '20": "Heavyweight",
+  "Rick Steiner": "Heavyweight",
+  "Ricky Steamboat": "Light Heavyweight",
+  "Ricochet": "Cruiserweight",
+  "Ridge Holland": "Heavyweight",
+  "Rikishi": "Super Heavyweight",
+  "Rob Van Dam": "Light Heavyweight",
+  "Robert Roode": "Light Heavyweight",
+  "Roman Reigns": "Heavyweight",
+  "Roman Reigns '15": "Heavyweight",
+  "Roman Reigns '24": "Heavyweight",
+  "Roman Reigns 64-Bit": "???",
+  "Ronda Rousey": "Light Heavyweight",
+  "Roxanne Perez": "Cruiserweight",
+  "R-Truth": "Light Heavyweight",
+  "Sami Zayn": "Light Heavyweight",
+  "Sandman": "Heavyweight",
+  "Sanga": "Heavyweight",
+  "Santos Escobar": "Cruiserweight",
+  "Scarlett": "Light Heavyweight",
+  "Scott Hall": "Heavyweight",
+  "Scott Steiner": "Heavyweight",
+  "SCRYPTS": "Cruiserweight",
+  "Sensational Sherri": "Light Heavyweight",
+  "Seth “Freakin” Rollins": "Light Heavyweight",
+  "Seth Rollins '14": "Light Heavyweight",
+  "Seth Rollins '15": "Light Heavyweight",
+  "Shane McMahon": "Light Heavyweight",
+  "Shawn Michaels": "Light Heavyweight",
+  "Shawn Michaels '05": "Light Heavyweight",
+  "Shawn Michaels '09": "Light Heavyweight",
+  "Shawn Michaels '94": "Light Heavyweight",
+  "Shayna Baszler": "Light Heavyweight",
+  "Sheamus": "Heavyweight",
+  "Sheamus '09": "Heavyweight",
+  "Shinsuke Nakamura": "Light Heavyweight",
+  "Shotzi": "Light Heavyweight",
+  "Solo Sikoa": "Heavyweight",
+  "Sonya Deville": "Light Heavyweight",
+  "Stacy Keibler": "Light Heavyweight",
+  "Stardust": "Light Heavyweight",
+  "Stephanie McMahon": "Light Heavyweight",
+  "Syxx": "Light Heavyweight",
+  "Tamina": "Heavyweight",
+  "Ted DiBiase": "Heavyweight",
+  "Tegan Nox": "Light Heavyweight",
+  "Terry Funk": "Heavyweight",
+  "The Fiend Bray Wyatt": "Heavyweight",
+  "The Hurricane": "Light Heavyweight",
+  "The Miz": "Light Heavyweight",
+  "The Rock": "Heavyweight",
+  "The Rock '01": "Heavyweight",
+  "The Rock '24": "Heavyweight",
+  "Thea Hail": "Light Heavyweight",
+  "Thrasher": "Heavyweight",
+  "Tiffany Stratton": "Light Heavyweight",
+  "Tommaso Ciampa": "Cruiserweight",
+  "Tony D'Angelo": "Heavyweight",
+  "Trick Williams": "Cruiserweight",
+  "Trick Williams '22": "Cruiserweight",
+  "Triple H": "Heavyweight",
+  "Triple H '08": "Heavyweight",
+  "Triple H '14": "Heavyweight",
+  "Trish Stratus": "Light Heavyweight",
+  "Ty Schmit": "Light Heavyweight",
+  "Tyler Bate": "Cruiserweight",
+  "Tyler Breeze": "Light Heavyweight",
+  "Ultimate Warrior": "Heavyweight",
+  "Umaga": "Super Heavyweight",
+  "Uncle Howdy": "Light Heavyweight",
+  "Undertaker": "Heavyweight",
+  "Undertaker '03": "Heavyweight",
+  "Undertaker '09": "Heavyweight",
+  "Undertaker '14": "Heavyweight",
+  "Undertaker '98": "Heavyweight",
+  "Vader": "Super Heavyweight",
+  "Valhalla": "Light Heavyweight",
+  "Veer Mahaan": "Heavyweight",
+  "Wade Barrett": "Heavyweight",
+  "Wendy Choo": "Light Heavyweight",
+  "Wes Lee": "Cruiserweight",
+  "William Regal": "Heavyweight",
+  "Wolfgang": "Heavyweight",
+  "Xavier Woods": "Cruiserweight",
+  "Xavier Woods 64-Bit": "???",
+  "Xia Li": "Light Heavyweight",
+  "X-Pac": "Light Heavyweight",
+  "Yokozuna": "Super Heavyweight",
+  "Zelina Vega": "Cruiserweight",
+  "Zero": "Cruiserweight",
+  "Zoey Stark": "Light Heavyweight"
+};
+
+const maleDivisionLookupNormalized = Object.keys(maleDivisionLookup).reduce((acc, name) => {
+    acc[normalizeLookupKey(name)] = maleDivisionLookup[name];
+    return acc;
+}, {});
+
+function normalizeLookupKey(value) {
+    return (value || '').toString().normalize('NFC').trim().toLowerCase()
+        .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
+        .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+        .replace(/[\u2010-\u2015]/g, '-')
+        .replace(/\u00A0/g, ' ')
+        .replace(/\s+/g, ' ');
+}
+
+function normalizeDivisionName(division) {
+    const normalized = (division || '').toString().trim().toLowerCase();
+    if (normalized.includes('cruiser')) return 'Cruiser Weight';
+    if (normalized.includes('light heavy')) return 'Light HeavyWeight';
+    if (normalized.includes('super heavy')) return 'Super HeavyWeight';
+    if (normalized.includes('heavy')) return 'HeavyWeight';
+    return division || 'HeavyWeight';
+}
+
+function getMappedDivisionForName(name) {
+    return maleDivisionLookupNormalized[normalizeLookupKey(name)] || null;
+}
+
+function assignAutoDivision(list) {
+    if (!Array.isArray(list)) return false;
+    let rosterChanged = false;
+    list.forEach(f => {
+        if (!f || typeof f !== 'object') return;
+        const gender = (f.gender || 'male').toString().toLowerCase();
+        if (gender === 'female') return;
+        const mappedDivision = getMappedDivisionForName(f.name);
+        if (!mappedDivision) return;
+        const canonicalDivision = normalizeDivisionName(mappedDivision);
+        if (f.division !== canonicalDivision) {
+            f.division = canonicalDivision;
+            rosterChanged = true;
+        }
+    });
+    return rosterChanged;
+}
+
 function normalizeFighterRecord(fighter) {
     if (!fighter || typeof fighter !== 'object') return null;
     const normalized = { ...fighter };
@@ -48,7 +470,46 @@ function loadFighters() {
 
 function saveFighters(list = fighters) {
     const normalized = (list || []).map(normalizeFighterRecord).filter(Boolean);
+    assignAutoDivision(normalized);
     localStorage.setItem('wwe_fighters', JSON.stringify(normalized));
+}
+
+function ensureFemaleRosterEntries() {
+    fighters = loadFighters();
+    let rosterChanged = false;
+
+    femaleFighterTemplates.forEach(template => {
+        const existing = fighters.find(f => f.name.toLowerCase() === template.name.toLowerCase());
+        if (existing) {
+            const normalizedDivision = template.division.toString();
+            if (existing.division !== normalizedDivision || existing.gender !== 'female') {
+                existing.division = normalizedDivision;
+                existing.gender = 'female';
+                rosterChanged = true;
+            }
+        } else {
+            fighters.push(normalizeFighterRecord({
+                id: `f-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
+                name: template.name,
+                gender: 'female',
+                division: template.division,
+                wins: 0,
+                losses: 0,
+                defenses: 0,
+                title_fights: 0,
+                win_pinfall: 0,
+                win_ko: 0,
+                win_submission: 0,
+                photo: ''
+            }));
+            rosterChanged = true;
+        }
+    });
+
+    const autoUpdated = assignAutoDivision(fighters);
+    if (rosterChanged || autoUpdated) {
+        saveFighters(fighters);
+    }
 }
 
 // Keep a datalist of fighter names for quick autofill in the Master Roster form
@@ -165,6 +626,7 @@ window.restoreLegacyRoster = function() {
 
 document.addEventListener('DOMContentLoaded', () => {
     fighters = loadFighters();
+    ensureFemaleRosterEntries();
     refreshFighterNameDatalist();
     renderRosterGrid();
     buildMasterRankingsPanel();
@@ -444,6 +906,7 @@ function setupSidebarFormEngine() {
             };
 
             fighters.push(normalizeFighterRecord(newFighter));
+            assignAutoDivision(fighters);
             saveFighters(fighters);
             refreshFighterNameDatalist();
             
@@ -516,6 +979,7 @@ window.importBulkSuperstars = function() {
         }
     });
 
+    assignAutoDivision(fighters);
     saveFighters(fighters);
     refreshFighterNameDatalist();
     renderRosterGrid();
