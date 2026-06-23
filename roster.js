@@ -544,6 +544,13 @@ window.editSuperstar = function(id) {
             <input type="text" id="edit-name-${id}" value="${f.name}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
         </div>
         <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
+            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Gender:</label>
+            <select id="edit-gender-${id}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+            </select>
+        </div>
+        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
             <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Weight Class:</label>
             <select id="edit-division-${id}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
                 <option value="Cruiser Weight">Cruiser Weight</option>
@@ -586,6 +593,7 @@ window.editSuperstar = function(id) {
     // Ensure input values are set programmatically to avoid HTML attribute parsing issues
     try {
         const nameEl = document.getElementById(`edit-name-${id}`);
+        const genderEl = document.getElementById(`edit-gender-${id}`);
         const divEl = document.getElementById(`edit-division-${id}`);
         const winsEl = document.getElementById(`edit-wins-${id}`);
         const lossesEl = document.getElementById(`edit-losses-${id}`);
@@ -594,6 +602,9 @@ window.editSuperstar = function(id) {
         const subsEl = document.getElementById(`edit-subs-${id}`);
         const fightsEl = document.getElementById(`edit-fights-${id}`);
         if (nameEl) nameEl.value = f.name || '';
+        if (genderEl) {
+            genderEl.value = (f.gender || 'male').toString().toLowerCase();
+        }
         if (divEl) {
             const currentDivision = f.division || 'HeavyWeight';
             const optionExists = Array.from(divEl.options).some(option => option.value === currentDivision);
@@ -623,6 +634,7 @@ window.saveInlineEdit = function(id) {
     if (!f) return;
 
     const nameInput = document.getElementById(`edit-name-${id}`);
+    const genderInput = document.getElementById(`edit-gender-${id}`);
     const divisionInput = document.getElementById(`edit-division-${id}`);
     const winsInput = document.getElementById(`edit-wins-${id}`);
     const lossesInput = document.getElementById(`edit-losses-${id}`);
@@ -631,8 +643,9 @@ window.saveInlineEdit = function(id) {
     const subsInput = document.getElementById(`edit-subs-${id}`);
     const fightsInput = document.getElementById(`edit-fights-${id}`);
 
-    if (nameInput && divisionInput && winsInput && lossesInput && pinsInput && kosInput && subsInput && fightsInput) {
+    if (nameInput && genderInput && divisionInput && winsInput && lossesInput && pinsInput && kosInput && subsInput && fightsInput) {
         const newName = nameInput.value.trim();
+        const newGender = (genderInput.value || 'male').toString().toLowerCase();
         const newDivision = divisionInput.value.trim() || 'Heavyweight';
         const newWins = parseInt(winsInput.value) || 0;
         const newLosses = parseInt(lossesInput.value) || 0;
@@ -653,9 +666,10 @@ window.saveInlineEdit = function(id) {
             newSubs !== (f.win_submission || 0) ||
             newTitleFights !== (f.title_fights || 0)
         );
-        const identityChanged = (newName !== f.name || newDivision !== f.division);
+        const identityChanged = (newName !== f.name || newDivision !== f.division || newGender !== f.gender);
 
         f.name = newName;
+        f.gender = newGender;
         f.division = newDivision;
         f.wins = newWins;
         f.losses = newLosses;
