@@ -1,7 +1,92 @@
-let fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
+let fighters = [];
+
+function normalizeFighterRecord(fighter) {
+    if (!fighter || typeof fighter !== 'object') return null;
+    const normalized = { ...fighter };
+    normalized.id = normalized.id || `f-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+    normalized.name = (normalized.name || `${normalized.firstName || ''} ${normalized.lastName || ''}`.trim() || normalized.alias || 'Unnamed Fighter').trim();
+    normalized.gender = (normalized.gender || 'male').toString().toLowerCase();
+    normalized.division = (normalized.division || normalized.weightClass || 'Heavyweight').toString();
+    normalized.wins = Number(normalized.wins || 0);
+    normalized.losses = Number(normalized.losses || 0);
+    normalized.defenses = Number(normalized.defenses || 0);
+    normalized.title_fights = Number(normalized.title_fights || 0);
+    normalized.win_pinfall = Number(normalized.win_pinfall || 0);
+    normalized.win_ko = Number(normalized.win_ko || 0);
+    normalized.win_submission = Number(normalized.win_submission || 0);
+    normalized.photo = normalized.photo || '';
+    return normalized;
+}
+
+function migrateLegacyFighters() {
+    const legacy = localStorage.getItem('fighters');
+    const current = localStorage.getItem('wwe_fighters');
+    if (!legacy || current) return;
+    try {
+        const parsedLegacy = JSON.parse(legacy);
+        if (!Array.isArray(parsedLegacy)) return;
+        const normalizedLegacy = parsedLegacy.map(normalizeFighterRecord).filter(Boolean);
+        localStorage.setItem('wwe_fighters', JSON.stringify(normalizedLegacy));
+        localStorage.removeItem('fighters');
+    } catch {
+        // keep current state if legacy parse fails
+    }
+}
+
+function loadFighters() {
+    migrateLegacyFighters();
+    const stored = localStorage.getItem('wwe_fighters');
+    if (!stored) return [];
+    try {
+        const parsed = JSON.parse(stored);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.map(normalizeFighterRecord).filter(Boolean);
+    } catch {
+        return [];
+    }
+}
+
+function saveFighters(list = fighters) {
+    const normalized = (list || []).map(normalizeFighterRecord).filter(Boolean);
+    localStorage.setItem('wwe_fighters', JSON.stringify(normalized));
+}
+
+window.restoreLegacyRoster = function() {
+    fighters = loadFighters();
+    const legacyKeys = ['fighters'];
+    let restored = 0;
+
+    legacyKeys.forEach(key => {
+        const raw = localStorage.getItem(key);
+        if (!raw) return;
+
+        try {
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return;
+
+            parsed.map(normalizeFighterRecord).filter(Boolean).forEach(legacyFighter => {
+                const exists = fighters.some(current => current.id === legacyFighter.id || current.name.toLowerCase() === legacyFighter.name.toLowerCase());
+                if (!exists) {
+                    fighters.push(legacyFighter);
+                    restored++;
+                }
+            });
+        } catch {
+            return;
+        }
+    });
+
+    if (restored > 0) {
+        saveFighters(fighters);
+        renderRosterGrid();
+        alert(`Restored ${restored} missing fighter${restored === 1 ? '' : 's'} from your legacy roster.`);
+    } else {
+        alert('No additional fighters were found in legacy roster data. Your current roster already has everything loaded.');
+    }
+};
 
 document.addEventListener('DOMContentLoaded', () => {
-    fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
+    fighters = loadFighters();
     renderRosterGrid();
     buildMasterRankingsPanel();
     setupSidebarFormEngine();
@@ -13,6 +98,7 @@ function renderRosterGrid() {
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
 
+    fighters = loadFighters();
     const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
 
     buildMasterRankingsPanel();
@@ -45,7 +131,6 @@ function renderRosterGrid() {
             });
         }
 
-        const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
         let totalDefenses = championships.filter(b => b.championId === f.id).reduce((sum, b) => sum + (b.defenses || 0), 0);
         let titleFightsCount = f.title_fights || 0;
 
@@ -163,10 +248,11 @@ function setupSidebarFormEngine() {
         addBtn.removeAttribute('onclick');
         addBtn.onclick = function(e) {
             e.preventDefault();
-            
-            const nameInput = document.querySelector('input[placeholder*="Roman"]') || document.querySelector('input[placeholder*="Superstar"]') || document.querySelector('input[type="text"]');
-            const divisionInput = document.querySelector('input[placeholder*="Heavyweight"]') || document.querySelector('input[placeholder*="Weight"]');
-            const genderSelect = document.querySelector('select');
+            fighters = loadFighters();
+
+            const nameInput = document.getElementById('fighterName') || document.querySelector('input[placeholder*="Roman"]') || document.querySelector('input[placeholder*="Superstar"]') || document.querySelector('input[type="text"]');
+            const divisionInput = document.getElementById('fighterDivision') || document.querySelector('input[placeholder*="Heavyweight"]') || document.querySelector('input[placeholder*="Weight"]');
+            const genderSelect = document.getElementById('fighterGender') || document.querySelector('select');
 
             const nameValue = nameInput ? nameInput.value.trim() : "";
             if (!nameValue) return alert("Please enter a Superstar name before signing their contract!");
@@ -179,8 +265,8 @@ function setupSidebarFormEngine() {
                 wins: 0, losses: 0, defenses: 0, title_fights: 0, win_pinfall: 0, win_ko: 0, win_submission: 0
             };
 
-            fighters.push(newFighter);
-            localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+            fighters.push(normalizeFighterRecord(newFighter));
+            saveFighters(fighters);
             
             if (nameInput) nameInput.value = '';
             if (divisionInput) divisionInput.value = '';
@@ -196,17 +282,19 @@ function setupLiveSearchEngine() {
     if (!searchBar) return;
 
     searchBar.id = 'rosterSearchInput';
-    searchBar.onkeyup = function() {
-        const query = searchBar.value.toLowerCase();
-        document.querySelectorAll('#rosterGrid > div').forEach(card => {
-            const nameEl = card.querySelector('.fighter-name-target');
-            if (nameEl) {
-                const nameText = nameEl.textContent.toLowerCase();
-                card.style.display = nameText.includes(query) ? 'flex' : 'none';
-            }
-        });
-    };
+    searchBar.onkeyup = filterRosterCards;
 }
+
+window.filterRosterCards = function() {
+    const query = document.getElementById('rosterSearchInput')?.value.toLowerCase() || '';
+    document.querySelectorAll('#rosterGrid > div').forEach(card => {
+        const nameEl = card.querySelector('.fighter-name-target');
+        if (nameEl) {
+            const nameText = nameEl.textContent.toLowerCase();
+            card.style.display = nameText.includes(query) ? 'flex' : 'none';
+        }
+    });
+};
 
 window.toggleBulkImporter = function() {
     const wrapper = document.getElementById('bulkImporterWrapper');
@@ -215,12 +303,13 @@ window.toggleBulkImporter = function() {
 };
 
 window.importBulkSuperstars = function() {
+    fighters = loadFighters();
     const textarea = document.getElementById('bulkNamesInput');
     const genderSelect = document.getElementById('bulkGender');
     const divisionSelect = document.getElementById('bulkDivision');
     if (!textarea) return alert('Bulk importer is unavailable right now.');
 
-    const names = textarea.value.split('\n').map(name => name.trim()).filter(Boolean);
+    const names = textarea.value.split(/\r?\n/).map(name => name.trim()).filter(Boolean);
     if (names.length === 0) return alert('Enter at least one fighter name to import.');
 
     const gender = genderSelect ? genderSelect.value : 'male';
@@ -231,7 +320,7 @@ window.importBulkSuperstars = function() {
     names.forEach((name, index) => {
         const exists = fighters.some(f => f.name.toLowerCase() === name.toLowerCase());
         if (!exists) {
-            fighters.push({
+            fighters.push(normalizeFighterRecord({
                 id: `f-${timestamp}-${index}`,
                 name,
                 gender,
@@ -243,12 +332,12 @@ window.importBulkSuperstars = function() {
                 win_pinfall: 0,
                 win_ko: 0,
                 win_submission: 0
-            });
+            }));
             added++;
         }
     });
 
-    localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+    saveFighters(fighters);
     renderRosterGrid();
     textarea.value = '';
     alert(`${added} ${added === 1 ? 'superstar' : 'superstars'} imported successfully.`);
