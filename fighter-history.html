@@ -116,7 +116,8 @@
                 if (historyArray.length === 0) {
                     rightDeckHtml += `<span class="empty-history-text">No fights yet</span>`;
                 } else {
-                    for (let i = historyArray.length - 1; i >= 0; i--) {
+                    // Render oldest (index 0) first, newest last — left to right chronological order
+                    for (let i = 0; i < historyArray.length; i++) {
                         const fight = historyArray[i];
                         const outcome = (fight.outcome || '').toLowerCase();
                         const isWin = outcome === 'win';
@@ -130,6 +131,7 @@
                         const oppObj = fighters.find(item => item.name === fight.opponent);
                         let oppLiveRecord = oppObj ? `${oppObj.wins || 0}W ${oppObj.losses || 0}L` : "0W 0L";
 
+                        const rematchText = fight.rematchNumber ? `Rematch #${fight.rematchNumber}` : '';
                         rightDeckHtml += `
                             <div class="history-badge-brick ${classBrick}">
                                 <div class="brick-status-lbl ${statusClass}">${statusLetter}</div>
@@ -137,6 +139,7 @@
                                 <div class="brick-opp-record ${recordClass}">${oppLiveRecord}</div>
                                 <div class="brick-method">${fight.method || 'Result'}</div>
                                 <div class="brick-show">${fight.showName || 'Show'}</div>
+                                ${rematchText ? `<div class="brick-show">${rematchText}</div>` : ''}
                             </div>`;
                     }
                 }

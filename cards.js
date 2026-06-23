@@ -16,12 +16,184 @@ function loadFightersFromStorage() {
             win_pinfall: Number(f.win_pinfall || 0),
             win_ko: Number(f.win_ko || 0),
             win_submission: Number(f.win_submission || 0),
-            photo: f.photo || ''
+            photo: f.photo || '',
+            compiled_history_deck: Array.isArray(f.compiled_history_deck) ? f.compiled_history_deck : Array.isArray(f.history_deck) ? f.history_deck : Array.isArray(f.history) ? f.history : [],
+            history_deck: Array.isArray(f.history_deck) ? f.history_deck : [],
+            history: Array.isArray(f.history) ? f.history : []
         }));
     } catch {
         return [];
     }
 }
+
+// === BETTING SYSTEM ===
+function initBettingSystem() {
+    const stored = localStorage.getItem('wwe_betting_money');
+    if (stored === null || stored === '100000') {
+        localStorage.setItem('wwe_betting_money', '1000'); // Start with $1,000
+    }
+}
+
+function getBettingMoney() {
+    return Number(localStorage.getItem('wwe_betting_money')) || 0;
+}
+
+function setBettingMoney(amount) {
+    localStorage.setItem('wwe_betting_money', Math.max(0, amount).toString());
+    updateBettingMoneyDisplay();
+}
+
+function updateBettingMoney(delta) {
+    const current = getBettingMoney();
+    setBettingMoney(current + delta);
+}
+
+function updateBettingMoneyDisplay() {
+    const display = document.getElementById('betting-money-display');
+    if (display) {
+        display.textContent = `$${getBettingMoney().toLocaleString()}`;
+    }
+}
+
+window.resetBettingMoney = function() {
+    setBettingMoney(1000);
+    alert('💵 Betting balance reset to $1,000.');
+}
+
+// Store active bets for each match
+let activeBets = {};
+
+window.selectBetFighter = function(matchId, fighterSlot) {
+    if (!activeBets[matchId]) activeBets[matchId] = {};
+    activeBets[matchId].selectedFighter = fighterSlot;
+    
+    // Update button states
+    const btn1 = document.getElementById(`${matchId}-bet-f1`);
+    const btn2 = document.getElementById(`${matchId}-bet-f2`);
+    
+    if (fighterSlot === '1') {
+        btn1.style.background = '#10b981';
+        btn1.style.borderColor = '#10b981';
+        btn1.style.color = 'white';
+        btn2.style.background = '#f1f5f9';
+        btn2.style.borderColor = '#cbd5e1';
+        btn2.style.color = '#475569';
+    } else {
+        btn2.style.background = '#10b981';
+        btn2.style.borderColor = '#10b981';
+        btn2.style.color = 'white';
+        btn1.style.background = '#f1f5f9';
+        btn1.style.borderColor = '#cbd5e1';
+        btn1.style.color = '#475569';
+    }
+    
+    updateBetDisplay(matchId);
+};
+
+window.setBetAmount = function(matchId, multiplier) {
+    if (!activeBets[matchId]) activeBets[matchId] = {};
+    
+    const currentMoney = getBettingMoney();
+    let betAmount = 0;
+    
+    if (multiplier === 'MAX') {
+        betAmount = currentMoney;
+    } else {
+        const mult = parseInt(multiplier.replace('x', ''));
+        const baseAmount = Math.floor(currentMoney / 10); // Base is 10% of current money
+        betAmount = baseAmount * mult;
+    }
+    
+    // Cap at available money
+    betAmount = Math.min(betAmount, currentMoney);
+    activeBets[matchId].betAmount = betAmount;
+    
+    updateBetDisplay(matchId);
+};
+
+function updateBetDisplay(matchId) {
+    const bet = activeBets[matchId] || {};
+    const betAmount = bet.betAmount || 0;
+    
+    document.getElementById(`${matchId}-bet-amount`).textContent = `$${betAmount.toLocaleString()}`;
+    
+    // Calculate potential win (2x the bet as profit)
+    const potentialWin = betAmount * 2;
+    document.getElementById(`${matchId}-potential-win`).textContent = `$${potentialWin.toLocaleString()}`;
+}
+
+window.clearBet = function(matchId) {
+    activeBets[matchId] = {};
+    const btn1 = document.getElementById(`${matchId}-bet-f1`);
+    const btn2 = document.getElementById(`${matchId}-bet-f2`);
+    if (btn1) {
+        btn1.style.background = '#f1f5f9';
+        btn1.style.borderColor = '#cbd5e1';
+        btn1.style.color = '#475569';
+    }
+    if (btn2) {
+        btn2.style.background = '#f1f5f9';
+        btn2.style.borderColor = '#cbd5e1';
+        btn2.style.color = '#475569';
+    }
+    document.getElementById(`${matchId}-bet-amount`).textContent = '$0';
+    document.getElementById(`${matchId}-potential-win`).textContent = '$0';
+};
+
+window.placeBet = function(matchId) {
+    const bet = activeBets[matchId] || {};
+    
+    if (!bet.selectedFighter) {
+        return alert('Select which fighter you want to bet on first!');
+    }
+    
+    if (!bet.betAmount || bet.betAmount <= 0) {
+        return alert('Select a bet amount!');
+    }
+    
+    const slot1Input = document.getElementById(`${matchId}-slot1`)?.querySelector('.fighter-search-input');
+    const slot2Input = document.getElementById(`${matchId}-slot2`)?.querySelector('.fighter-search-input');
+    
+    if (!slot1Input?.value || !slot2Input?.value) {
+        return alert('Both fighters must be selected before placing a bet!');
+    }
+    
+    const currentMoney = getBettingMoney();
+    if (bet.betAmount > currentMoney) {
+        return alert('Insufficient funds!');
+    }
+    
+    // Deduct bet from money
+    updateBettingMoney(-bet.betAmount);
+    
+    const betOnFighterNum = bet.selectedFighter;
+    const betOnInput = betOnFighterNum === '1' ? slot1Input : slot2Input;
+    const betOnFighterName = betOnInput.value;
+    
+    // Store the bet data for later when match is logged
+    if (!window.placedBets) window.placedBets = {};
+    window.placedBets[matchId] = {
+        betAmount: bet.betAmount,
+        betOnFighterNum: betOnFighterNum,
+        betOnFighterName: betOnFighterName,
+        timestamp: Date.now()
+    };
+    
+    alert(`✅ Bet placed! $${bet.betAmount.toLocaleString()} on ${betOnFighterName} to win!\n\nYou could win $${(bet.betAmount * 2).toLocaleString()}`);
+    
+    // Reset bet UI
+    activeBets[matchId] = {};
+    document.getElementById(`${matchId}-bet-f1`).style.background = '#f1f5f9';
+    document.getElementById(`${matchId}-bet-f1`).style.borderColor = '#cbd5e1';
+    document.getElementById(`${matchId}-bet-f1`).style.color = '#475569';
+    document.getElementById(`${matchId}-bet-f2`).style.background = '#f1f5f9';
+    document.getElementById(`${matchId}-bet-f2`).style.borderColor = '#cbd5e1';
+    document.getElementById(`${matchId}-bet-f2`).style.color = '#475569';
+    document.getElementById(`${matchId}-bet-amount`).textContent = '$0';
+    document.getElementById(`${matchId}-potential-win`).textContent = '$0';
+    
+    saveCurrentCardDraft();
+};
 
 let fighters = loadFightersFromStorage();
 let futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
@@ -30,6 +202,7 @@ let completedMatches = JSON.parse(localStorage.getItem("wwe_matches_" + activeSh
 let activeMatchId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+    initBettingSystem();
     const tiers = ['mainEventContainer', 'coMainContainer', 'mainCardContainer', 'prelimsContainer', 'earlyPrelimsContainer'];
     tiers.forEach(id => {
         let box = document.getElementById(id);
@@ -40,6 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     restoreCurrentCardDraft();
     buildShowSchedulerHeader();
     buildModalContainer();
+    updateBettingMoneyDisplay();
         // LIVE WATCHER: Auto-clears title field blocks if a fighter name is ever deleted
     document.addEventListener('input', (e) => {
         if (e.target.classList.contains('fighter-search-input')) {
@@ -174,9 +348,13 @@ function renderCardRows(box, num, tierId, isMain) {
         matchRow.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; width:100%; border-bottom:1px dashed #e2e8f0; padding-bottom:6px; font-size:0.65rem; font-weight:bold; color:#64748b;">
                 <span>MATCH VARIANT</span>
-                <div style="display:flex; gap:4px; background:#f1f5f9; padding:2px; border-radius:6px;">
-                    <button onclick="changeMatchGender('${uId}', 'male')" id="${uId}-btn-male" style="background:#0369a1; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;">MALE</button>
-                    <button onclick="changeMatchGender('${uId}', 'female')" id="${uId}-btn-female" style="background:transparent; color:#64748b; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;">FEMALE</button>
+                <div style="display:flex; gap:4px; align-items:center;">
+                    <button onclick="randomizeMatchup('${uId}')" style="background:#7c3aed; border:none; color:white; padding:3px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem; transition:0.2s;" title="Pick 2 random fighters of same gender & weight class">🎲 RANDOM</button>
+                    <button onclick="randomizeMatchup('${uId}')" style="background:#a855f7; border:none; color:white; padding:2px 6px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.55rem; transition:0.2s;" title="Reroll">↻</button>
+                    <div style="display:flex; gap:4px; background:#f1f5f9; padding:2px; border-radius:6px;">
+                        <button onclick="changeMatchGender('${uId}', 'male')" id="${uId}-btn-male" style="background:#0369a1; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;">MALE</button>
+                        <button onclick="changeMatchGender('${uId}', 'female')" id="${uId}-btn-female" style="background:transparent; color:#64748b; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;">FEMALE</button>
+                    </div>
                 </div>
             </div>
             <div id="${uId}-booking-panel" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
@@ -194,14 +372,21 @@ function renderCardRows(box, num, tierId, isMain) {
                     <button onclick="suggestOpponent('${uId}')" style="background:#f0fdf4; border:1px solid #bbf7d0; color:#16a34a; padding:2px 6px; border-radius:4px; cursor:pointer; font-size:0.65rem; font-weight:bold; margin-top:6px;">💡 Suggest</button>
                 </div>
 
-                <div class="fighter-slot" id="${uId}-slot2" data-gender="male" style="width:38%; text-align:right; display:flex; flex-direction:row-reverse; align-items:center; gap:8px; position:relative;">
-                    <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b;">👤</div>
-                    <div class="dropdown-search-container">
+                <div class="fighter-slot" id="${uId}-slot2" data-gender="male" style="width:38%; text-align:right; display:flex; flex-direction:row-reverse; align-items:center; gap:8px; position:relative; min-width:0;">
+                    <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; margin-left:8px;">👤</div>
+                    <div class="dropdown-search-container" style="flex:1; min-width:0;">
                         <input type="text" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 2..." onfocus="triggerSearchFill('${uId}', 'slot2')" onkeyup="triggerSearchFill('${uId}', 'slot2')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600; text-align:right;">
                         <div class="search-results-floating-panel" style="display:none;"></div>
                     </div>
                 </div>
 
+            </div>
+            <div id="${uId}-rematch-warning" style="display:none; width:100%; background:#fef3c7; border:1px solid #fde68a; border-radius:10px; padding:12px; color:#92400e; box-sizing:border-box;">
+                <div id="${uId}-rematch-warning-text" style="font-size:0.78rem; line-height:1.4; margin-bottom:10px;"></div>
+                <div style="display:flex; justify-content:flex-end; gap:8px;">
+                    <button id="${uId}-rematch-cancel" type="button" style="background:#ef4444; border:none; color:white; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.75rem;">Cancel</button>
+                    <button id="${uId}-rematch-allow" type="button" style="background:#15803d; border:none; color:white; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.75rem;">Allow Rematch</button>
+                </div>
             </div>
             <div id="${uId}-result-panel" style="display:none; flex-direction:column; align-items:center; width:100%; background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:12px 16px; text-align:center; box-shadow:inset 0 2px 4px rgba(0,0,0,0.3);">
                 <div style="font-size:0.6rem; font-weight:800; color:#64748b; tracking-letter:0.1em; text-transform:uppercase; margin-bottom:4px;">Official Ring Result</div>
@@ -225,7 +410,7 @@ function renderCardRows(box, num, tierId, isMain) {
                         <option value="win_ko">KO/TKO</option>
                         <option value="win_submission">SUBMISSION</option>
                     </select>
-                    <button onclick="logMatchResult('${uId}')" style="background:#ef4444; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Log Result</button>
+                    <button id="${uId}-log-btn" onclick="logMatchResult('${uId}')" style="background:#ef4444; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Log Result</button>
                 </div>
                                 <div style="width:30%; display:flex; justify-content:flex-end; gap:8px; font-size:0.7rem; font-weight:bold; color:#475569; align-items:center;">
                     <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="${uId}-title-check" onchange="toggleTitleFight('${uId}', this)"> 🏆 TITLE / BELT MATCH</label>
@@ -235,6 +420,32 @@ function renderCardRows(box, num, tierId, isMain) {
                     <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" onchange="toggleRematchCounter('${uId}', this)"> 🔄 REMATCH <input type="number" min="1" value="1" id="${uId}-rematch-count" style="display:none; width:32px; font-size:0.65rem; margin-left:2px;"></label>
                 </div>
 
+            </div>
+            <div id="${uId}-betting-panel" style="display:flex; flex-direction:column; gap:8px; width:100%; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:8px; margin:8px 0;">
+                <div style="display:flex; gap:6px; font-size:0.65rem; font-weight:bold;">
+                    <button onclick="selectBetFighter('${uId}', '1')" id="${uId}-bet-f1" style="flex:1; background:#f1f5f9; border:2px solid #cbd5e1; color:#475569; padding:4px; border-radius:4px; cursor:pointer; transition:0.2s; font-size:0.65rem;">BET F1</button>
+                    <button onclick="selectBetFighter('${uId}', '2')" id="${uId}-bet-f2" style="flex:1; background:#f1f5f9; border:2px solid #cbd5e1; color:#475569; padding:4px; border-radius:4px; cursor:pointer; transition:0.2s; font-size:0.65rem;">BET F2</button>
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:4px; font-size:0.6rem; font-weight:bold;">
+                    <button onclick="setBetAmount('${uId}', 'x2')" style="background:#ef4444; color:white; border:none; padding:4px; border-radius:3px; cursor:pointer; transition:0.2s; font-size:0.65rem;">x2</button>
+                    <button onclick="setBetAmount('${uId}', 'x5')" style="background:#ef4444; color:white; border:none; padding:4px; border-radius:3px; cursor:pointer; transition:0.2s; font-size:0.65rem;">x5</button>
+                    <button onclick="setBetAmount('${uId}', 'x10')" style="background:#ef4444; color:white; border:none; padding:4px; border-radius:3px; cursor:pointer; transition:0.2s; font-size:0.65rem;">x10</button>
+                    <button onclick="setBetAmount('${uId}', 'MAX')" style="background:#dc2626; color:white; border:none; padding:4px; border-radius:3px; cursor:pointer; font-weight:900; transition:0.2s; font-size:0.65rem;">MAX</button>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px;">
+                    <div style="background:white; border:1px solid #86efac; border-radius:4px; padding:6px; text-align:center;">
+                        <div style="font-size:0.6rem; color:#65a30d; font-weight:bold; text-transform:uppercase;">Bet</div>
+                        <div id="${uId}-bet-amount" style="font-size:0.9rem; font-weight:900; color:#16a34a;">$0</div>
+                    </div>
+                    <div style="background:white; border:1px solid #86efac; border-radius:4px; padding:6px; text-align:center;">
+                        <div style="font-size:0.6rem; color:#65a30d; font-weight:bold; text-transform:uppercase;">Win</div>
+                        <div id="${uId}-potential-win" style="font-size:0.9rem; font-weight:900; color:#16a34a;">$0</div>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
+                        <button onclick="placeBet('${uId}')" style="background:#10b981; border:none; color:white; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; text-transform:uppercase; font-size:0.65rem; transition:0.2s;">PLACE</button>
+                        <button onclick="clearBet('${uId}')" style="background:#f97316; border:none; color:white; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; text-transform:uppercase; font-size:0.65rem; transition:0.2s;">CLEAR</button>
+                    </div>
+                </div>
             </div>`;
         box.appendChild(matchRow);
         
@@ -307,6 +518,9 @@ window.triggerSearchFill = function(uId, slotType) {
                     uploadFighterPhotoFromCard(f.id); 
                 };
                 updateWinnerDropdown(uId);
+                if (!checkExistingFightRematch(uId, slotType)) {
+                    return;
+                }
             };
         }
         panel.appendChild(item);
@@ -333,7 +547,162 @@ window.populateDropdownGenders = function(matchRowId, genderVariant) {
     }
 };
 
+function setMatchRowSelectedGender(matchRowId, gender) {
+    const btnMale = document.getElementById(`${matchRowId}-btn-male`);
+    const btnFemale = document.getElementById(`${matchRowId}-btn-female`);
+    const slot1 = document.getElementById(`${matchRowId}-slot1`);
+    const slot2 = document.getElementById(`${matchRowId}-slot2`);
 
+    if (btnMale && btnFemale) {
+        if (gender === 'male') {
+            btnMale.style.cssText = "background:#0369a1; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem; box-shadow:0 0 0 2px rgba(56,189,248,0.45);";
+            btnFemale.style.cssText = "background:transparent; color:#64748b; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem; box-shadow:none;";
+        } else {
+            btnFemale.style.cssText = "background:#db2777; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem; box-shadow:0 0 0 2px rgba(236,72,153,0.45);";
+            btnMale.style.cssText = "background:transparent; color:#64748b; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem; box-shadow:none;";
+        }
+    }
+
+    if (slot1) slot1.setAttribute('data-gender', gender);
+    if (slot2) slot2.setAttribute('data-gender', gender);
+}
+
+function getFightHistoryBetween(f1, f2) {
+    if (!f1 || !f2 || f1.id === f2.id) return [];
+    const history1 = (f1.compiled_history_deck || f1.history_deck || f1.history || []).filter(entry => entry.opponent === f2.name);
+    if (history1.length) {
+        return history1.map(entry => ({
+            winner: entry.outcome === 'win' ? f1.name : f2.name,
+            loser: entry.outcome === 'loss' ? f1.name : f2.name,
+            method: entry.method,
+            showName: entry.showName,
+            rematchNumber: (typeof entry.rematchNumber === 'number') ? entry.rematchNumber : 0
+        }));
+    }
+    const history2 = (f2.compiled_history_deck || f2.history_deck || f2.history || []).filter(entry => entry.opponent === f1.name);
+    return history2.map(entry => ({
+        winner: entry.outcome === 'win' ? f2.name : f1.name,
+        loser: entry.outcome === 'loss' ? f2.name : f1.name,
+        method: entry.method,
+        showName: entry.showName,
+        rematchNumber: (typeof entry.rematchNumber === 'number') ? entry.rematchNumber : 0
+    }));
+}
+
+function clearCardFighterSlot(matchRowId, slotType) {
+    const slot = document.getElementById(`${matchRowId}-${slotType}`);
+    if (!slot) return;
+    const input = slot.querySelector('.fighter-search-input');
+    const av = slot.querySelector('.avatar-box');
+    if (input) {
+        input.value = '';
+        input.setAttribute('data-fighter-id', '');
+    }
+    if (av) {
+        av.innerHTML = '👤';
+        av.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; cursor:pointer;";
+    }
+    updateWinnerDropdown(matchRowId);
+    saveCurrentCardDraft();
+}
+
+function checkExistingFightRematch(matchRowId, changedSlot) {
+    const slot1 = document.getElementById(`${matchRowId}-slot1`)?.querySelector('.fighter-search-input');
+    const slot2 = document.getElementById(`${matchRowId}-slot2`)?.querySelector('.fighter-search-input');
+    if (!slot1 || !slot2 || !slot1.value || !slot2.value) return true;
+
+    const fighter1 = fighters.find(f => f.id === slot1.getAttribute('data-fighter-id') || f.name === slot1.value);
+    const fighter2 = fighters.find(f => f.id === slot2.getAttribute('data-fighter-id') || f.name === slot2.value);
+    if (!fighter1 || !fighter2 || fighter1.id === fighter2.id) return true;
+
+    const historyEntries = getFightHistoryBetween(fighter1, fighter2);
+    if (!historyEntries.length) {
+        hideRematchWarning(matchRowId);
+        return true;
+    }
+
+    const priorCount = historyEntries.length;
+    const lastFight = historyEntries[historyEntries.length - 1];
+    const lastWinner = lastFight.winner || 'Unknown';
+    const fightNumber = priorCount + 1;
+    const showName = lastFight.showName || 'Unknown show';
+    const methodLabel = lastFight.method ? `${lastFight.method}` : 'Unknown method';
+
+    showRematchWarning(matchRowId, fighter1, fighter2, {
+        priorCount,
+        lastWinner,
+        fightNumber,
+        showName,
+        methodLabel
+    }, changedSlot);
+
+    return false;
+}
+
+function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot) {
+    const container = document.getElementById(`${matchRowId}-rematch-warning`);
+    const text = document.getElementById(`${matchRowId}-rematch-warning-text`);
+    if (!container || !text) return;
+    text.innerHTML = `⚠️ <strong>${fighter1.name}</strong> and <strong>${fighter2.name}</strong> have already fought ${history.priorCount} time${history.priorCount === 1 ? '' : 's'}.<br>` +
+                     `Last winner: <strong>${history.lastWinner}</strong><br>` +
+                     `Show: <strong>${history.showName}</strong><br>` +
+                     `Method: <strong>${history.methodLabel}</strong><br>` +
+                     `<span style="display:block; margin-top:8px;">This will be fight #${history.fightNumber} between them.</span>`;
+    container.style.display = 'block';
+
+    // Disable result controls until user accepts or cancels the rematch warning
+    const winSelectEl = document.getElementById(`${matchRowId}-winner-select`);
+    const methodSelectEl = document.getElementById(`${matchRowId}-method-select`);
+    const logBtnEl = document.getElementById(`${matchRowId}-log-btn`);
+    if (winSelectEl) winSelectEl.disabled = true;
+    if (methodSelectEl) methodSelectEl.disabled = true;
+    if (logBtnEl) {
+        // store previous styles so we can restore them
+        logBtnEl.dataset.prevOpacity = logBtnEl.style.opacity || '';
+        logBtnEl.dataset.prevCursor = logBtnEl.style.cursor || '';
+        logBtnEl.disabled = true;
+        logBtnEl.style.opacity = '0.6';
+        logBtnEl.style.cursor = 'not-allowed';
+    }
+
+    const cancelBtn = document.getElementById(`${matchRowId}-rematch-cancel`);
+    const allowBtn = document.getElementById(`${matchRowId}-rematch-allow`);
+    if (cancelBtn) {
+        cancelBtn.onclick = function() {
+            if (changedSlot === 'both') {
+                clearCardFighterSlot(matchRowId, 'slot1');
+                clearCardFighterSlot(matchRowId, 'slot2');
+            } else {
+                clearCardFighterSlot(matchRowId, changedSlot || 'slot2');
+            }
+            hideRematchWarning(matchRowId);
+        };
+    }
+    if (allowBtn) {
+        allowBtn.onclick = function() {
+            hideRematchWarning(matchRowId);
+        };
+    }
+}
+
+function hideRematchWarning(matchRowId) {
+    const container = document.getElementById(`${matchRowId}-rematch-warning`);
+    if (container) container.style.display = 'none';
+    // Re-enable result controls
+    const winSelectEl = document.getElementById(`${matchRowId}-winner-select`);
+    const methodSelectEl = document.getElementById(`${matchRowId}-method-select`);
+    const logBtnEl = document.getElementById(`${matchRowId}-log-btn`);
+    if (winSelectEl) winSelectEl.disabled = false;
+    if (methodSelectEl) methodSelectEl.disabled = false;
+    if (logBtnEl) {
+        logBtnEl.disabled = false;
+        // restore previous styles
+        if (logBtnEl.dataset.prevOpacity !== undefined) logBtnEl.style.opacity = logBtnEl.dataset.prevOpacity;
+        if (logBtnEl.dataset.prevCursor !== undefined) logBtnEl.style.cursor = logBtnEl.dataset.prevCursor;
+        delete logBtnEl.dataset.prevOpacity;
+        delete logBtnEl.dataset.prevCursor;
+    }
+}
 
 window.toggleRematchCounter = function(id, cb) {
     const el = document.getElementById(`${id}-rematch-count`); if (el) el.style.display = cb.checked ? "inline-block" : "none";
@@ -589,6 +958,128 @@ function buildModalContainer() {
 }
 
 window.closeSuggestionModal = function() { document.getElementById('suggestionModal').style.display = 'none'; };
+window.randomizeMatchup = function(matchId) {
+    const row = document.getElementById(matchId);
+    const slot1 = document.getElementById(`${matchId}-slot1`);
+    const slot2 = document.getElementById(`${matchId}-slot2`);
+    
+    if (!slot1 || !slot2) return alert('Match row not found.');
+    
+    // Collect all booked fighter IDs (by explicit id or typed name) and logged/completed matches
+    let bookedFighterIds = [];
+    document.querySelectorAll('.fighter-search-input').forEach(inp => {
+        const fighterId = inp.getAttribute('data-fighter-id');
+        if (fighterId) {
+            if (!bookedFighterIds.includes(fighterId)) bookedFighterIds.push(fighterId);
+        } else if (inp.value && inp.value.trim()) {
+            // If user typed a name but didn't select from dropdown, resolve it to an id
+            const typed = inp.value.trim();
+            const found = fighters.find(ff => ff.name === typed);
+            if (found && !bookedFighterIds.includes(found.id)) bookedFighterIds.push(found.id);
+        }
+    });
+    // Also exclude fighters already logged in completed matches for the active show
+    Object.keys(completedMatches || {}).forEach(matchId => {
+        const state = completedMatches[matchId];
+        if (state) {
+            const fWin = fighters.find(f => f.name === state.winnerName);
+            const fLos = fighters.find(f => f.name === state.loserName);
+            if (fWin && !bookedFighterIds.includes(fWin.id)) bookedFighterIds.push(fWin.id);
+            if (fLos && !bookedFighterIds.includes(fLos.id)) bookedFighterIds.push(fLos.id);
+        }
+    });
+    
+    // Filter available fighters: same gender, not booked, have a valid division
+    const availableFighters = fighters.filter(f => 
+        !bookedFighterIds.includes(f.id)
+    );
+    
+    const fightersByGenderAndDivision = {};
+    availableFighters.forEach(f => {
+        const gender = f.gender || 'male';
+        const div = (f.division || 'Heavyweight').toLowerCase();
+        fightersByGenderAndDivision[gender] = fightersByGenderAndDivision[gender] || {};
+        fightersByGenderAndDivision[gender][div] = fightersByGenderAndDivision[gender][div] || [];
+        fightersByGenderAndDivision[gender][div].push(f);
+    });
+
+    const validGenderChoices = Object.keys(fightersByGenderAndDivision).filter(gender => {
+        return Object.values(fightersByGenderAndDivision[gender]).some(list => list.length >= 2);
+    });
+
+    if (validGenderChoices.length === 0) {
+        return alert('Not enough available fighters of any gender! You need at least 2 unbooked fighters in the same division.');
+    }
+
+    const selectedGender = validGenderChoices[Math.floor(Math.random() * validGenderChoices.length)];
+    const validDivisions = Object.entries(fightersByGenderAndDivision[selectedGender]).filter(([, list]) => list.length >= 2);
+    const randomDivision = validDivisions[Math.floor(Math.random() * validDivisions.length)][0];
+    const divisionalFighters = fightersByGenderAndDivision[selectedGender][randomDivision] || [];
+    const selectedDivision = randomDivision;
+
+    if (!divisionalFighters.length) {
+        return alert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`);
+    }
+    
+    // Pick 2 random fighters from the division
+    const idx1 = Math.floor(Math.random() * divisionalFighters.length);
+    let idx2 = Math.floor(Math.random() * divisionalFighters.length);
+    while (idx2 === idx1 && divisionalFighters.length > 1) {
+        idx2 = Math.floor(Math.random() * divisionalFighters.length);
+    }
+    
+    const fighter1 = divisionalFighters[idx1];
+    const fighter2 = divisionalFighters[idx2];
+    
+    // Populate slot 1
+    const input1 = slot1.querySelector('.fighter-search-input');
+    input1.value = fighter1.name;
+    input1.setAttribute('data-fighter-id', fighter1.id);
+    const av1 = slot1.querySelector('.avatar-box');
+    let content1 = '';
+    if (fighter1.photo) {
+        content1 = `<img src="${fighter1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
+    } else {
+        content1 = fighter1.name.charAt(0);
+    }
+    av1.innerHTML = content1;
+    av1.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+    av1.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter1.id); };
+    
+    // Populate slot 2
+    const input2 = slot2.querySelector('.fighter-search-input');
+    input2.value = fighter2.name;
+    input2.setAttribute('data-fighter-id', fighter2.id);
+    const av2 = slot2.querySelector('.avatar-box');
+    let content2 = '';
+    if (fighter2.photo) {
+        content2 = `<img src="${fighter2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
+    } else {
+        content2 = fighter2.name.charAt(0);
+    }
+    av2.innerHTML = content2;
+    av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+    av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
+    
+    // Sync gender controls to the chosen fighters' gender
+    setMatchRowSelectedGender(matchId, selectedGender);
+
+    // Check for previous fight history between the chosen fighters
+    if (!checkExistingFightRematch(matchId, 'both')) {
+        return;
+    }
+
+    // Update winner dropdown
+    updateWinnerDropdown(matchId);
+    
+    // Save draft
+    saveCurrentCardDraft();
+    
+    // Show confirmation
+    const divisionDisplay = selectedDivision.charAt(0).toUpperCase() + selectedDivision.slice(1);
+    alert(`🎲 Randomized!\n\n${fighter1.name} vs ${fighter2.name}\n(${divisionDisplay})`);
+};
+
 window.suggestOpponent = function(id) {
     activeMatchId = id; 
     const row = document.getElementById(id); 
@@ -609,8 +1100,23 @@ window.suggestOpponent = function(id) {
     const slot2 = document.getElementById(`${id}-slot2`);
     const currentOpponentId = slot2 ? slot2.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') : null;
 
+    // Collect all already-booked fighter IDs on this card
+    let bookedFighterIds = [];
+    document.querySelectorAll('.fighter-search-input').forEach(inp => {
+        const fighterId = inp.getAttribute('data-fighter-id');
+        if (fighterId && fighterId !== sel1.getAttribute('data-fighter-id')) {
+            bookedFighterIds.push(fighterId);
+        }
+    });
+
     fighters.forEach(c => {
         if (c.id === f1.id) return; // never suggest the same fighter
+
+        // Check if fighter is already booked in another match (unless they're the current opponent)
+        const isBookedElsewhere = bookedFighterIds.includes(c.id);
+        if (isBookedElsewhere && !(currentOpponentId && c.id === currentOpponentId)) {
+            return; // skip already-booked fighters
+        }
 
         // always allow current opponent (if set) regardless of benching checks, but still require same division
         if (currentOpponentId && c.id === currentOpponentId) {
@@ -728,6 +1234,10 @@ window.bookSuggested = function(fId) {
             uploadFighterPhotoFromCard(f2.id); 
         };
         updateWinnerDropdown(activeMatchId);
+        if (!checkExistingFightRematch(activeMatchId, 'slot2')) {
+            window.closeSuggestionModal();
+            return;
+        }
         saveCurrentCardDraft();
     }
     window.closeSuggestionModal();
@@ -758,22 +1268,26 @@ window.logMatchResult = function(id) {
 
     if (!w.compiled_history_deck) w.compiled_history_deck = [];
     if (!l.compiled_history_deck) l.compiled_history_deck = [];
+    const priorHeadToHead = getFightHistoryBetween(w, l).length;
+    const rematchNumber = priorHeadToHead;
 
     const winnerHistoryEntry = {
         outcome: 'win',
         opponent: l.name,
         method: methodName,
-        showName
+        showName,
+        rematchNumber: rematchNumber
     };
     const loserHistoryEntry = {
         outcome: 'loss',
         opponent: w.name,
         method: methodName,
-        showName
+        showName,
+        rematchNumber: rematchNumber
     };
 
-    const winnerAlreadyLogged = w.compiled_history_deck.some(entry => entry.outcome === 'win' && entry.opponent === l.name && entry.showName === showName && entry.method === methodName);
-    const loserAlreadyLogged = l.compiled_history_deck.some(entry => entry.outcome === 'loss' && entry.opponent === w.name && entry.showName === showName && entry.method === methodName);
+    const winnerAlreadyLogged = w.compiled_history_deck.some(entry => entry.outcome === 'win' && entry.opponent === l.name && entry.showName === showName && entry.method === methodName && entry.rematchNumber === rematchNumber);
+    const loserAlreadyLogged = l.compiled_history_deck.some(entry => entry.outcome === 'loss' && entry.opponent === w.name && entry.showName === showName && entry.method === methodName && entry.rematchNumber === rematchNumber);
 
     if (!winnerAlreadyLogged) w.compiled_history_deck.push(winnerHistoryEntry);
     if (!loserAlreadyLogged) l.compiled_history_deck.push(loserHistoryEntry);
@@ -790,7 +1304,8 @@ window.logMatchResult = function(id) {
         methodName: methodSelect.options[methodSelect.selectedIndex].text,
         isTitle: titleCheck ? titleCheck.checked : false,
         titleId: '',
-        titleName: ''
+        titleName: '',
+        rematchNumber: rematchNumber
     };
     // If this was a title match and a title was selected, store title id/name and immediately apply transfer
     if (titleCheck && titleCheck.checked && titleInput && titleInput.value) {
@@ -847,6 +1362,26 @@ window.logMatchResult = function(id) {
     }
     completedMatches[id] = matchSaveState; 
     localStorage.setItem("wwe_matches_" + activeShowId, JSON.stringify(completedMatches));
+    
+    // RESOLVE BET IF ONE WAS PLACED
+    if (window.placedBets && window.placedBets[id]) {
+        const bet = window.placedBets[id];
+        const betWon = bet.betOnFighterName === w.name;
+        
+        if (betWon) {
+            // Double the money (original bet + winnings)
+            const winnings = bet.betAmount * 2;
+            updateBettingMoney(winnings);
+            alert(`🎉 BET WON! You won $${winnings.toLocaleString()}!`);
+        } else {
+            // Bet lost (money already deducted when bet was placed)
+            alert(`😞 Bet lost. You had $${bet.betAmount.toLocaleString()} on ${bet.betOnFighterName}.`);
+        }
+        
+        // Clear the bet
+        delete window.placedBets[id];
+    }
+    
     restoreLoggedResult(id, matchSaveState);
 };
 
@@ -889,6 +1424,10 @@ window.finalizeFullEventCard = function() {
         alert(`Archive Blocked!\nYou must log all ${allMatchRows.length} matches before completing the event.\n\nCurrent Progress: ${allMatchRows.length - incompleteRows.length}/${allMatchRows.length}`);
         return;
     }
+
+    // Award event archive bonus once per completed show
+    updateBettingMoney(1000);
+    alert('🏆 Live show finalized! You earned a $1,000 bonus for archiving the event.');
 
     let eventMatchesCompiled = allMatchRows.map(row => {
         const savedState = activeShowSavedData[row.id];
@@ -1110,19 +1649,14 @@ function restoreCurrentCardDraft() {
                 winSelect.innerHTML = winOpts;
             }
         }
+        if (d.f1Name && d.f2Name) {
+            checkExistingFightRematch(id, 'both');
+        }
     });
 }
 
 window.changeMatchGender = function(matchRowId, gender) {
-    const btnMale = document.getElementById(`${matchRowId}-btn-male`);
-    const btnFemale = document.getElementById(`${matchRowId}-btn-female`);
-    if(gender === 'male') {
-        btnMale.style.cssText = "background:#0369a1; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;";
-        btnFemale.style.cssText = "background:transparent; color:#64748b; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;";
-    } else {
-        btnFemale.style.cssText = "background:#db2777; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;";
-        btnMale.style.cssText = "background:transparent; color:#64748b; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;";
-    }
+    setMatchRowSelectedGender(matchRowId, gender);
     populateDropdownGenders(matchRowId, gender);
 };
 window.resetActiveShowDraft = function() {

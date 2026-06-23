@@ -377,6 +377,326 @@ const maleDivisionLookup = {
   "Zoey Stark": "Light Heavyweight"
 };
 
+const wwe2k24RosterNames = `
+AJ Hawk
+AJ Styles
+Akira Tozawa
+Alba Fyre
+Alexa Bliss
+Andre Chase
+Andre the Giant
+Angel Garza
+Angelo Dawkins
+Apollo Crews
+Ashante “Thee” Adonis
+Asuka
+Asuka 64-Bit
+Austin Theory
+Axiom
+Bad Bunny
+Baron Corbin
+Batista
+Bayley
+Becky Lynch
+Becky Lynch '18
+Becky Lynch '19
+Beth Phoenix
+Bianca Belair
+Bianca Belair 64-Bit
+Bianca Belair '17
+Big Boss Man
+Big E
+Blair Davenport
+Bobby Lashley
+Boogeyman
+Booker T
+Boston Connor
+Braun Strowman
+Bray Wyatt
+Bray Wyatt '20
+Bray Wyatt '20 (nWo)
+Bray Wyatt '20 (SNME)
+Bret “Hit Man” Hart
+Bret “Hit Man” Hart '92
+British Bulldog
+Bron Breakker
+Bronson Reed
+Brooks Jensen
+Bruno Sammartino
+Brutus Creed
+Bubba Ray Dudley
+Butch
+Cactus Jack
+Cameron Grimes
+Candice LeRae
+Carlito
+Carmella
+Carmelo Hayes
+Cedric Alexander
+Chad Gable
+Chad Gable '16
+Channing “Stacks” Lorenzo
+Charlotte Flair
+Charlotte Flair '17
+Charlotte Flair '19
+Chelsea Green
+Chyna
+CM Punk
+Cody Rhodes
+Cora Jade
+Cruz del Toro
+Dakota Kai
+Damian Priest
+Damon Kemp
+Darius Butler
+Dexter Lumis
+Diamond Dallas Page
+Diesel
+Dijak
+“Dirty” Dominik Mysterio
+Doink the Clown
+Dominik Mysterio “Masked”
+Dragon Lee
+Drew Gulak
+Drew McIntyre
+Dude Love
+Duke Hudson
+Dusty Rhodes
+D-Von Dudley
+Eddie Guerrero
+Eddie Guerrero '97
+“Elite” Cody Rhodes
+“Elite” Hulk Hogan
+“Elite” John Cena
+Elton Prince
+Eric Bischoff
+Erik
+Eve Torres
+Faarooq
+Fallon Henley
+The Fiend Bray Wyatt
+Finn Bálor
+George “The Animal” Steele
+Gigi Dolin
+Giovanni Vinci
+Grayson Waller
+Great Muta
+Gunther
+Harley Race
+Hollywood Hogan
+Honky Tonk Man
+Hulk Hogan
+Hulk Hogan '02
+Humberto Carrillo
+The Hurricane
+“Ichiban” Hulk Hogan
+Ilja Dragunov
+Indi Hartwell
+Iron Sheik
+Isla Dawn
+Ivar
+Ivy Nile
+IYO SKY
+Jacy Jayne
+Jade Cargill
+Jake “The Snake” Roberts
+JBL
+JD McDonagh
+Jean-Paul Levesque
+Jerry “The King” Lawler
+Jey Uso
+Jim “The Anvil” Neidhart
+Jimmy Uso
+Jinder Mahal
+Joaquin Wilde
+Joe Coffey
+Joe Gacy
+John Cena
+John Cena '20
+John Cena '20 (DOC)
+John Cena '20 (nWo)
+John Cena '20 (SNME)
+John Cena '20 (WM30)
+John Cena '20 (2002)
+Johnny Gargano
+Josh Briggs
+Juan Cena
+Julius Creed
+Kairi Sane
+Kane
+Kane '08
+Karl Anderson
+Karrion Kross
+Katana Chance
+Kayden Carter
+Ken Shamrock
+Kevin Nash
+Kevin Owens
+Kit Wilson
+Kofi Kingston
+Kurt Angle
+LA Knight
+Lex Luger
+Lita
+Liv Morgan
+Logan Paul
+Ludwig Kaiser
+Luke Gallows
+Lyra Valkyria
+“Macho King” Randy Savage
+“Macho Man” Randy Savage
+Mankind
+Mark Coffey
+Maryse
+Maxxine Dupri
+Michelle McCool
+Michin
+Michin 64-Bit
+Mighty Molly
+The Miz
+Molly Holly
+Montez Ford
+Mosh
+Muhammad Ali
+Mr. Perfect
+MVP
+Natalya
+Nathan Frazer
+Nia Jax
+Nikki Cross
+Nikkita Lyons
+Noam Dar
+Omos
+Otis
+Pat McAfee
+Piper Niven
+Post Malone
+R-Truth
+Randy Orton
+Randy Orton '02
+Randy Orton '09
+Randy Orton '15
+Raquel Rodriguez
+Raquel Rodriguez 64-Bit
+“Ravishing” Rick Rude
+Razor Ramon
+Rey Mysterio
+Rey Mysterio '06
+Rey Mysterio Jr.
+Rhea Ripley
+Rhea Ripley '17
+Rhea Ripley '20
+Rick Steiner
+Ricky Steamboat
+Ricochet
+Ridge Holland
+Rikishi
+Rob Van Dam
+Robert Roode
+The Rock
+The Rock '01
+The Rock '24
+Roman Reigns
+Roman Reigns 64-Bit
+Roman Reigns '15
+Roman Reigns '24
+Ronda Rousey
+“Rowdy” Roddy Piper
+Roxanne Perez
+Sami Zayn
+Sandman
+Sanga
+Santos Escobar
+Scarlett
+Scott Hall
+Scott Steiner
+SCRYPTS
+Sensational Sherri
+Seth “Freakin” Rollins
+Seth Rollins '14
+Seth Rollins '15
+Shane McMahon
+Shawn Michaels
+Shawn Michaels '05
+Shawn Michaels '09
+Shawn Michaels '94
+Shayna Baszler
+Sheamus
+Sheamus '09
+Shinsuke Nakamura
+Shotzi
+Solo Sikoa
+Sonya Deville
+Stacy Keibler
+Stardust
+Stephanie McMahon
+“Stone Cold” Steve Austin
+“Stone Cold” Steve Austin '01
+“Stone Cold” Steve Austin '97
+“Superstar” Billy Graham
+Syxx
+Tamina
+Ted DiBiase
+Tegan Nox
+Terry Funk
+Thea Hail
+Thrasher
+Tiffany Stratton
+Tommaso Ciampa
+Tony D'Angelo
+Trick Williams
+Trick Williams '22
+Triple H
+Triple H '08
+Triple H '14
+Trish Stratus
+Ty Schmit
+Tyler Bate
+Tyler Breeze
+Ultimate Warrior
+Umaga
+Uncle Howdy
+“Undashing” Cody Rhodes
+Undertaker
+Undertaker '03
+Undertaker '09
+Undertaker '14
+Undertaker '98
+Vader
+Valhalla
+Veer Mahaan
+Wade Barrett
+Wendy Choo
+Wes Lee
+William Regal
+Wolfgang
+X-Pac
+Xavier Woods
+Xavier Woods 64-Bit
+Xia Li
+Yokozuna
+Zelina Vega
+Zero
+Zoey Stark
+`;
+
+const wwe2k24RosterNamesList = wwe2k24RosterNames.split(/\r?\n/).map(name => name.trim()).filter(Boolean);
+
+const wwe2k24PortraitMap = {
+    'Roman Reigns': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/05/Roman_Reigns_PROFILE.png',
+    'Seth “Freakin” Rollins': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/05/SETH_ROLLINS_04132026sb_0095_Profile.png',
+    'Cody Rhodes': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/03/CODY_04262024gd_0100_headSawp_Profile.png',
+    'Liv Morgan': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/06/LIV_05132024ca_023_Title_Profile--530195974e3839e08bdb34e41adbaed5.png',
+    'Rhea Ripley': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/04/Rhea_04242026ca_037_Profile.png',
+    'Bianca Belair': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2024/03/BiancaBelair_01282024RF_1159_Profile--f32b01959da5065b6d2b2b9887792b92.png',
+    'The Rock': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/03/The_Rock_PROFILE--927b15797eefad54a3bca4d2a15e4921.png'
+};
+
+const wwe2k24PortraitMapNormalized = Object.keys(wwe2k24PortraitMap).reduce((acc, name) => {
+    acc[normalizeLookupKey(name)] = wwe2k24PortraitMap[name];
+    return acc;
+}, {});
+
 const maleDivisionLookupNormalized = Object.keys(maleDivisionLookup).reduce((acc, name) => {
     acc[normalizeLookupKey(name)] = maleDivisionLookup[name];
     return acc;
@@ -389,6 +709,24 @@ function normalizeLookupKey(value) {
         .replace(/[\u2010-\u2015]/g, '-')
         .replace(/\u00A0/g, ' ')
         .replace(/\s+/g, ' ');
+}
+
+function getRosterGenderFromName(name) {
+    const normalizedName = normalizeLookupKey(name);
+    return femaleFighterTemplates.some(template => normalizeLookupKey(template.name) === normalizedName) ? 'female' : 'male';
+}
+
+function getRosterDivisionForName(name, gender) {
+    const normalizedName = normalizeLookupKey(name);
+    if (gender === 'female') {
+        const template = femaleFighterTemplates.find(template => normalizeLookupKey(template.name) === normalizedName);
+        return template ? template.division : null;
+    }
+    return getMappedDivisionForName(name);
+}
+
+function getWWE2K24Portrait(name) {
+    return wwe2k24PortraitMapNormalized[normalizeLookupKey(name)] || '';
 }
 
 function normalizeDivisionName(division) {
@@ -679,7 +1017,7 @@ function renderRosterGrid() {
 
         let avatarContent = '';
         if (f.photo) {
-            avatarContent = `<img src="${f.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="${f.name}">`;
+            avatarContent = `<img src="${f.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
         } else {
             avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
         }
@@ -776,7 +1114,7 @@ function renderRosterGridWithoutReload() {
 
         let avatarContent = '';
         if (f.photo) {
-            avatarContent = `<img src="${f.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="${f.name}">`;
+            avatarContent = `<img src="${f.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
         } else {
             avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
         }
@@ -985,6 +1323,60 @@ window.importBulkSuperstars = function() {
     renderRosterGrid();
     textarea.value = '';
     alert(`${added} ${added === 1 ? 'superstar' : 'superstars'} imported successfully.`);
+};
+
+window.syncWWE2K24Roster = function() {
+    fighters = loadFighters();
+    const existingKeys = fighters.map(f => normalizeLookupKey(f.name));
+    let added = 0;
+    let updated = 0;
+    const timestamp = Date.now();
+
+    wwe2k24RosterNamesList.forEach((name, index) => {
+        const nameKey = normalizeLookupKey(name);
+        const existing = fighters.find(f => normalizeLookupKey(f.name) === nameKey);
+        const gender = existing ? (existing.gender || 'male') : getRosterGenderFromName(name);
+        const suggestedDivision = getRosterDivisionForName(name, gender) || (gender === 'female' ? 'Light HeavyWeight' : 'Heavyweight');
+        const portrait = getWWE2K24Portrait(name);
+
+        if (existing) {
+            let changed = false;
+            if (existing.division !== suggestedDivision) {
+                existing.division = suggestedDivision;
+                changed = true;
+            }
+            if ((!existing.photo || existing.photo.trim() === '') && portrait) {
+                existing.photo = portrait;
+                changed = true;
+            }
+            if (changed) updated++;
+            return;
+        }
+
+        fighters.push(normalizeFighterRecord({
+            id: `f-${timestamp}-${index}`,
+            name,
+            gender,
+            division: suggestedDivision,
+            wins: 0,
+            losses: 0,
+            defenses: 0,
+            title_fights: 0,
+            win_pinfall: 0,
+            win_ko: 0,
+            win_submission: 0,
+            photo: portrait
+        }));
+        added++;
+    });
+
+    if (added || updated) {
+        saveFighters(fighters);
+        refreshFighterNameDatalist();
+        renderRosterGrid();
+    }
+
+    alert(`WWE 2K24 sync complete. Added ${added} new fighter${added === 1 ? '' : 's'} and updated ${updated} existing fighter${updated === 1 ? '' : 's'}.`);
 };
 
 window.editSuperstar = function(id) {
@@ -1221,7 +1613,7 @@ window.openPhotoCropDialog = function(imageSrc, fighterId, isRoster) {
                 <img id="cropImagePreview" src="${imageSrc}" style="max-width:150%; max-height:150%; cursor:grab; user-select:none;" draggable="false">
             </div>
             <div style="position:relative; width:100%; height:150px; border:2px solid #0284c7; border-radius:50%; overflow:hidden; margin-bottom:16px; display:flex; align-items:center; justify-content:center; background:#f8fafc;">
-                <img src="${imageSrc}" id="cropCirclePreview" style="width:100%; height:100%; object-fit:cover;">
+                <img src="${imageSrc}" id="cropCirclePreview" style="width:100%; height:100%; object-fit:cover; object-position:center center; display:block;">
             </div>
             <div style="display:flex; gap:8px; font-size:0.75rem; color:#64748b; margin-bottom:16px; align-items:center;">
                 <span>📏 Position:</span>
