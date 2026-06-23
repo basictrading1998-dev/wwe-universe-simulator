@@ -1446,6 +1446,16 @@ window.editSuperstar = function(id) {
         </div>
     `;
     card.appendChild(editPanel);
+    // Keep roster search focused on this fighter so it stays visible while editing
+    try {
+        const rosterSearch = document.getElementById('rosterSearchInput');
+        if (rosterSearch) {
+            rosterSearch.value = f.name;
+            filterRosterCards();
+        }
+        const nameEl = document.getElementById(`edit-name-${id}`);
+        if (nameEl) nameEl.focus();
+    } catch (e) { console.warn('Could not focus roster search or edit name', e); }
     // Ensure input values are set programmatically to avoid HTML attribute parsing issues
     try {
         const nameEl = document.getElementById(`edit-name-${id}`);
@@ -1610,16 +1620,32 @@ window.openPhotoCropDialog = function(imageSrc, fighterId, isRoster) {
         <div style="background:white; border-radius:12px; padding:20px; max-width:500px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
             <h3 style="margin:0 0 16px 0; color:#0f172a; font-weight:800;">Crop Fighter Photo</h3>
             <div style="position:relative; width:100%; height:300px; background:#f1f5f9; border-radius:8px; overflow:hidden; margin-bottom:16px; display:flex; align-items:center; justify-content:center;">
-                <img id="cropImagePreview" src="${imageSrc}" style="max-width:150%; max-height:150%; cursor:grab; user-select:none;" draggable="false">
+                <img id="cropImagePreview" src="${imageSrc}" style="max-width:100%; max-height:100%; cursor:grab; user-select:none; object-fit:contain;" draggable="false">
+                <div id="cropFrame" style="position:absolute; width:200px; height:200px; border:2px dashed rgba(0,0,0,0.25); box-shadow:0 6px 16px rgba(0,0,0,0.15); border-radius:8px; pointer-events:none;">
+                </div>
             </div>
-            <div style="position:relative; width:100%; height:150px; border:2px solid #0284c7; border-radius:50%; overflow:hidden; margin-bottom:16px; display:flex; align-items:center; justify-content:center; background:#f8fafc;">
-                <img src="${imageSrc}" id="cropCirclePreview" style="width:100%; height:100%; object-fit:cover; object-position:center center; display:block;">
+            <div style="display:flex; gap:12px; align-items:center; margin-bottom:16px;">
+                <div style="position:relative; width:150px; height:150px; border:2px solid #0284c7; border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#f8fafc;">
+                    <canvas id="cropCircleCanvas" width="150" height="150" style="width:150px; height:150px; display:block; border-radius:50%;"></canvas>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <div style="font-size:0.85rem; font-weight:700; color:#0f172a;">Avatar Preview</div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <div style="width:44px; height:44px; border-radius:50%; overflow:hidden; background:#fff; display:flex; align-items:center; justify-content:center;" id="cropSmallContainer">
+                            <canvas id="cropSmallCanvas" width="44" height="44" style="width:44px; height:44px; border-radius:50%; display:block;"></canvas>
+                        </div>
+                        <div style="width:72px; height:72px; border-radius:50%; overflow:hidden; background:#fff; display:flex; align-items:center; justify-content:center;" id="cropMediumContainer">
+                            <canvas id="cropMediumCanvas" width="72" height="72" style="width:72px; height:72px; border-radius:50%; display:block;"></canvas>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div style="display:flex; gap:8px; font-size:0.75rem; color:#64748b; margin-bottom:16px; align-items:center;">
                 <span>📏 Position:</span>
-                <input type="range" id="cropOffsetX" min="-100" max="100" value="0" style="flex:1;">
-                <input type="range" id="cropOffsetY" min="-100" max="100" value="0" style="flex:1;">
-                <input type="range" id="cropZoom" min="50" max="200" value="100" style="flex:1;">
+                <input type="range" id="cropOffsetX" min="-800" max="800" value="0" style="flex:1;">
+                <input type="range" id="cropOffsetY" min="-800" max="800" value="0" style="flex:1;">
+                <input type="range" id="cropZoom" min="10" max="400" value="100" style="flex:1;">
+                <!-- Center on face removed — manual positioning controls only -->
             </div>
             <div style="display:flex; gap:8px;">
                 <button onclick="saveCroppedPhoto('${fighterId}', ${isRoster ? 'true' : 'false'})" style="flex:1; background:#10b981; border:none; color:white; font-weight:bold; padding:10px; border-radius:6px; cursor:pointer;">✓ Save Photo</button>
@@ -1631,19 +1657,75 @@ window.openPhotoCropDialog = function(imageSrc, fighterId, isRoster) {
     document.body.appendChild(dialog);
 
     const previewImg = document.getElementById('cropImagePreview');
-    const circlePreview = document.getElementById('cropCirclePreview');
+    const circleCanvas = document.getElementById('cropCircleCanvas');
+    const smallCanvas = document.getElementById('cropSmallCanvas');
+    const mediumCanvas = document.getElementById('cropMediumCanvas');
     const offsetXSlider = document.getElementById('cropOffsetX');
     const offsetYSlider = document.getElementById('cropOffsetY');
     const zoomSlider = document.getElementById('cropZoom');
     let isGrabbing = false;
     let grabStartX = 0, grabStartY = 0;
 
+    // create a shared source image so we avoid reloading during drags
+    const srcImage = new Image();
+    srcImage.crossOrigin = 'anonymous';
+    srcImage.src = imageSrc;
+    window._rosterCropSrcImage = srcImage;
+    srcImage.onload = function() {
+        // Choose a conservative default zoom that tends to show head+shoulders
+        try {
+            // target a scaled image height slightly larger than the crop (150% of 200) so shoulders are visible
+            const targetCropHeight = 200 * 1.5; // 300
+            let initialZoom = Math.round((targetCropHeight / srcImage.naturalHeight) * 100);
+            // clamp to sane bounds
+            if (initialZoom < 10) initialZoom = 10;
+            if (initialZoom > 200) initialZoom = 200;
+            if (zoomSlider) zoomSlider.value = initialZoom;
+            if (offsetXSlider) offsetXSlider.value = 0;
+            if (offsetYSlider) offsetYSlider.value = 0;
+        } catch (e) { /* ignore */ }
+        updatePreview();
+    };
+
+    const drawPreviewToCanvas = (canvas, size) => {
+        if (!srcImage || !srcImage.naturalWidth) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        // circular clip
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2, 0, Math.PI*2);
+        ctx.clip();
+
+        const offsetX = parseInt(offsetXSlider.value, 10) || 0;
+        const offsetY = parseInt(offsetYSlider.value, 10) || 0;
+        const zoom = parseInt(zoomSlider.value, 10) || 100;
+
+        const scale = zoom / 100;
+        const scaledWidth = srcImage.naturalWidth * scale;
+        const scaledHeight = srcImage.naturalHeight * scale;
+        // map saved-canvas-space (200px) to this preview canvas size
+        const factor = size / 200;
+        const dstWidth = scaledWidth * factor;
+        const dstHeight = scaledHeight * factor;
+        const x = size/2 - dstWidth/2 + offsetX * factor;
+        const y = size/2 - dstHeight/2 + offsetY * factor;
+        ctx.drawImage(srcImage, x, y, dstWidth, dstHeight);
+        ctx.restore();
+    };
+
     const updatePreview = () => {
-        const offsetX = parseInt(offsetXSlider.value);
-        const offsetY = parseInt(offsetYSlider.value);
-        const zoom = parseInt(zoomSlider.value);
-        circlePreview.style.objectPosition = `calc(50% + ${offsetX}px) calc(50% + ${offsetY}px)`;
-        circlePreview.style.transform = `scale(${zoom / 100})`;
+        // update frame position
+        const frame = document.getElementById('cropFrame');
+        if (frame) {
+            frame.style.left = `calc(50% - ${frame.offsetWidth/2}px)`;
+            frame.style.top = `calc(50% - ${frame.offsetHeight/2}px)`;
+        }
+        if (srcImage && srcImage.complete) {
+            drawPreviewToCanvas(circleCanvas, 150);
+            drawPreviewToCanvas(smallCanvas, 44);
+            drawPreviewToCanvas(mediumCanvas, 72);
+        }
     };
 
     previewImg.addEventListener('mousedown', (e) => {
@@ -1657,8 +1739,11 @@ window.openPhotoCropDialog = function(imageSrc, fighterId, isRoster) {
         if (!isGrabbing) return;
         const deltaX = e.clientX - grabStartX;
         const deltaY = e.clientY - grabStartY;
-        offsetXSlider.value = Math.max(-100, Math.min(100, parseInt(offsetXSlider.value) + deltaX / 2));
-        offsetYSlider.value = Math.max(-100, Math.min(100, parseInt(offsetYSlider.value) + deltaY / 2));
+        // Apply pixel deltas directly to offset sliders
+        const newX = Math.max(parseInt(offsetXSlider.min, 10), Math.min(parseInt(offsetXSlider.max, 10), parseInt(offsetXSlider.value || 0, 10) + deltaX));
+        const newY = Math.max(parseInt(offsetYSlider.min, 10), Math.min(parseInt(offsetYSlider.max, 10), parseInt(offsetYSlider.value || 0, 10) + deltaY));
+        offsetXSlider.value = newX;
+        offsetYSlider.value = newY;
         grabStartX = e.clientX;
         grabStartY = e.clientY;
         updatePreview();
@@ -1673,18 +1758,22 @@ window.openPhotoCropDialog = function(imageSrc, fighterId, isRoster) {
     offsetYSlider.addEventListener('input', updatePreview);
     zoomSlider.addEventListener('input', updatePreview);
 
+    // Face detection centering
+    // FaceDetector removed per user request — manual positioning only
+
     updatePreview();
 };
 
+// ensure small preview images update if dialog reopened
+
 window.saveCroppedPhoto = function(fighterId, isRoster) {
-    const circlePreview = document.getElementById('cropCirclePreview');
     const offsetXSlider = document.getElementById('cropOffsetX');
     const offsetYSlider = document.getElementById('cropOffsetY');
     const zoomSlider = document.getElementById('cropZoom');
 
-    const offsetX = parseInt(offsetXSlider.value);
-    const offsetY = parseInt(offsetYSlider.value);
-    const zoom = parseInt(zoomSlider.value);
+    const offsetX = parseInt(offsetXSlider.value, 10) || 0;
+    const offsetY = parseInt(offsetYSlider.value, 10) || 0;
+    const zoom = parseInt(zoomSlider.value, 10) || 100;
 
     const canvas = document.createElement('canvas');
     canvas.width = 200;
@@ -1696,26 +1785,50 @@ window.saveCroppedPhoto = function(fighterId, isRoster) {
     ctx.arc(100, 100, 100, 0, Math.PI * 2);
     ctx.clip();
 
-    const img = new Image();
-    img.onload = function() {
+    const srcImage = window._rosterCropSrcImage || new Image();
+    const performSave = () => {
         const scale = zoom / 100;
-        const x = 100 - (img.width * scale) / 2 + (offsetX / 100) * 50;
-        const y = 100 - (img.height * scale) / 2 + (offsetY / 100) * 50;
-        ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+        const scaledWidth = srcImage.naturalWidth * scale;
+        const scaledHeight = srcImage.naturalHeight * scale;
+        const x = canvas.width / 2 - scaledWidth / 2 + offsetX;
+        const y = canvas.height / 2 - scaledHeight / 2 + offsetY;
+        ctx.drawImage(srcImage, x, y, scaledWidth, scaledHeight);
 
         const croppedPhoto = canvas.toDataURL('image/jpeg');
         const fighter = fighters.find(f => f.id === fighterId);
         if (fighter) {
             fighter.photo = croppedPhoto;
             localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
-            
+            // preserve roster search and selection so grid doesn't jump/reset
+            const rosterSearch = document.getElementById('rosterSearchInput');
+            const searchQuery = rosterSearch ? rosterSearch.value : '';
+            const hadFocus = document.activeElement === rosterSearch;
             if (isRoster) {
                 renderRosterGrid();
+                // restore search query and reapply filter
+                const rs = document.getElementById('rosterSearchInput');
+                if (rs) {
+                    rs.value = searchQuery;
+                    filterRosterCards();
+                    if (hadFocus) rs.focus();
+                }
+                // try to keep the edited fighter visible
+                setTimeout(() => {
+                    const el = document.getElementById(`fighter-card-${fighterId}`);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 150);
             }
         }
         document.getElementById('photoCropDialog').remove();
     };
-    img.src = circlePreview.src;
+
+    if (srcImage && srcImage.naturalWidth) {
+        performSave();
+    } else {
+        srcImage.crossOrigin = 'anonymous';
+        srcImage.src = document.getElementById('cropImagePreview').src;
+        srcImage.onload = performSave;
+    }
 };
 
 window.deleteFighterPhoto = function(fighterId, isRoster) {
