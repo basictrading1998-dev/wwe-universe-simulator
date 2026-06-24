@@ -198,9 +198,84 @@ window.placeBet = function(matchId) {
 let fighters = loadFightersFromStorage();
 let futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
 let activeShowId = localStorage.getItem('wwe_active_show_id') || '';
-let completedMatches = JSON.parse(localStorage.getItem("wwe_matches_" + activeShowId)) || {};
+let completedMatches = loadCompletedMatchesForShow(activeShowId);
 let activeMatchId = null;
 window.skipDraftSaveOnUnload = false;
+
+function loadCompletedMatchesForShow(showId) {
+    if (!showId) return {};
+    const storedMatches = JSON.parse(localStorage.getItem("wwe_matches_" + showId)) || {};
+    if (Object.keys(storedMatches).length > 0) return storedMatches;
+    if (!isShowCompleted(showId)) return {};
+
+    const historyLog = JSON.parse(localStorage.getItem("wwe_event_history")) || [];
+    const eventRecord = historyLog.find(event => event.showId === showId);
+    if (!eventRecord || !Array.isArray(eventRecord.matches)) return {};
+
+    const recovered = {};
+    eventRecord.matches.forEach(match => {
+        if (!match.matchId || !match.winner || !match.loser) return;
+        const winnerFighter = fighters.find(f => f.name === match.winner);
+        recovered[match.matchId] = {
+            winnerName: match.winner,
+            loserName: match.loser,
+            winnerGender: winnerFighter ? winnerFighter.gender : 'male',
+            slot1Name: match.winner,
+            slot2Name: match.loser,
+            slot1Id: '',
+            slot2Id: '',
+            methodId: match.methodId || '',
+            methodName: match.method || '',
+            isTitle: Boolean(match.isTitle),
+            titleId: match.titleId || '',
+            titleName: match.customTitleName || ''
+        };
+    });
+
+    if (Object.keys(recovered).length > 0) {
+        localStorage.setItem("wwe_matches_" + showId, JSON.stringify(recovered));
+    }
+    return recovered;
+}
+
+function isShowCompleted(showId) {
+    const show = futureShows.find(s => s.id === showId);
+    return Boolean(show && show.completed);
+}
+
+function setShowCompleted(showId, value) {
+    const show = futureShows.find(s => s.id === showId);
+    if (!show) return;
+    show.completed = !!value;
+    if (value) {
+        show.completedAt = new Date().toISOString();
+    } else {
+        delete show.completedAt;
+    }
+    localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+}
+
+window.restartCurrentShow = function() {
+    if (!activeShowId) return;
+    if (!confirm('Restart this completed fight card? This will clear the current archived layout and allow you to rebook the show from scratch.')) return;
+    setShowCompleted(activeShowId, false);
+    localStorage.removeItem('wwe_matches_' + activeShowId);
+    localStorage.removeItem('wwe_draft_' + activeShowId);
+    location.reload();
+};
+
+function applyCompletedShowVisuals() {
+    if (!isShowCompleted(activeShowId)) return;
+    document.querySelectorAll('.match-row').forEach(row => {
+        row.style.opacity = '0.55';
+        row.style.filter = 'grayscale(0.2)';
+        row.style.pointerEvents = 'none';
+        row.style.userSelect = 'none';
+    });
+    document.querySelectorAll('.match-row input, .match-row select, .match-row button').forEach(el => {
+        el.disabled = true;
+    });
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     initBettingSystem();
@@ -214,6 +289,8 @@ document.addEventListener('DOMContentLoaded', () => {
     restoreCurrentCardDraft();
     buildShowSchedulerHeader();
     buildModalContainer();
+    insertCompletedShowNotice();
+    applyCompletedShowVisuals();
     updateBettingMoneyDisplay();
         // LIVE WATCHER: Auto-clears title field blocks if a fighter name is ever deleted
     document.addEventListener('input', (e) => {
@@ -275,7 +352,7 @@ function buildShowSchedulerHeader() {
 
     const row = document.createElement('div');
     row.id = 'schedulerControlRow';
-    row.style.cssText = "background:white; border:1px solid #bae6fd; border-radius:12px; padding:16px; margin-bottom:24px; display:flex; justify-content:space-between; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.05); width:100%; box-sizing:border-box;";
+    row.style.cssText = "background:white; border:1px solid #bae6fd; border-radius:12px; padding:16px; margin-bottom:24px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.05); width:100%; box-sizing:border-box;";
 
     let opts = '';
     futureShows.forEach(s => {
@@ -283,21 +360,36 @@ function buildShowSchedulerHeader() {
     });
 
     row.innerHTML = `
-        <div style="display:flex; align-items:center; gap:10px; flex:1;">
+        <div style="display:flex; align-items:center; gap:10px; flex:1 1 320px; min-width:260px; flex-wrap:wrap;">
             <span style="font-size:0.75rem; font-weight:800; color:#0369a1; text-transform:uppercase;">📅 Active Schedule:</span>
-            <select id="activeShowSelector" onchange="switchActiveShowCard(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #cbd5e1; font-weight:bold; font-size:0.85rem; color:#1e293b; background:white;">${opts}</select>
+            <select id="activeShowSelector" onchange="switchActiveShowCard(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #cbd5e1; font-weight:bold; font-size:0.85rem; color:#1e293b; background:white; min-width:180px; max-width:260px; width:100%;">${opts}</select>
             <button onclick="editCurrentShowName()" style="background:#64748b; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase;">✏️ Edit</button>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-            <input type="text" id="eventNameInput" placeholder="Name" value="${activeShowId ? (futureShows.find(s => s.id === activeShowId)?.name || '') : ''}" style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:600; outline:none; width:180px; background:white; color:#1e293b;">
-            <button onclick="createNewFutureShow()" style="background:#0369a1; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase;">+ Add Show</button>
-            <button onclick="downloadAppBackup()" style="background:#0f766e; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase;">⬇️ Backup</button>
-            <button onclick="importAppBackup()" style="background:#0c4a6e; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase;">⬆️ Restore</button>
+        <div style="display:flex; align-items:center; gap:8px; flex:1 1 280px; min-width:220px; flex-wrap:wrap; justify-content:flex-end;">
+            <input type="text" id="eventNameInput" placeholder="Name" value="${activeShowId ? (futureShows.find(s => s.id === activeShowId)?.name || '') : ''}" style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:600; outline:none; min-width:140px; max-width:200px; width:100%; background:white; color:#1e293b;">
+            ${isShowCompleted(activeShowId) ? `<span style="display:inline-flex; align-items:center; gap:6px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px; font-size:0.75rem; font-weight:700; color:#475569; white-space:nowrap;">✅ Completed<span style="font-size:0.7rem; color:#64748b;">${futureShows.find(s => s.id === activeShowId)?.completedAt ? new Date(futureShows.find(s => s.id === activeShowId).completedAt).toLocaleDateString() : ''}</span></span>` : ''}
+            <button onclick="createNewFutureShow()" style="background:#0369a1; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">+ Add Show</button>
+            ${isShowCompleted(activeShowId) ? `<button onclick="restartCurrentShow()" style="background:#f97316; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">Restart Card</button>` : ''}
+            <button onclick="downloadAppBackup()" style="background:#0f766e; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">⬇️ Backup</button>
+            <button onclick="importAppBackup()" style="background:#0c4a6e; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">⬆️ Restore</button>
         </div>`;
         
     if (mainBox && mainBox.parentNode) {
         mainBox.parentNode.insertBefore(row, mainBox);
     }
+}
+
+function insertCompletedShowNotice() {
+    if (!isShowCompleted(activeShowId)) return;
+    const headerRow = document.getElementById('schedulerControlRow');
+    if (!headerRow) return;
+    if (document.getElementById('completedShowNotice')) return;
+
+    const notice = document.createElement('div');
+    notice.id = 'completedShowNotice';
+    notice.style.cssText = 'background:#f1f5f9; border:1px solid #cbd5e1; border-radius:12px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:10px; color:#0f172a;';
+    notice.innerHTML = `<div style="display:flex; align-items:center; gap:10px; font-size:0.9rem;"><strong style="color:#094067;">This show is completed and archived.</strong><span style="color:#475569;">Use the top controls to restart or edit the show name.</span></div><button onclick="restartCurrentShow()" style="background:#ef4444; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.75rem; text-transform:uppercase;">Restart Event</button>`;
+    headerRow.parentNode.insertBefore(notice, headerRow.nextSibling);
 }
 
 window.switchActiveShowCard = function(showId) {
@@ -1654,6 +1746,7 @@ window.finalizeFullEventCard = function() {
         matches: eventMatchesCompiled
     });
     localStorage.setItem("wwe_event_history", JSON.stringify(eventHistoryCalendar));
+    setShowCompleted(activeShowId, true);
 
     eventMatchesCompiled.forEach(m => {
         const winnerFighter = fighters.find(f => f.name === m.winner);
@@ -1688,9 +1781,7 @@ window.finalizeFullEventCard = function() {
     });
     localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
 
-    localStorage.removeItem("wwe_matches_" + activeShowId);
-    localStorage.removeItem("wwe_draft_" + activeShowId);
-
+    // Preserve the completed match data so the finalized fight card remains visible with winners saved.
     alert(`Show Card Successfully Archived!\n\n"${shownShowName}" data loops synchronized, belts pushed, and rivalries logged seamlessly across all systems!`);
     location.reload();
 };
