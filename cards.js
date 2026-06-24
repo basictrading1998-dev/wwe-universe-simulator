@@ -200,6 +200,7 @@ let futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
 let activeShowId = localStorage.getItem('wwe_active_show_id') || '';
 let completedMatches = JSON.parse(localStorage.getItem("wwe_matches_" + activeShowId)) || {};
 let activeMatchId = null;
+window.skipDraftSaveOnUnload = false;
 
 document.addEventListener('DOMContentLoaded', () => {
     initBettingSystem();
@@ -255,14 +256,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     window.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') saveCurrentCardDraft();
+        if (document.visibilityState === 'hidden' && !window.skipDraftSaveOnUnload) saveCurrentCardDraft();
     });
 
-    window.addEventListener('pagehide', saveCurrentCardDraft);
+    window.addEventListener('pagehide', (event) => {
+        if (!window.skipDraftSaveOnUnload) saveCurrentCardDraft(event);
+    });
 
 });
 
-window.addEventListener('beforeunload', saveCurrentCardDraft);
+window.addEventListener('beforeunload', () => {
+    if (!window.skipDraftSaveOnUnload) saveCurrentCardDraft();
+});
 
 function buildShowSchedulerHeader() {
     const mainBox = document.getElementById('mainEventContainer');
@@ -360,9 +365,15 @@ function renderCardRows(box, num, tierId, isMain) {
             <div id="${uId}-booking-panel" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
                 
                 <div class="fighter-slot" id="${uId}-slot1" data-gender="male" style="width:38%; display:flex; align-items:center; gap:8px; position:relative;">
-                    <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b;">👤</div>
-                    <div class="dropdown-search-container">
-                        <input type="text" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 1..." onfocus="triggerSearchFill('${uId}', 'slot1')" onkeyup="triggerSearchFill('${uId}', 'slot1')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600;">
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
+                        <div class="avatar-frame" style="position:relative; width:36px; height:36px;">
+                            <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
+                            <div class="win-badge" style="display:none; position:absolute; right:-4px; bottom:-4px; width:18px; height:18px; border-radius:50%; background:#16a34a; color:white; border:2px solid white; display:flex; align-items:center; justify-content:center; font-size:0.75rem; box-shadow:0 0 0 2px rgba(22,163,74,0.15);">✓</div>
+                        </div>
+                        <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
+                    </div>
+                    <div class="dropdown-search-container" style="flex:1; min-width:0;">
+                        <input type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 1..." onfocus="triggerSearchFill('${uId}', 'slot1')" onkeyup="triggerSearchFill('${uId}', 'slot1')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600;">
                         <div class="search-results-floating-panel" style="display:none;"></div>
                     </div>
                 </div>
@@ -373,9 +384,15 @@ function renderCardRows(box, num, tierId, isMain) {
                 </div>
 
                 <div class="fighter-slot" id="${uId}-slot2" data-gender="male" style="width:38%; text-align:right; display:flex; flex-direction:row-reverse; align-items:center; gap:8px; position:relative; min-width:0;">
-                    <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; margin-left:8px;">👤</div>
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
+                        <div class="avatar-frame" style="position:relative; width:36px; height:36px;">
+                            <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
+                            <div class="win-badge" style="display:none; position:absolute; right:-4px; bottom:-4px; width:18px; height:18px; border-radius:50%; background:#16a34a; color:white; border:2px solid white; display:flex; align-items:center; justify-content:center; font-size:0.75rem; box-shadow:0 0 0 2px rgba(22,163,74,0.15);">✓</div>
+                        </div>
+                        <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
+                    </div>
                     <div class="dropdown-search-container" style="flex:1; min-width:0;">
-                        <input type="text" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 2..." onfocus="triggerSearchFill('${uId}', 'slot2')" onkeyup="triggerSearchFill('${uId}', 'slot2')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600; text-align:right;">
+                        <input type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 2..." onfocus="triggerSearchFill('${uId}', 'slot2')" onkeyup="triggerSearchFill('${uId}', 'slot2')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600; text-align:right;">
                         <div class="search-results-floating-panel" style="display:none;"></div>
                     </div>
                 </div>
@@ -448,6 +465,7 @@ function renderCardRows(box, num, tierId, isMain) {
                 </div>
             </div>`;
         box.appendChild(matchRow);
+        clearMatchWinnerBadges(uId);
         
         if (completedMatches[uId]) { restoreLoggedResult(uId, completedMatches[uId]); }
     }
@@ -600,8 +618,12 @@ function clearCardFighterSlot(matchRowId, slotType) {
     }
     if (av) {
         av.innerHTML = '👤';
-        av.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; cursor:pointer;";
+        av.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; cursor:pointer; overflow:hidden;";
     }
+    const badge = slot.querySelector('.win-badge');
+    const label = slot.querySelector('.win-method-label');
+    if (badge) badge.style.display = 'none';
+    if (label) label.style.display = 'none';
     updateWinnerDropdown(matchRowId);
     saveCurrentCardDraft();
 }
@@ -1300,6 +1322,10 @@ window.logMatchResult = function(id) {
         winnerName: w.name,
         loserName: l.name,
         winnerGender: w.gender,
+        slot1Name: slot1.value,
+        slot2Name: slot2.value,
+        slot1Id: slot1.getAttribute('data-fighter-id'),
+        slot2Id: slot2.getAttribute('data-fighter-id'),
         methodId: methodSelect.value,
         methodName: methodSelect.options[methodSelect.selectedIndex].text,
         isTitle: titleCheck ? titleCheck.checked : false,
@@ -1363,6 +1389,10 @@ window.logMatchResult = function(id) {
     completedMatches[id] = matchSaveState; 
     localStorage.setItem("wwe_matches_" + activeShowId, JSON.stringify(completedMatches));
     
+    clearMatchWinnerBadges(id);
+    const winningSlot = winSelect.value === '1' ? 'slot1' : 'slot2';
+    showMatchWinnerBadge(id, winningSlot, methodName);
+    
     // RESOLVE BET IF ONE WAS PLACED
     if (window.placedBets && window.placedBets[id]) {
         const bet = window.placedBets[id];
@@ -1387,15 +1417,126 @@ window.logMatchResult = function(id) {
 
 function restoreLoggedResult(id, state) {
     const row = document.getElementById(id);
-    const bookingPanel = document.getElementById(`${id}-booking-panel`); if (bookingPanel) bookingPanel.style.display = 'none';
-    const controlsArea = row.querySelector('.controls-area'); if (controlsArea) controlsArea.style.display = 'none';
+    const slot1 = document.getElementById(`${id}-slot1`);
+    const slot2 = document.getElementById(`${id}-slot2`);
+    const slot1Input = slot1?.querySelector('.fighter-search-input');
+    const slot2Input = slot2?.querySelector('.fighter-search-input');
+
+    const restoreSlot = (slotEl, inputEl, fighterName, fighterId) => {
+        if (!slotEl || !inputEl || !fighterName) return;
+        inputEl.value = fighterName;
+        if (fighterId) inputEl.setAttribute('data-fighter-id', fighterId);
+        const f = fighters.find(fighter => fighter.id === fighterId);
+        const avatar = slotEl.querySelector('.avatar-box');
+        if (avatar) {
+            let avatarContent = '';
+            if (f && f.photo) {
+                avatarContent = `<img src="${f.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+            } else {
+                avatarContent = fighterName.charAt(0);
+            }
+            avatar.innerHTML = avatarContent;
+            avatar.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+            avatar.onclick = function(e) { e.stopPropagation(); if (fighterId) uploadFighterPhotoFromCard(fighterId); };
+        }
+    };
+
+    restoreSlot(slot1, slot1Input, state.slot1Name, state.slot1Id);
+    restoreSlot(slot2, slot2Input, state.slot2Name, state.slot2Id);
+
+    const hasSlot1Value = slot1Input?.value?.trim();
+    const hasSlot2Value = slot2Input?.value?.trim();
+    const resultPanel = document.getElementById(`${id}-result-panel`);
+    const hasCompleteMatch = hasSlot1Value && hasSlot2Value && state.winnerName && state.loserName;
+
+    if (!hasCompleteMatch) {
+        clearMatchWinnerBadges(id);
+        if (resultPanel) resultPanel.style.display = 'none';
+        const winnerShowcase = document.getElementById(`${id}-showcase-winner`);
+        const loserShowcase = document.getElementById(`${id}-showcase-loser`);
+        const methodShowcase = document.getElementById(`${id}-showcase-method`);
+        if (winnerShowcase) winnerShowcase.textContent = '';
+        if (loserShowcase) loserShowcase.textContent = '';
+        if (methodShowcase) methodShowcase.textContent = '';
+        return;
+    }
+
+    if ((!state.slot1Name || !state.slot2Name) && slot1Input && slot2Input) {
+        if (!slot1Input.value && !slot2Input.value) {
+            slot1Input.value = state.winnerName || '';
+            slot2Input.value = state.loserName || '';
+        } else if (!slot1Input.value && slot2Input.value === state.loserName) {
+            slot1Input.value = state.winnerName || '';
+        } else if (!slot2Input.value && slot1Input.value === state.winnerName) {
+            slot2Input.value = state.loserName || '';
+        }
+    }
+
+    if (resultPanel) resultPanel.style.display = 'none';
+
     const winnerShowcase = document.getElementById(`${id}-showcase-winner`);
     const loserShowcase = document.getElementById(`${id}-showcase-loser`);
     const methodShowcase = document.getElementById(`${id}-showcase-method`);
     if (winnerShowcase && loserShowcase && methodShowcase) {
-        winnerShowcase.textContent = state.winnerName; winnerShowcase.style.color = state.winnerGender === 'male' ? '#22c55e' : '#f472b6';
-        loserShowcase.textContent = state.loserName; methodShowcase.textContent = state.methodName;
-        const resultPanel = document.getElementById(`${id}-result-panel`); if (resultPanel) resultPanel.style.display = 'flex';
+        winnerShowcase.textContent = state.winnerName;
+        winnerShowcase.style.color = state.winnerGender === 'male' ? '#22c55e' : '#f472b6';
+        loserShowcase.textContent = state.loserName;
+        methodShowcase.textContent = state.methodName;
+
+        let winnerSlot = null;
+        if (state.slot1Name && state.slot1Name === state.winnerName) winnerSlot = 'slot1';
+        else if (state.slot2Name && state.slot2Name === state.winnerName) winnerSlot = 'slot2';
+        else if (state.slot1Name && state.slot1Name === state.loserName) winnerSlot = 'slot2';
+        else if (state.slot2Name && state.slot2Name === state.loserName) winnerSlot = 'slot1';
+        else if (slot1Input && slot1Input.value === state.winnerName) winnerSlot = 'slot1';
+        else if (slot2Input && slot2Input.value === state.winnerName) winnerSlot = 'slot2';
+        else if (slot1Input && slot1Input.value === state.loserName) winnerSlot = 'slot2';
+        else if (slot2Input && slot2Input.value === state.loserName) winnerSlot = 'slot1';
+
+        clearMatchWinnerBadges(id);
+        if (winnerSlot) showMatchWinnerBadge(id, winnerSlot, state.methodName);
+    }
+}
+
+function clearMatchWinnerBadges(matchId) {
+    ['slot1','slot2'].forEach(slotType => {
+        const slot = document.getElementById(`${matchId}-${slotType}`);
+        if (!slot) return;
+        const badge = slot.querySelector('.win-badge');
+        const label = slot.querySelector('.win-method-label');
+        const avatar = slot.querySelector('.avatar-box');
+        if (badge) badge.style.display = 'none';
+        if (label) label.style.display = 'none';
+        if (avatar) {
+            avatar.style.borderColor = '#cbd5e1';
+            avatar.style.background = '#e2e8f0';
+            avatar.style.boxShadow = 'none';
+        }
+    });
+}
+
+function showMatchWinnerBadge(matchId, slotType, methodText) {
+    clearMatchWinnerBadges(matchId);
+    const slot = document.getElementById(`${matchId}-${slotType}`);
+    if (!slot) return;
+    const slotInput = slot.querySelector('.fighter-search-input');
+    const badge = slot.querySelector('.win-badge');
+    const label = slot.querySelector('.win-method-label');
+    const avatar = slot.querySelector('.avatar-box');
+    if (!slotInput || !slotInput.value?.trim()) return;
+    if (badge) {
+        badge.style.display = 'flex';
+        badge.style.opacity = '1';
+    }
+    if (label) {
+        label.textContent = methodText || '';
+        label.style.display = methodText ? 'block' : 'none';
+    }
+    if (avatar) {
+        avatar.style.background = '#dcfce7';
+        avatar.style.borderColor = '#16a34a';
+        avatar.style.boxShadow = '0 0 0 4px rgba(22, 163, 74, 0.24), inset 0 0 0 1px rgba(22, 163, 74, 0.55)';
+        avatar.style.position = 'relative';
     }
 }
 
@@ -1661,10 +1802,25 @@ window.changeMatchGender = function(matchRowId, gender) {
 };
 window.resetActiveShowDraft = function() {
     if (confirm("Are you sure you want to clear this entire card layout?\n\nThis will empty out all selected fighters and wipe logged match results for this specific show, but your Master Roster stats and Championship Lineage will stay completely safe!")) {
-        // Only deletes the draft and logged results for the active show card
-        localStorage.removeItem("wwe_matches_" + activeShowId);
-        localStorage.removeItem("wwe_draft_" + activeShowId);
-        
+        const selector = document.getElementById('activeShowSelector');
+        const targetShowId = selector && selector.value ? selector.value : activeShowId;
+        if (targetShowId) {
+            localStorage.removeItem("wwe_matches_" + targetShowId);
+            localStorage.removeItem("wwe_draft_" + targetShowId);
+        }
+        localStorage.removeItem('wwe_draft_default');
+
+        document.querySelectorAll('.fighter-search-input').forEach(input => {
+            input.value = '';
+            input.setAttribute('data-fighter-id', '');
+        });
+        document.querySelectorAll('.avatar-box').forEach(av => {
+            av.innerHTML = '👤';
+            av.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; cursor:pointer; overflow:hidden;";
+        });
+        document.querySelectorAll('.match-row').forEach(row => clearMatchWinnerBadges(row.id));
+
+        window.skipDraftSaveOnUnload = true;
         alert("Active card layout has been completely reset back to its clean draft state!");
         location.reload();
     }
