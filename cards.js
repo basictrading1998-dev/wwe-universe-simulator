@@ -304,6 +304,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 const cb = document.getElementById(`${id}-title-check`);
                 const titleInput = document.getElementById(`${id}-title-name-input`);
 
+                if (!e.target.value.trim()) {
+                    const slot = e.target.closest('.fighter-slot');
+                    if (slot) {
+                        const avatar = slot.querySelector('.avatar-box');
+                        if (avatar) {
+                            avatar.innerHTML = '👤';
+                            avatar.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;";
+                        }
+                        e.target.setAttribute('data-fighter-id', '');
+                        const badge = slot.querySelector('.win-badge');
+                        const label = slot.querySelector('.win-method-label');
+                        if (badge) badge.style.display = 'none';
+                        if (label) label.style.display = 'none';
+                    }
+                }
+
                 if (hasEmptyFighter) {
                     if (cb) {
                         cb.checked = false;
