@@ -7,7 +7,7 @@
     <!-- Built-in styles to guarantee the light blue look without needing external files -->
     <style>
         body { background-color: #e0f2fe; color: #1f2937; font-family: sans-serif; margin: 0; padding-bottom: 64px; }
-        header { background-color: #0369a1; border-bottom: 2px solid #bae6fd; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        header { background-color: #0369a1; border-bottom: 2px solid #bae6fd; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; }
         .header-container { max-width: 56rem; margin: 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 16px; }
         @media (min-width: 768px) { .header-container { flex-direction: row; } }
         h1 { color: #ffffff; font-size: 1.875rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; }
@@ -58,7 +58,7 @@
 </head>
 <body>
     <!-- MASTER SYNCED NAV HEADER (CENTER ALIGNED) -->
-    <nav style="background-color: #0284c7; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-family: sans-serif;">
+    <nav style="background-color: #0284c7; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-family: sans-serif; position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; left: 0; right: 0;">
         <h1 class="logo" style="color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px;">WWE Universe</h1>
         
         <!-- CENTERED LINKS DECK -->

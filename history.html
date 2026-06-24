@@ -6,7 +6,7 @@
     <title>WWE Universe - Event History Archive</title>
     <style>
         body { background-color: #e0f2fe; color: #1f2937; font-family: sans-serif; margin: 0; padding-bottom: 64px; }
-        nav { background-color: #0284c7; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        nav { background-color: #0284c7; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; }
         .logo { color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; }
         .nav-links { display: flex; gap: 12px; }
         .nav-btn { background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-transform: uppercase; }
@@ -22,7 +22,7 @@
         .event-title-badge { font-size: 1.25rem; font-weight: 900; color: #0369a1; text-transform: uppercase; margin: 0; }
         .event-date-stamp { font-size: 0.75rem; font-weight: bold; color: #64748b; background: #f1f5f9; padding: 4px 10px; border-radius: 9999px; }
         
-        .history-match-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+        .history-match-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
         .history-match-cell { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; position: relative; }
         .tier-tag { font-size: 0.58rem; font-weight: 800; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 6px; }
         .tier-tag.main-event { background: #fee2e2; color: #ef4444; }
@@ -38,7 +38,7 @@
 <body>
 
        <!-- MASTER SYNCED NAV HEADER (CENTER ALIGNED) -->
-    <nav style="background-color: #0284c7; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-family: sans-serif;">
+    <nav style="background-color: #0284c7; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-family: sans-serif; position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; left: 0; right: 0;">
         <h1 class="logo" style="color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px;">WWE Universe</h1>
         
         <!-- CENTERED LINKS DECK -->
@@ -83,7 +83,7 @@
                 return;
             }
 
-            historyLog.sort((a, b) => b.id.localeCompare(a.id));
+            historyLog.sort((a, b) => a.id.localeCompare(b.id));
 
             historyLog.forEach(event => {
                 const eventCard = document.createElement('div');

@@ -64,6 +64,7 @@ window.resetBettingMoney = function() {
 let activeBets = {};
 
 window.selectBetFighter = function(matchId, fighterSlot) {
+    if (!window.bettingEnabled) return;
     if (!activeBets[matchId]) activeBets[matchId] = {};
     activeBets[matchId].selectedFighter = fighterSlot;
     
@@ -91,6 +92,7 @@ window.selectBetFighter = function(matchId, fighterSlot) {
 };
 
 window.setBetAmount = function(matchId, multiplier) {
+    if (!window.bettingEnabled) return;
     if (!activeBets[matchId]) activeBets[matchId] = {};
     
     const currentMoney = getBettingMoney();
@@ -141,6 +143,7 @@ window.clearBet = function(matchId) {
 };
 
 window.placeBet = function(matchId) {
+    if (!window.bettingEnabled) return alert('Betting is currently disabled.');
     const bet = activeBets[matchId] || {};
     
     if (!bet.selectedFighter) {
@@ -205,7 +208,21 @@ window.skipDraftSaveOnUnload = false;
 function loadCompletedMatchesForShow(showId) {
     if (!showId) return {};
     const storedMatches = JSON.parse(localStorage.getItem("wwe_matches_" + showId)) || {};
-    if (Object.keys(storedMatches).length > 0) return storedMatches;
+    if (Object.keys(storedMatches).length > 0) {
+        let updated = false;
+        Object.values(storedMatches).forEach(state => {
+            if (state && !state.gender) {
+                const maybeF1 = fighters.find(f => f.id === state.slot1Id || f.name === state.slot1Name);
+                const maybeF2 = fighters.find(f => f.id === state.slot2Id || f.name === state.slot2Name);
+                state.gender = maybeF1?.gender || maybeF2?.gender || 'male';
+                updated = true;
+            }
+        });
+        if (updated) {
+            localStorage.setItem("wwe_matches_" + showId, JSON.stringify(storedMatches));
+        }
+        return storedMatches;
+    }
     if (!isShowCompleted(showId)) return {};
 
     const historyLog = JSON.parse(localStorage.getItem("wwe_event_history")) || [];
@@ -216,6 +233,8 @@ function loadCompletedMatchesForShow(showId) {
     eventRecord.matches.forEach(match => {
         if (!match.matchId || !match.winner || !match.loser) return;
         const winnerFighter = fighters.find(f => f.name === match.winner);
+        const loserFighter = fighters.find(f => f.name === match.loser);
+        const inferredGender = winnerFighter?.gender || loserFighter?.gender || 'male';
         recovered[match.matchId] = {
             winnerName: match.winner,
             loserName: match.loser,
@@ -224,6 +243,7 @@ function loadCompletedMatchesForShow(showId) {
             slot2Name: match.loser,
             slot1Id: '',
             slot2Id: '',
+            gender: inferredGender,
             methodId: match.methodId || '',
             methodName: match.method || '',
             isTitle: Boolean(match.isTitle),
@@ -284,10 +304,18 @@ function applyCompletedShowVisuals() {
 // --- Announcer / SpeechSynthesis Helpers ---
 window.announcerEnabled = localStorage.getItem('wwe_announcer_enabled') === '1';
 window.preferredAnnouncerGender = 'female'; // currently only female option requested
+window.bettingEnabled = localStorage.getItem('wwe_betting_enabled') === '1';
 
 function saveAnnouncerSetting(enabled) {
     window.announcerEnabled = !!enabled;
     localStorage.setItem('wwe_announcer_enabled', window.announcerEnabled ? '1' : '0');
+    applyAnnouncerState();
+}
+
+function saveBettingSetting(enabled) {
+    window.bettingEnabled = !!enabled;
+    localStorage.setItem('wwe_betting_enabled', window.bettingEnabled ? '1' : '0');
+    applyBettingState();
 }
 
 function getPreferredVoice() {
@@ -336,7 +364,7 @@ function composeFighterAnnouncement(f) {
 }
 
 function maybeAnnounceSlot(matchId, force) {
-    if (!force && !window.announcerEnabled) return;
+    if (!window.announcerEnabled) return;
     const slot1Input = document.getElementById(`${matchId}-slot1`)?.querySelector('.fighter-search-input');
     const slot2Input = document.getElementById(`${matchId}-slot2`)?.querySelector('.fighter-search-input');
     const id1 = slot1Input?.getAttribute('data-fighter-id') || '';
@@ -391,6 +419,35 @@ function populateVoiceList() {
     };
 }
 
+function applyAnnouncerState() {
+    document.querySelectorAll('.announce-btn').forEach(btn => {
+        btn.disabled = !window.announcerEnabled;
+        btn.style.opacity = window.announcerEnabled ? '1' : '0.45';
+        btn.style.cursor = window.announcerEnabled ? 'pointer' : 'not-allowed';
+        btn.title = window.announcerEnabled ? '' : 'Announcer is disabled.';
+    });
+    const voiceSelect = document.getElementById('announcer-voice-select');
+    if (voiceSelect) voiceSelect.disabled = !window.announcerEnabled;
+}
+
+function applyBettingState() {
+    document.querySelectorAll('.betting-panel').forEach(panel => {
+        panel.style.display = window.bettingEnabled ? 'flex' : 'none';
+    });
+    const betControls = document.querySelectorAll('[id$="-bet-f1"], [id$="-bet-f2"], [id$="-bet-amount"], [id$="-potential-win"], button[onclick*="placeBet"], button[onclick*="clearBet"], button[onclick*="setBetAmount"], button[onclick*="selectBetFighter"]');
+    betControls.forEach(el => {
+        el.disabled = !window.bettingEnabled;
+        if (el.style) {
+            el.style.opacity = window.bettingEnabled ? '1' : '0.35';
+            el.style.cursor = window.bettingEnabled ? 'pointer' : 'not-allowed';
+        }
+    });
+    if (!window.bettingEnabled) {
+        activeBets = {};
+        if (window.placedBets) window.placedBets = {};
+    }
+}
+
 
 document.addEventListener('DOMContentLoaded', () => {
     initBettingSystem();
@@ -406,6 +463,8 @@ document.addEventListener('DOMContentLoaded', () => {
     buildModalContainer();
     insertCompletedShowNotice();
     applyCompletedShowVisuals();
+    applyAnnouncerState();
+    applyBettingState();
     updateBettingMoneyDisplay();
     // Populate available voices for announcer (may arrive asynchronously)
     try {
@@ -513,6 +572,10 @@ function buildShowSchedulerHeader() {
                 <input id="announcer-toggle" type="checkbox" onchange="saveAnnouncerSetting(this.checked)" ${window.announcerEnabled ? 'checked' : ''}>
                 <span style="font-size:0.8rem;">Announcer</span>
             </label>
+            <label style="display:inline-flex; align-items:center; gap:8px; padding:6px 8px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-weight:700; color:#475569; white-space:nowrap;">
+                <input id="betting-toggle" type="checkbox" onchange="saveBettingSetting(this.checked)" ${window.bettingEnabled ? 'checked' : ''}>
+                <span style="font-size:0.8rem;">Betting</span>
+            </label>
             <select id="announcer-voice-select" style="padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.75rem; background:white; color:#1e293b; min-width:180px; max-width:260px;">
                 <option>Loading voices…</option>
             </select>
@@ -523,7 +586,10 @@ function buildShowSchedulerHeader() {
             <button onclick="importAppBackup()" style="background:#0c4a6e; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">⬆️ Restore</button>
         </div>`;
         
-    if (mainBox && mainBox.parentNode) {
+    const mainSection = mainBox ? mainBox.closest('section') : null;
+    if (mainSection && mainSection.parentNode) {
+        mainSection.parentNode.insertBefore(row, mainSection);
+    } else if (mainBox && mainBox.parentNode) {
         mainBox.parentNode.insertBefore(row, mainBox);
     }
 }
@@ -588,6 +654,7 @@ function renderCardRows(box, num, tierId, isMain) {
         const matchRow = document.createElement('div');
         matchRow.className = 'match-row';
         matchRow.id = uId;
+        matchRow.dataset.isMain = isMain ? 'true' : 'false';
         matchRow.style.cssText = "background:#fff; border:1px solid #bae6fd; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px; margin-bottom:12px; position:relative; box-shadow: 0 1px 3px rgba(0,0,0,0.05); width:100%; box-sizing:border-box;";
         if (isMain) { matchRow.style.background = "linear-gradient(to right, #fff, #fff5f5, #fff)"; matchRow.style.borderColor = "#fca5a5"; }
 
@@ -605,7 +672,7 @@ function renderCardRows(box, num, tierId, isMain) {
             </div>
             <div id="${uId}-booking-panel" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
                 
-                <div class="fighter-slot" id="${uId}-slot1" data-gender="male" style="width:38%; display:flex; align-items:center; gap:8px; position:relative;">
+                <div class="fighter-slot" id="${uId}-slot1" data-gender="male" style="width:38%; display:flex; align-items:center; gap:8px; position:relative; transition: box-shadow 0.25s ease, transform 0.25s ease;">
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
                         <div class="avatar-frame" style="position:relative; width:36px; height:36px;">
                             <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
@@ -613,9 +680,12 @@ function renderCardRows(box, num, tierId, isMain) {
                         </div>
                         <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
                     </div>
-                    <div class="dropdown-search-container" style="flex:1; min-width:0;">
-                        <input type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 1..." onfocus="triggerSearchFill('${uId}', 'slot1')" onkeyup="triggerSearchFill('${uId}', 'slot1')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600;">
-                        <div class="search-results-floating-panel" style="display:none;"></div>
+                    <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:4px;">
+                        <div class="dropdown-search-container" style="width:100%;">
+                            <input type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 1..." onfocus="triggerSearchFill('${uId}', 'slot1')" onkeyup="triggerSearchFill('${uId}', 'slot1')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600;">
+                            <div class="search-results-floating-panel" style="display:none;"></div>
+                        </div>
+                        <div id="${uId}-slot1-record" class="fighter-record" style="font-size:0.75rem; color:#475569; margin-top:4px; min-height:18px; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
                     </div>
                 </div>
 
@@ -624,7 +694,7 @@ function renderCardRows(box, num, tierId, isMain) {
                     <button onclick="suggestOpponent('${uId}')" style="background:#f0fdf4; border:1px solid #bbf7d0; color:#16a34a; padding:2px 6px; border-radius:4px; cursor:pointer; font-size:0.65rem; font-weight:bold; margin-top:6px;">💡 Suggest</button>
                 </div>
 
-                <div class="fighter-slot" id="${uId}-slot2" data-gender="male" style="width:38%; text-align:right; display:flex; flex-direction:row-reverse; align-items:center; gap:8px; position:relative; min-width:0;">
+                <div class="fighter-slot" id="${uId}-slot2" data-gender="male" style="width:38%; text-align:right; display:flex; flex-direction:row-reverse; align-items:center; gap:8px; position:relative; min-width:0; transition: box-shadow 0.25s ease, transform 0.25s ease;">
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
                         <div class="avatar-frame" style="position:relative; width:36px; height:36px;">
                             <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
@@ -632,9 +702,12 @@ function renderCardRows(box, num, tierId, isMain) {
                         </div>
                         <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
                     </div>
-                    <div class="dropdown-search-container" style="flex:1; min-width:0;">
-                        <input type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 2..." onfocus="triggerSearchFill('${uId}', 'slot2')" onkeyup="triggerSearchFill('${uId}', 'slot2')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600; text-align:right;">
-                        <div class="search-results-floating-panel" style="display:none;"></div>
+                    <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:4px;">
+                        <div class="dropdown-search-container" style="width:100%;">
+                            <input type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 2..." onfocus="triggerSearchFill('${uId}', 'slot2')" onkeyup="triggerSearchFill('${uId}', 'slot2')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600; text-align:right;">
+                            <div class="search-results-floating-panel" style="display:none;"></div>
+                        </div>
+                        <div id="${uId}-slot2-record" class="fighter-record" style="font-size:0.75rem; color:#475569; margin-top:4px; min-height:18px; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
                     </div>
                 </div>
 
@@ -680,7 +753,7 @@ function renderCardRows(box, num, tierId, isMain) {
                 </div>
 
             </div>
-            <div id="${uId}-betting-panel" style="display:flex; flex-direction:column; gap:8px; width:100%; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:8px; margin:8px 0;">
+            <div id="${uId}-betting-panel" class="betting-panel" style="display:flex; flex-direction:column; gap:8px; width:100%; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:8px; margin:8px 0;">
                 <div style="display:flex; gap:6px; font-size:0.65rem; font-weight:bold;">
                     <button onclick="selectBetFighter('${uId}', '1')" id="${uId}-bet-f1" style="flex:1; background:#f1f5f9; border:2px solid #cbd5e1; color:#475569; padding:4px; border-radius:4px; cursor:pointer; transition:0.2s; font-size:0.65rem;">BET F1</button>
                     <button onclick="selectBetFighter('${uId}', '2')" id="${uId}-bet-f2" style="flex:1; background:#f1f5f9; border:2px solid #cbd5e1; color:#475569; padding:4px; border-radius:4px; cursor:pointer; transition:0.2s; font-size:0.65rem;">BET F2</button>
@@ -709,7 +782,7 @@ function renderCardRows(box, num, tierId, isMain) {
         box.appendChild(matchRow);
         clearMatchWinnerBadges(uId);
         
-        if (completedMatches[uId]) { restoreLoggedResult(uId, completedMatches[uId]); }
+        if (completedMatches[uId]) { restoreLoggedResult(uId, completedMatches[uId]); disableMatchRowControls(uId); }
     }
 }
 
@@ -777,6 +850,7 @@ window.triggerSearchFill = function(uId, slotType) {
                     e.stopPropagation(); 
                     uploadFighterPhotoFromCard(f.id); 
                 };
+                updateFighterRecordDisplay(uId, slotType, f);
                 updateWinnerDropdown(uId);
                 if (!checkExistingFightRematch(uId, slotType)) {
                     return;
@@ -794,6 +868,24 @@ document.addEventListener('click', (e) => {
     }
 });
 
+document.addEventListener('input', (e) => {
+    if (!e.target.classList || !e.target.classList.contains('fighter-search-input')) return;
+    const input = e.target;
+    const matchRow = input.closest('.match-row');
+    if (!matchRow) return;
+    const slotType = input.closest('.fighter-slot')?.id?.endsWith('-slot1') ? 'slot1' : 'slot2';
+    const fighter = getFighterByIdOrName(input.value.trim());
+    if (fighter) {
+        input.setAttribute('data-fighter-id', fighter.id);
+        updateFighterRecordDisplay(matchRow.id, slotType, fighter);
+    } else {
+        input.setAttribute('data-fighter-id', '');
+        updateFighterRecordDisplay(matchRow.id, slotType, null);
+        hideRematchWarning(matchRow.id);
+    }
+    updateWinnerDropdown(matchRow.id);
+});
+
 window.populateDropdownGenders = function(matchRowId, genderVariant) {
     const slot1 = document.getElementById(`${matchRowId}-slot1`);
     const slot2 = document.getElementById(`${matchRowId}-slot2`);
@@ -804,6 +896,8 @@ window.populateDropdownGenders = function(matchRowId, genderVariant) {
         slot2.querySelector('.fighter-search-input').value = '';
         slot1.querySelector('.fighter-search-input').setAttribute('data-fighter-id', '');
         slot2.querySelector('.fighter-search-input').setAttribute('data-fighter-id', '');
+        updateFighterRecordDisplay(matchRowId, 'slot1', null);
+        updateFighterRecordDisplay(matchRowId, 'slot2', null);
     }
 };
 
@@ -864,10 +958,55 @@ function clearCardFighterSlot(matchRowId, slotType) {
     }
     const badge = slot.querySelector('.win-badge');
     const label = slot.querySelector('.win-method-label');
+    const recordDisplay = slot.querySelector('.fighter-record');
     if (badge) badge.style.display = 'none';
     if (label) label.style.display = 'none';
+    if (recordDisplay) recordDisplay.textContent = '';
+    
+    const matchRow = document.getElementById(matchRowId);
+    const slot1El = document.getElementById(`${matchRowId}-slot1`);
+    const slot2El = document.getElementById(`${matchRowId}-slot2`);
+    
+    const titleCheckbox = document.getElementById(`${matchRowId}-title-check`);
+    if (titleCheckbox && titleCheckbox.checked) {
+        titleCheckbox.checked = false;
+        const titleInput = document.getElementById(`${matchRowId}-title-name-input`);
+        if (titleInput) { titleInput.style.display = 'none'; titleInput.value = ''; }
+    }
+    
+    if (matchRow) {
+        if (matchRow.dataset.isMain === 'true') {
+            matchRow.style.background = "linear-gradient(to right, #fff, #fff5f5, #fff)";
+            matchRow.style.borderColor = "#fca5a5";
+        } else {
+            matchRow.style.background = '#fff';
+            matchRow.style.borderColor = '#bae6fd';
+        }
+        matchRow.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+    }
+    
+    hideRematchWarning(matchRowId);
     updateWinnerDropdown(matchRowId);
     saveCurrentCardDraft();
+}
+
+function updateFighterRecordDisplay(matchRowId, slotType, fighter) {
+    const recordEl = document.getElementById(`${matchRowId}-${slotType}-record`);
+    if (!recordEl) return;
+
+    if (!fighter || typeof fighter.wins === 'undefined' || typeof fighter.losses === 'undefined') {
+        recordEl.textContent = '';
+        return;
+    }
+
+    const wins = Number(fighter.wins || 0);
+    const losses = Number(fighter.losses || 0);
+    recordEl.textContent = `${wins}W / ${losses}L`;
+}
+
+function getFighterByIdOrName(identifier) {
+    if (!identifier) return null;
+    return fighters.find(f => f.id === identifier || f.name === identifier) || null;
 }
 
 function checkExistingFightRematch(matchRowId, changedSlot) {
@@ -944,6 +1083,16 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
     }
     if (allowBtn) {
         allowBtn.onclick = function() {
+            const matchRow = document.getElementById(matchRowId);
+            const rematchCheckbox = matchRow ? matchRow.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]') : null;
+            const rematchCount = document.getElementById(`${matchRowId}-rematch-count`);
+            if (rematchCheckbox) {
+                rematchCheckbox.checked = true;
+            }
+            if (rematchCount) {
+                rematchCount.value = history.fightNumber;
+                rematchCount.style.display = 'inline-block';
+            }
             hideRematchWarning(matchRowId);
         };
     }
@@ -979,8 +1128,31 @@ window.toggleTitleFight = function(matchRowId, checkbox) {
     const fighter1 = slot1Input ? fighters.find(f => f.id === slot1Input.getAttribute('data-fighter-id') || f.name === slot1Input.value) : null;
     const fighter2 = slot2Input ? fighters.find(f => f.id === slot2Input.getAttribute('data-fighter-id') || f.name === slot2Input.value) : null;
 
+    const matchRow = document.getElementById(matchRowId);
+    const slot1 = document.getElementById(`${matchRowId}-slot1`);
+    const slot2 = document.getElementById(`${matchRowId}-slot2`);
+    const clearTitleGlow = () => {
+        if (matchRow) {
+            if (matchRow.dataset.isMain === 'true') {
+                matchRow.style.background = "linear-gradient(to right, #fff, #fff5f5, #fff)";
+                matchRow.style.borderColor = "#fca5a5";
+            } else {
+                matchRow.style.background = '#fff';
+                matchRow.style.borderColor = '#bae6fd';
+            }
+            matchRow.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+        }
+    };
+    const applyTitleGlow = () => {
+        if (matchRow) {
+            matchRow.style.background = 'linear-gradient(to right, #fffaf0, #fff5d6, #fef3c7)';
+            matchRow.style.borderColor = '#fbbf24';
+        }
+    };
+
     if (!checkbox.checked) {
         if (titleInput) { titleInput.style.display = 'none'; titleInput.value = ''; }
+        clearTitleGlow();
         return;
     }
 
@@ -1004,6 +1176,7 @@ window.toggleTitleFight = function(matchRowId, checkbox) {
         populateTitleDropdown(matchRowId);
         titleInput.focus();
     }
+    applyTitleGlow();
     // Note: Manual finalize button removed — titles will be applied automatically when logging results.
 };
 
@@ -1497,6 +1670,7 @@ window.bookSuggested = function(fId) {
             e.stopPropagation(); 
             uploadFighterPhotoFromCard(f2.id); 
         };
+        updateFighterRecordDisplay(activeMatchId, 'slot2', f2);
         updateWinnerDropdown(activeMatchId);
         if (!checkExistingFightRematch(activeMatchId, 'slot2')) {
             window.closeSuggestionModal();
@@ -1557,9 +1731,12 @@ window.logMatchResult = function(id) {
     if (!loserAlreadyLogged) l.compiled_history_deck.push(loserHistoryEntry);
 
     localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+    updateFighterRecordDisplay(id, 'slot1', f1);
+    updateFighterRecordDisplay(id, 'slot2', f2);
     
     const titleCheck = document.getElementById(`${id}-title-check`);
     const titleInput = document.getElementById(`${id}-title-name-input`);
+    const rowGender = document.getElementById(`${id}-slot1`)?.getAttribute('data-gender') || document.getElementById(`${id}-slot2`)?.getAttribute('data-gender') || 'male';
     let matchSaveState = {
         winnerName: w.name,
         loserName: l.name,
@@ -1568,6 +1745,7 @@ window.logMatchResult = function(id) {
         slot2Name: slot2.value,
         slot1Id: slot1.getAttribute('data-fighter-id'),
         slot2Id: slot2.getAttribute('data-fighter-id'),
+        gender: rowGender,
         methodId: methodSelect.value,
         methodName: methodSelect.options[methodSelect.selectedIndex].text,
         isTitle: titleCheck ? titleCheck.checked : false,
@@ -1634,6 +1812,7 @@ window.logMatchResult = function(id) {
     clearMatchWinnerBadges(id);
     const winningSlot = winSelect.value === '1' ? 'slot1' : 'slot2';
     showMatchWinnerBadge(id, winningSlot, methodName);
+    disableMatchRowControls(id);
     
     // RESOLVE BET IF ONE WAS PLACED
     if (window.placedBets && window.placedBets[id]) {
@@ -1685,6 +1864,15 @@ function restoreLoggedResult(id, state) {
 
     restoreSlot(slot1, slot1Input, state.slot1Name, state.slot1Id);
     restoreSlot(slot2, slot2Input, state.slot2Name, state.slot2Id);
+
+    updateFighterRecordDisplay(id, 'slot1', fighters.find(f => f.id === state.slot1Id));
+    updateFighterRecordDisplay(id, 'slot2', fighters.find(f => f.id === state.slot2Id));
+
+    const rowGender = state.gender ||
+        fighters.find(f => f.id === state.slot1Id || f.name === state.slot1Name)?.gender ||
+        fighters.find(f => f.id === state.slot2Id || f.name === state.slot2Name)?.gender ||
+        'male';
+    setMatchRowSelectedGender(id, rowGender);
 
     const hasSlot1Value = slot1Input?.value?.trim();
     const hasSlot2Value = slot2Input?.value?.trim();
@@ -1755,6 +1943,32 @@ function clearMatchWinnerBadges(matchId) {
             avatar.style.boxShadow = 'none';
         }
     });
+}
+
+function disableMatchRowControls(matchId) {
+    const row = document.getElementById(matchId);
+    if (!row) return;
+
+    row.querySelectorAll('button, input, select, textarea').forEach(el => {
+        el.disabled = true;
+        el.style.opacity = '0.45';
+        el.style.cursor = 'not-allowed';
+        if (el.tagName === 'BUTTON' || el.tagName === 'SELECT' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+            el.title = 'This match is finalized and can no longer be changed.';
+        }
+    });
+
+    row.querySelectorAll('.search-results-floating-panel').forEach(panel => {
+        panel.style.display = 'none';
+    });
+}
+
+function disableMatchRandomizer(matchId) {
+    disableMatchRowControls(matchId);
+}
+
+function disableMatchGenderControls(matchId) {
+    disableMatchRowControls(matchId);
 }
 
 function showMatchWinnerBadge(matchId, slotType, methodText) {
@@ -1990,8 +2204,12 @@ function restoreCurrentCardDraft() {
         
         if (s1 && d.f1Name) {
             const inp1 = s1.querySelector('.fighter-search-input');
-            inp1.value = d.f1Name; inp1.setAttribute('data-fighter-id', d.f1Id);
-            const f1 = fighters.find(f => f.id === d.f1Id);
+            inp1.value = d.f1Name;
+            inp1.setAttribute('data-fighter-id', d.f1Id);
+            const f1 = fighters.find(f => f.id === d.f1Id) || getFighterByIdOrName(d.f1Name);
+            if (f1 && !d.f1Id) {
+                inp1.setAttribute('data-fighter-id', f1.id);
+            }
             const av1 = s1.querySelector('.avatar-box');
             let avatarContent1 = '';
             if (f1 && f1.photo) {
@@ -2003,13 +2221,18 @@ function restoreCurrentCardDraft() {
             av1.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
             av1.onclick = function(e) { 
                 e.stopPropagation(); 
-                uploadFighterPhotoFromCard(d.f1Id); 
+                if (f1) uploadFighterPhotoFromCard(f1.id); 
             };
+            updateFighterRecordDisplay(id, 'slot1', f1);
         }
         if (s2 && d.f2Name) {
             const inp2 = s2.querySelector('.fighter-search-input');
-            inp2.value = d.f2Name; inp2.setAttribute('data-fighter-id', d.f2Id);
-            const f2 = fighters.find(f => f.id === d.f2Id);
+            inp2.value = d.f2Name;
+            inp2.setAttribute('data-fighter-id', d.f2Id);
+            const f2 = fighters.find(f => f.id === d.f2Id) || getFighterByIdOrName(d.f2Name);
+            if (f2 && !d.f2Id) {
+                inp2.setAttribute('data-fighter-id', f2.id);
+            }
             const av2 = s2.querySelector('.avatar-box');
             let avatarContent2 = '';
             if (f2 && f2.photo) {
@@ -2021,11 +2244,17 @@ function restoreCurrentCardDraft() {
             av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
             av2.onclick = function(e) { 
                 e.stopPropagation(); 
-                uploadFighterPhotoFromCard(d.f2Id); 
+                if (f2) uploadFighterPhotoFromCard(f2.id); 
             };
+            updateFighterRecordDisplay(id, 'slot2', f2);
         }
         if (d.gender) {
             setMatchRowSelectedGender(id, d.gender);
+        } else {
+            const maybeF1 = fighters.find(f => f.id === d.f1Id || f.name === d.f1Name);
+            const maybeF2 = fighters.find(f => f.id === d.f2Id || f.name === d.f2Name);
+            const inferred = maybeF1?.gender || maybeF2?.gender;
+            if (inferred) setMatchRowSelectedGender(id, inferred);
         }
         if (d.f1Name || d.f2Name) {
             const winSelect = document.getElementById(`${id}-winner-select`);
@@ -2045,6 +2274,7 @@ function restoreCurrentCardDraft() {
 window.changeMatchGender = function(matchRowId, gender) {
     setMatchRowSelectedGender(matchRowId, gender);
     populateDropdownGenders(matchRowId, gender);
+    saveCurrentCardDraft();
 };
 window.resetActiveShowDraft = function() {
     if (confirm("Are you sure you want to clear this entire card layout?\n\nThis will empty out all selected fighters and wipe logged match results for this specific show, but your Master Roster stats and Championship Lineage will stay completely safe!")) {
