@@ -967,7 +967,6 @@ document.addEventListener('DOMContentLoaded', () => {
     ensureFemaleRosterEntries();
     refreshFighterNameDatalist();
     renderRosterGrid();
-    buildMasterRankingsPanel();
     setupSidebarFormEngine();
     setupLiveSearchEngine();
     window.addEventListener('beforeunload', () => saveFighters(fighters));
@@ -983,6 +982,7 @@ function renderRosterGrid() {
     const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
 
     buildMasterRankingsPanel();
+    buildRosterComparePanel();
 
     grid.innerHTML = '';
     if (countBadge) countBadge.textContent = `${fighters.length} Superstars`;
@@ -1080,6 +1080,7 @@ function renderRosterGridWithoutReload() {
     const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
 
     buildMasterRankingsPanel();
+    buildRosterComparePanel();
 
     grid.innerHTML = '';
     if (countBadge) countBadge.textContent = `${fighters.length} Superstars`;
@@ -1215,6 +1216,131 @@ function buildMasterRankingsPanel() {
 
     gridElement.parentNode.insertBefore(filterPanel, gridElement);
 }
+
+function buildRosterComparePanel() {
+    const existing = document.getElementById('rosterComparePanel');
+    if (existing) existing.remove();
+
+    const gridElement = document.getElementById('rosterGrid');
+    if (!gridElement || !gridElement.parentNode) return;
+
+    const comparePanel = document.createElement('div');
+    comparePanel.id = 'rosterComparePanel';
+    comparePanel.style.cssText = 'background: white; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);';
+    comparePanel.innerHTML = `
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end;">
+            <div style="flex: 1 1 220px; min-width: 220px;">
+                <label style="display: block; margin-bottom: 6px; font-size: 0.75rem; font-weight: 700; color: #0c4a6e; text-transform: uppercase;">Fighter A</label>
+                <input id="compareFighterA" list="compareNamesA" oninput="updateRosterCompareDatalists()" placeholder="Type fighter name" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem;">
+            </div>
+            <div style="flex: 1 1 220px; min-width: 220px;">
+                <label style="display: block; margin-bottom: 6px; font-size: 0.75rem; font-weight: 700; color: #0c4a6e; text-transform: uppercase;">Fighter B</label>
+                <input id="compareFighterB" list="compareNamesB" oninput="updateRosterCompareDatalists()" placeholder="Type fighter name" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem;">
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                <button onclick="compareRosterFighters()" style="background: #0284c7; color: white; border: none; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer;">Compare</button>
+                <button onclick="clearRosterCompare()" style="background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer;">Clear</button>
+            </div>
+        </div>
+    `;
+
+    gridElement.parentNode.insertBefore(comparePanel, gridElement);
+    updateRosterCompareDatalists();
+}
+
+function updateRosterCompareDatalists() {
+    const selectedA = document.getElementById('compareFighterA')?.value.trim().toLowerCase();
+    const selectedB = document.getElementById('compareFighterB')?.value.trim().toLowerCase();
+    let listA = document.getElementById('compareNamesA');
+    let listB = document.getElementById('compareNamesB');
+    if (!listA) {
+        listA = document.createElement('datalist');
+        listA.id = 'compareNamesA';
+        document.body.appendChild(listA);
+    }
+    if (!listB) {
+        listB = document.createElement('datalist');
+        listB.id = 'compareNamesB';
+        document.body.appendChild(listB);
+    }
+    listA.innerHTML = '';
+    listB.innerHTML = '';
+
+    const names = fighters.map(f => f.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    names.forEach(name => {
+        const lower = name.toLowerCase();
+        if (selectedB && lower === selectedB) return;
+        const optionA = document.createElement('option');
+        optionA.value = name;
+        listA.appendChild(optionA);
+        if (selectedA && lower === selectedA) return;
+        const optionB = document.createElement('option');
+        optionB.value = name;
+        listB.appendChild(optionB);
+    });
+}
+
+function filterRosterByComparison(selectedNames = []) {
+    document.querySelectorAll('#rosterGrid > div').forEach(card => {
+        const nameEl = card.querySelector('.fighter-name-target');
+        if (!nameEl) return;
+        const nameText = nameEl.textContent.trim();
+        card.style.display = selectedNames.length > 0 ? (selectedNames.includes(nameText) ? 'flex' : 'none') : 'flex';
+    });
+}
+
+function compareRosterFighters() {
+    const nameA = document.getElementById('compareFighterA')?.value.trim();
+    const nameB = document.getElementById('compareFighterB')?.value.trim();
+    if (!nameA || !nameB) {
+        alert('Enter both fighters to compare.');
+        return;
+    }
+    if (nameA.toLowerCase() === nameB.toLowerCase()) {
+        alert('Please choose two different fighters.');
+        return;
+    }
+
+    const fighterA = fighters.find(f => f.name.toLowerCase() === nameA.toLowerCase());
+    const fighterB = fighters.find(f => f.name.toLowerCase() === nameB.toLowerCase());
+    if (!fighterA || !fighterB) {
+        alert('One or both fighters were not found in your roster.');
+        return;
+    }
+
+    filterRosterByComparison([fighterA.name, fighterB.name]);
+}
+
+function clearRosterCompare() {
+    const inputA = document.getElementById('compareFighterA');
+    const inputB = document.getElementById('compareFighterB');
+    if (inputA) inputA.value = '';
+    if (inputB) inputB.value = '';
+    updateRosterCompareDatalists();
+    filterRosterByComparison([]);
+}
+
+function getWinRate(fighter) {
+    const wins = Number(fighter.wins || 0);
+    const losses = Number(fighter.losses || 0);
+    const total = wins + losses;
+    return total === 0 ? 0 : Math.round((wins / total) * 100);
+}
+
+function getChampionshipCount(fighter) {
+    const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+    return championships.filter(b => b.championId === fighter.id).length;
+}
+
+function championshipsForFighter(fighter) {
+    const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+    return championships.filter(b => b.championId === fighter.id);
+}
+
+function getChampionshipCount(fighter) {
+    return championshipsForFighter(fighter).length;
+}
+
 
 function setupSidebarFormEngine() {
     let addBtn = null;

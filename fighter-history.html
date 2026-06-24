@@ -63,6 +63,23 @@
         <div class="count-badge" id="historyTotalCount">0 fighters</div>
     </div>
 
+    <div id="historyComparePanel" style="max-width:1400px; margin: 16px auto 0 auto; padding: 0 24px; box-sizing:border-box;">
+        <div style="background:#111827; border:1px solid #334155; border-radius:12px; padding:18px; display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+            <div style="flex:1 1 220px; min-width:220px;">
+                <label style="display:block; margin-bottom:6px; font-size:0.75rem; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fighter A</label>
+                <input id="compareHistoryFighterA" list="compareHistoryNamesA" oninput="updateHistoryCompareDatalists()" placeholder="Type fighter name" style="width:100%; padding:10px 12px; border-radius:10px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.95rem;">
+            </div>
+            <div style="flex:1 1 220px; min-width:220px;">
+                <label style="display:block; margin-bottom:6px; font-size:0.75rem; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fighter B</label>
+                <input id="compareHistoryFighterB" list="compareHistoryNamesB" oninput="updateHistoryCompareDatalists()" placeholder="Type fighter name" style="width:100%; padding:10px 12px; border-radius:10px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.95rem;">
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button onclick="compareHistoryFighters()" style="background:#ef4444; color:white; border:none; border-radius:10px; padding:10px 16px; font-weight:700; cursor:pointer;">Compare</button>
+                <button onclick="clearHistoryCompare()" style="background:transparent; color:#f8fafc; border:1px solid #334155; border-radius:10px; padding:10px 16px; font-weight:700; cursor:pointer;">Clear</button>
+            </div>
+        </div>
+    </div>
+
     <main>
         <div class="log-table-wrapper">
             <div class="table-header">
@@ -80,6 +97,8 @@
         document.addEventListener('DOMContentLoaded', () => {
             fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || JSON.parse(localStorage.getItem('fighters')) || [];
             fighters.sort((a, b) => a.name.localeCompare(b.name));
+            buildHistoryDatalist();
+            updateHistoryCompareDatalists();
             renderWidescreenHistoryMatrix();
         });
 
@@ -157,6 +176,107 @@
                 row.style.display = nameText.includes(query) ? 'grid' : 'none';
             });
         };
+
+        function buildHistoryDatalist() {
+            let data = document.getElementById('fighterNamesList');
+            if (!data) {
+                data = document.createElement('datalist');
+                data.id = 'fighterNamesList';
+                document.body.appendChild(data);
+            }
+            data.innerHTML = '';
+            fighters.forEach(f => {
+                if (f.name) {
+                    const option = document.createElement('option');
+                    option.value = f.name;
+                    data.appendChild(option);
+                }
+            });
+        }
+
+        function updateHistoryCompareDatalists() {
+            const selectedA = document.getElementById('compareHistoryFighterA')?.value.trim().toLowerCase();
+            const selectedB = document.getElementById('compareHistoryFighterB')?.value.trim().toLowerCase();
+            let listA = document.getElementById('compareHistoryNamesA');
+            let listB = document.getElementById('compareHistoryNamesB');
+            if (!listA) {
+                listA = document.createElement('datalist');
+                listA.id = 'compareHistoryNamesA';
+                document.body.appendChild(listA);
+            }
+            if (!listB) {
+                listB = document.createElement('datalist');
+                listB.id = 'compareHistoryNamesB';
+                document.body.appendChild(listB);
+            }
+            listA.innerHTML = '';
+            listB.innerHTML = '';
+
+            const names = fighters.map(f => f.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+            names.forEach(name => {
+                const lower = name.toLowerCase();
+                if (selectedB && lower === selectedB) return;
+                const optionA = document.createElement('option');
+                optionA.value = name;
+                listA.appendChild(optionA);
+                if (selectedA && lower === selectedA) return;
+                const optionB = document.createElement('option');
+                optionB.value = name;
+                listB.appendChild(optionB);
+            });
+        }
+
+        function filterHistoryByComparison(selectedNames = []) {
+            document.querySelectorAll('#historyMasterLogContainer .fighter-history-row').forEach(row => {
+                const nameEl = row.querySelector('.fighter-name');
+                if (!nameEl) return;
+                const nameText = nameEl.textContent.trim();
+                row.style.display = selectedNames.length > 0 ? (selectedNames.includes(nameText) ? 'grid' : 'none') : 'grid';
+            });
+        }
+
+        function compareHistoryFighters() {
+            const nameA = document.getElementById('compareHistoryFighterA')?.value.trim();
+            const nameB = document.getElementById('compareHistoryFighterB')?.value.trim();
+            if (!nameA || !nameB) {
+                alert('Enter both fighters to compare.');
+                return;
+            }
+            if (nameA.toLowerCase() === nameB.toLowerCase()) {
+                alert('Please choose two different fighters.');
+                return;
+            }
+
+            const fighterA = fighters.find(f => f.name.toLowerCase() === nameA.toLowerCase());
+            const fighterB = fighters.find(f => f.name.toLowerCase() === nameB.toLowerCase());
+            if (!fighterA || !fighterB) {
+                alert('One or both fighters were not found in your roster.');
+                return;
+            }
+
+            filterHistoryByComparison([fighterA.name, fighterB.name]);
+        }
+
+        function clearHistoryCompare() {
+            const inputA = document.getElementById('compareHistoryFighterA');
+            const inputB = document.getElementById('compareHistoryFighterB');
+            if (inputA) inputA.value = '';
+            if (inputB) inputB.value = '';
+            updateHistoryCompareDatalists();
+            filterHistoryByComparison([]);
+        }
+
+        function getHistoryCount(fighter) {
+            const history = fighter.compiled_history_deck || fighter.history_deck || fighter.history || [];
+            return Array.isArray(history) ? history.length : 0;
+        }
+
+        function countRecentResults(fighter, outcome) {
+            const history = fighter.compiled_history_deck || fighter.history_deck || fighter.history || [];
+            if (!Array.isArray(history) || history.length === 0) return 0;
+            const recent = history.slice(-5);
+            return recent.filter(f => (f.outcome || '').toLowerCase() === outcome).length;
+        }
     </script>
     <script src="auth.js"></script>
 </body>

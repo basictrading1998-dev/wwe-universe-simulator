@@ -58,31 +58,37 @@ function buildWwePopupModal() {
     const confirmBtn = document.getElementById('wwePopupConfirm');
 
     closeBtn.onclick = () => {
+        const onCancel = window._wwePopupCancel;
+        const onConfirm = window._wwePopupConfirm;
         hideWwePopupModal();
-        if (window._wwePopupCancel) {
-            window._wwePopupCancel(false);
-        } else if (window._wwePopupConfirm) {
+        if (onCancel) {
+            onCancel(false);
+        } else if (onConfirm) {
             const input = document.getElementById('wwePopupInput');
-            window._wwePopupConfirm(input ? input.value : true);
+            onConfirm(input ? input.value : true);
         }
     };
     cancelBtn.onclick = () => {
+        const onCancel = window._wwePopupCancel;
         hideWwePopupModal();
-        if (window._wwePopupCancel) window._wwePopupCancel(false);
+        if (onCancel) onCancel(false);
     };
     confirmBtn.onclick = () => {
+        const onConfirm = window._wwePopupConfirm;
         hideWwePopupModal();
         const input = document.getElementById('wwePopupInput');
-        if (window._wwePopupConfirm) window._wwePopupConfirm(input ? input.value : true);
+        if (onConfirm) onConfirm(input ? input.value : true);
     };
     modal.onclick = (event) => {
         if (event.target === modal) {
+            const onCancel = window._wwePopupCancel;
+            const onConfirm = window._wwePopupConfirm;
             hideWwePopupModal();
-            if (window._wwePopupCancel) {
-                window._wwePopupCancel(false);
-            } else if (window._wwePopupConfirm) {
+            if (onCancel) {
+                onCancel(false);
+            } else if (onConfirm) {
                 const input = document.getElementById('wwePopupInput');
-                window._wwePopupConfirm(input ? input.value : true);
+                onConfirm(input ? input.value : true);
             }
         }
     };
@@ -435,6 +441,8 @@ function applyCompletedShowVisuals() {
         if (el.classList && el.classList.contains('announce-btn')) {
             el.disabled = false;
             el.style.pointerEvents = 'auto';
+        } else if (el.classList && el.classList.contains('randomizer-btn')) {
+            el.style.display = 'none';
         } else {
             el.disabled = true;
         }
@@ -659,6 +667,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (cb) {
                         cb.disabled = false;
                     }
+                    checkExistingFightRematch(id, slotType);
                 }
             }
             saveCurrentCardDraft();
@@ -701,12 +710,14 @@ function buildShowSchedulerHeader() {
     futureShows.forEach(s => {
         opts += `<option value="${s.id}" ${s.id === activeShowId ? 'selected' : ''}>${s.name}</option>`;
     });
+    const activeShowCompleted = isShowCompleted(activeShowId);
 
     row.innerHTML = `
         <div style="display:flex; align-items:center; gap:10px; flex:1 1 320px; min-width:260px; flex-wrap:wrap;">
             <span style="font-size:0.75rem; font-weight:800; color:#0369a1; text-transform:uppercase;">📅 Active Schedule:</span>
             <select id="activeShowSelector" onchange="switchActiveShowCard(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #cbd5e1; font-weight:bold; font-size:0.85rem; color:#1e293b; background:white; min-width:180px; max-width:260px; width:100%;">${opts}</select>
             <button onclick="editCurrentShowName()" style="background:#64748b; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase;">✏️ Edit</button>
+            <button id="randomizeShowButton" onclick="randomizeEntireShow()" ${activeShowCompleted ? 'disabled' : ''} style="background:#7c3aed; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:${activeShowCompleted ? 'not-allowed' : 'pointer'}; text-transform:uppercase; white-space:nowrap; opacity:${activeShowCompleted ? '0.45' : '1'};">🎲 Randomize All</button>
         </div>
         <div style="display:flex; align-items:center; gap:8px; flex:1 1 280px; min-width:220px; flex-wrap:wrap; justify-content:flex-end;">
             <input type="text" id="eventNameInput" placeholder="Name" value="${activeShowId ? (futureShows.find(s => s.id === activeShowId)?.name || '') : ''}" style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:600; outline:none; min-width:140px; max-width:200px; width:100%; background:white; color:#1e293b;">
@@ -803,8 +814,8 @@ function renderCardRows(box, num, tierId, isMain) {
             <div style="display:flex; justify-content:space-between; align-items:center; width:100%; border-bottom:1px dashed #e2e8f0; padding-bottom:6px; font-size:0.65rem; font-weight:bold; color:#64748b;">
                 <span>MATCH VARIANT</span>
                 <div style="display:flex; gap:4px; align-items:center;">
-                    <button onclick="randomizeMatchup('${uId}')" style="background:#7c3aed; border:none; color:white; padding:3px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem; transition:0.2s;" title="Pick 2 random fighters of same gender & weight class">🎲 RANDOM</button>
-                    <button onclick="randomizeMatchup('${uId}')" style="background:#a855f7; border:none; color:white; padding:2px 6px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.55rem; transition:0.2s;" title="Reroll">↻</button>
+                    <button class="randomizer-btn" onclick="randomizeMatchup('${uId}')" style="background:#7c3aed; border:none; color:white; padding:3px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem; transition:0.2s;" title="Pick 2 random fighters of same gender & weight class">🎲 RANDOM</button>
+                    <button class="randomizer-btn" onclick="randomizeMatchup('${uId}')" style="background:#a855f7; border:none; color:white; padding:2px 6px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.55rem; transition:0.2s;" title="Reroll">↻</button>
                     <div style="display:flex; gap:4px; background:#f1f5f9; padding:2px; border-radius:6px;">
                         <button onclick="changeMatchGender('${uId}', 'male')" id="${uId}-btn-male" style="background:#0369a1; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;">MALE</button>
                         <button onclick="changeMatchGender('${uId}', 'female')" id="${uId}-btn-female" style="background:transparent; color:#64748b; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;">FEMALE</button>
@@ -993,9 +1004,7 @@ window.triggerSearchFill = function(uId, slotType) {
                 };
                 updateFighterRecordDisplay(uId, slotType, f);
                 updateWinnerDropdown(uId);
-                if (!checkExistingFightRematch(uId, slotType)) {
-                    return;
-                }
+                checkExistingFightRematch(uId, slotType);
             };
         }
         panel.appendChild(item);
@@ -1025,6 +1034,7 @@ document.addEventListener('input', (e) => {
         hideRematchWarning(matchRow.id);
     }
     updateWinnerDropdown(matchRow.id);
+    checkExistingFightRematch(matchRow.id, slotType);
 });
 
 window.populateDropdownGenders = function(matchRowId, genderVariant) {
@@ -1636,7 +1646,139 @@ function buildModalContainer() {
 }
 
 window.closeSuggestionModal = function() { document.getElementById('suggestionModal').style.display = 'none'; };
+
+function pickTwoDistinctFighters(list) {
+    if (!Array.isArray(list) || list.length < 2) return null;
+    const idx1 = Math.floor(Math.random() * list.length);
+    let idx2 = Math.floor(Math.random() * list.length);
+    while (idx2 === idx1 && list.length > 1) {
+        idx2 = Math.floor(Math.random() * list.length);
+    }
+    if (idx1 === idx2) return null;
+    return [list[idx1], list[idx2]];
+}
+
+window.randomizeEntireShow = function() {
+    if (isShowCompleted(activeShowId)) {
+        customAlert('This show has been finalized and can no longer be randomized.', 'Randomize Disabled');
+        return;
+    }
+    const matchRows = document.querySelectorAll('.match-row');
+    if (!matchRows.length) {
+        customAlert('No match rows found to randomize.', 'Randomize Show');
+        return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+    
+    matchRows.forEach(row => {
+        const matchId = row.id;
+        if (!matchId) return;
+        
+        // Collect all currently booked fighter IDs
+        let bookedFighterIds = [];
+        document.querySelectorAll('.fighter-search-input').forEach(inp => {
+            const fighterId = inp.getAttribute('data-fighter-id');
+            if (fighterId && !bookedFighterIds.includes(fighterId)) bookedFighterIds.push(fighterId);
+        });
+        
+        // Also exclude fighters in completed matches
+        Object.keys(completedMatches || {}).forEach(cMatchId => {
+            const state = completedMatches[cMatchId];
+            if (state) {
+                const fWin = fighters.find(f => f.name === state.winnerName);
+                const fLos = fighters.find(f => f.name === state.loserName);
+                if (fWin && !bookedFighterIds.includes(fWin.id)) bookedFighterIds.push(fWin.id);
+                if (fLos && !bookedFighterIds.includes(fLos.id)) bookedFighterIds.push(fLos.id);
+            }
+        });
+        
+        // Filter available fighters by gender and division groups
+        const availableFighters = fighters.filter(f => !bookedFighterIds.includes(f.id));
+        const fightersByGenderAndDivision = {};
+        availableFighters.forEach(f => {
+            const gender = (f.gender || 'male').toLowerCase();
+            const div = (f.division || 'Heavyweight').toLowerCase();
+            fightersByGenderAndDivision[gender] = fightersByGenderAndDivision[gender] || {};
+            fightersByGenderAndDivision[gender][div] = fightersByGenderAndDivision[gender][div] || [];
+            fightersByGenderAndDivision[gender][div].push(f);
+        });
+
+        const validGenderChoices = Object.keys(fightersByGenderAndDivision).filter(gender => {
+            return Object.values(fightersByGenderAndDivision[gender]).some(list => list.length >= 2);
+        });
+        if (validGenderChoices.length === 0) {
+            failCount++;
+            return;
+        }
+
+        const selectedGender = validGenderChoices[Math.floor(Math.random() * validGenderChoices.length)];
+        const validDivisions = Object.entries(fightersByGenderAndDivision[selectedGender]).filter(([, list]) => list.length >= 2);
+        if (!validDivisions.length) {
+            failCount++;
+            return;
+        }
+
+        const [randomDivision, divisionalFighters] = validDivisions[Math.floor(Math.random() * validDivisions.length)];
+        const chosenPair = pickTwoDistinctFighters(divisionalFighters);
+        if (!chosenPair) {
+            return customAlert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`, 'Randomize Matchup');
+        }
+        const [fighter1, fighter2] = chosenPair;
+        
+        // Set the gender for this match based on the chosen fighters
+        setMatchRowSelectedGender(matchId, selectedGender);
+        
+        // Populate both slots
+        const slot1 = document.getElementById(`${matchId}-slot1`);
+        const slot2 = document.getElementById(`${matchId}-slot2`);
+        
+        if (slot1 && slot2) {
+            // Slot 1
+            const input1 = slot1.querySelector('.fighter-search-input');
+            input1.value = fighter1.name;
+            input1.setAttribute('data-fighter-id', fighter1.id);
+            const av1 = slot1.querySelector('.avatar-box');
+            av1.innerHTML = fighter1.photo ? `<img src="${fighter1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter1.name.charAt(0);
+            av1.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+            av1.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter1.id); };
+            updateFighterRecordDisplay(matchId, 'slot1', fighter1);
+            
+            // Slot 2
+            const input2 = slot2.querySelector('.fighter-search-input');
+            input2.value = fighter2.name;
+            input2.setAttribute('data-fighter-id', fighter2.id);
+            const av2 = slot2.querySelector('.avatar-box');
+            av2.innerHTML = fighter2.photo ? `<img src="${fighter2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter2.name.charAt(0);
+            av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+            av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
+            updateFighterRecordDisplay(matchId, 'slot2', fighter2);
+            
+            // Update winner dropdown
+            updateWinnerDropdown(matchId);
+            
+            // Check for rematch warnings
+            checkExistingFightRematch(matchId, 'both');
+            
+            successCount++;
+        }
+    });
+    
+    // Save draft
+    saveCurrentCardDraft();
+    
+    const message = failCount > 0 
+        ? `🎲 Randomized ${successCount} match${successCount !== 1 ? 'es' : ''}!\n\n⚠️ Could not randomize ${failCount} match${failCount !== 1 ? 'es' : ''} - not enough available fighters.`
+        : `🎲 All ${successCount} match${successCount !== 1 ? 'es' : ''} randomized! Gender sliders updated.`;
+    
+    customAlert(message, 'Randomize Show');
+};
+
 window.randomizeMatchup = function(matchId) {
+    if (isShowCompleted(activeShowId)) {
+        return customAlert('This show has been finalized and can no longer be randomized.', 'Randomize Disabled');
+    }
     const row = document.getElementById(matchId);
     const slot1 = document.getElementById(`${matchId}-slot1`);
     const slot2 = document.getElementById(`${matchId}-slot2`);
@@ -1698,16 +1840,12 @@ window.randomizeMatchup = function(matchId) {
     if (!divisionalFighters.length) {
         return customAlert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`, 'Randomize Matchup');
     }
-    
-    // Pick 2 random fighters from the division
-    const idx1 = Math.floor(Math.random() * divisionalFighters.length);
-    let idx2 = Math.floor(Math.random() * divisionalFighters.length);
-    while (idx2 === idx1 && divisionalFighters.length > 1) {
-        idx2 = Math.floor(Math.random() * divisionalFighters.length);
+
+    const chosenPair = pickTwoDistinctFighters(divisionalFighters);
+    if (!chosenPair) {
+        return customAlert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`, 'Randomize Matchup');
     }
-    
-    const fighter1 = divisionalFighters[idx1];
-    const fighter2 = divisionalFighters[idx2];
+    const [fighter1, fighter2] = chosenPair;
     
     // Populate slot 1
     const input1 = slot1.querySelector('.fighter-search-input');
@@ -2524,6 +2662,7 @@ window.resetActiveShowDraft = function() {
         const selector = document.getElementById('activeShowSelector');
         const targetShowId = selector && selector.value ? selector.value : activeShowId;
         if (targetShowId) {
+            setShowCompleted(targetShowId, false);
             localStorage.removeItem("wwe_matches_" + targetShowId);
             localStorage.removeItem("wwe_draft_" + targetShowId);
         }
@@ -2537,7 +2676,24 @@ window.resetActiveShowDraft = function() {
             av.innerHTML = '👤';
             av.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; cursor:pointer; overflow:hidden;";
         });
-        document.querySelectorAll('.match-row').forEach(row => clearMatchWinnerBadges(row.id));
+        document.querySelectorAll('.match-row').forEach(row => {
+            const id = row.id;
+            clearMatchWinnerBadges(id);
+            updateWinnerDropdown(id);
+            setMatchRowSelectedGender(id, 'male');
+
+            const titleCheck = document.getElementById(`${id}-title-check`);
+            if (titleCheck) {
+                titleCheck.checked = false;
+                titleCheck.disabled = true;
+            }
+            const titleInput = document.getElementById(`${id}-title-name-input`);
+            if (titleInput) {
+                titleInput.style.display = 'none';
+                titleInput.value = '';
+            }
+        });
+        document.querySelectorAll('.search-results-floating-panel').forEach(panel => panel.style.display = 'none');
 
         window.skipDraftSaveOnUnload = true;
         customAlert("Active card layout has been completely reset back to its clean draft state!", 'Draft Reset', function() {
