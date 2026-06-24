@@ -269,13 +269,128 @@ function applyCompletedShowVisuals() {
     document.querySelectorAll('.match-row').forEach(row => {
         row.style.opacity = '0.55';
         row.style.filter = 'grayscale(0.2)';
-        row.style.pointerEvents = 'none';
         row.style.userSelect = 'none';
     });
     document.querySelectorAll('.match-row input, .match-row select, .match-row button').forEach(el => {
-        el.disabled = true;
+        if (el.classList && el.classList.contains('announce-btn')) {
+            el.disabled = false;
+            el.style.pointerEvents = 'auto';
+        } else {
+            el.disabled = true;
+        }
     });
 }
+
+// --- Announcer / SpeechSynthesis Helpers ---
+window.announcerEnabled = localStorage.getItem('wwe_announcer_enabled') === '1';
+window.preferredAnnouncerGender = 'female'; // currently only female option requested
+
+function saveAnnouncerSetting(enabled) {
+    window.announcerEnabled = !!enabled;
+    localStorage.setItem('wwe_announcer_enabled', window.announcerEnabled ? '1' : '0');
+}
+
+function getPreferredVoice() {
+    const voices = speechSynthesis.getVoices() || [];
+    const saved = localStorage.getItem('wwe_announcer_voice') || '';
+    if (saved) {
+        const found = voices.find(v => v.name === saved || v.name.indexOf(saved) !== -1);
+        if (found) return found;
+    }
+    // prefer voices that look female or are English
+    const femaleMatch = voices.find(v => /female|zira|samantha|victoria|alloy|amy|kate|karen/i.test(v.name));
+    if (femaleMatch) return femaleMatch;
+    const enVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+    return femaleMatch || enVoice || voices[0] || null;
+}
+
+function speakText(text, onEnd) {
+    if (!('speechSynthesis' in window)) { if (onEnd) onEnd(); return; }
+    const utter = new SpeechSynthesisUtterance(text);
+    const voice = getPreferredVoice();
+    if (voice) utter.voice = voice;
+    utter.rate = 1.0;
+    utter.onend = function() { if (onEnd) onEnd(); };
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utter);
+}
+
+function composeFighterAnnouncement(f) {
+    if (!f) return '';
+    const wins = Number(f.wins || 0);
+    const losses = Number(f.losses || 0);
+    const ko = Number(f.win_ko || 0);
+    const pin = Number(f.win_pinfall || 0);
+    const sub = Number(f.win_submission || 0);
+    const titles = Number(f.title_fights || 0);
+    let parts = [];
+    parts.push(`${f.name}.`);
+    parts.push(`Professional record: ${wins} wins, ${losses} losses.`);
+    const finishes = [];
+    if (ko) finishes.push(`${ko} by knockout`);
+    if (pin) finishes.push(`${pin} by pinfall`);
+    if (sub) finishes.push(`${sub} by submission`);
+    if (finishes.length) parts.push(`Notable finishes: ${finishes.join(', ')}.`);
+    parts.push(`Title fights: ${titles}.`);
+    return parts.join(' ');
+}
+
+function maybeAnnounceSlot(matchId, force) {
+    if (!force && !window.announcerEnabled) return;
+    const slot1Input = document.getElementById(`${matchId}-slot1`)?.querySelector('.fighter-search-input');
+    const slot2Input = document.getElementById(`${matchId}-slot2`)?.querySelector('.fighter-search-input');
+    const id1 = slot1Input?.getAttribute('data-fighter-id') || '';
+    const id2 = slot2Input?.getAttribute('data-fighter-id') || '';
+    const f1 = fighters.find(x => x.id === id1) || (slot1Input && slot1Input.value ? { name: slot1Input.value, wins:0, losses:0, win_ko:0, win_pinfall:0, win_submission:0, title_fights:0 } : null);
+    const f2 = fighters.find(x => x.id === id2) || (slot2Input && slot2Input.value ? { name: slot2Input.value, wins:0, losses:0, win_ko:0, win_pinfall:0, win_submission:0, title_fights:0 } : null);
+
+    if (f1 && f2) {
+        // speak sequentially
+        speakText(composeFighterAnnouncement(f1), function() {
+            setTimeout(() => speakText(composeFighterAnnouncement(f2)), 250);
+        });
+    } else if (f1) {
+        speakText(composeFighterAnnouncement(f1));
+    } else if (f2) {
+        speakText(composeFighterAnnouncement(f2));
+    }
+}
+
+function populateVoiceList() {
+    if (!('speechSynthesis' in window)) return;
+    const select = document.getElementById('announcer-voice-select');
+    if (!select) return;
+    const voices = speechSynthesis.getVoices() || [];
+    // Clear existing
+    select.innerHTML = '';
+    // add placeholder
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.text = 'Default (auto)';
+    select.appendChild(placeholder);
+
+    voices.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.name;
+        opt.text = `${v.name} (${v.lang})`;
+        select.appendChild(opt);
+    });
+
+    const saved = localStorage.getItem('wwe_announcer_voice') || '';
+    if (saved) select.value = saved;
+    else {
+        // pick a female voice if available
+        const female = voices.find(v => /female|zira|samantha|victoria|alloy|amy|kate|karen/i.test(v.name));
+        if (female) select.value = female.name;
+    }
+
+    select.onchange = function() {
+        const v = select.value || '';
+        if (v) localStorage.setItem('wwe_announcer_voice', v);
+        else localStorage.removeItem('wwe_announcer_voice');
+    };
+}
+
 
 document.addEventListener('DOMContentLoaded', () => {
     initBettingSystem();
@@ -292,6 +407,13 @@ document.addEventListener('DOMContentLoaded', () => {
     insertCompletedShowNotice();
     applyCompletedShowVisuals();
     updateBettingMoneyDisplay();
+    // Populate available voices for announcer (may arrive asynchronously)
+    try {
+        populateVoiceList();
+        if ('onvoiceschanged' in speechSynthesis) {
+            speechSynthesis.onvoiceschanged = populateVoiceList;
+        }
+    } catch (e) {}
         // LIVE WATCHER: Auto-clears title field blocks if a fighter name is ever deleted
     document.addEventListener('input', (e) => {
         if (e.target.classList.contains('fighter-search-input')) {
@@ -345,6 +467,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('change', (e) => {
         if (e.target.closest && e.target.closest('.match-row')) {
             saveCurrentCardDraft();
+            if (e.target.classList && e.target.classList.contains('fighter-search-input')) {
+                const matchRow = e.target.closest('.match-row');
+                if (matchRow) maybeAnnounceSlot(matchRow.id);
+            }
         }
     });
 
@@ -383,6 +509,13 @@ function buildShowSchedulerHeader() {
         </div>
         <div style="display:flex; align-items:center; gap:8px; flex:1 1 280px; min-width:220px; flex-wrap:wrap; justify-content:flex-end;">
             <input type="text" id="eventNameInput" placeholder="Name" value="${activeShowId ? (futureShows.find(s => s.id === activeShowId)?.name || '') : ''}" style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:600; outline:none; min-width:140px; max-width:200px; width:100%; background:white; color:#1e293b;">
+            <label style="display:inline-flex; align-items:center; gap:8px; padding:6px 8px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-weight:700; color:#475569; white-space:nowrap;">
+                <input id="announcer-toggle" type="checkbox" onchange="saveAnnouncerSetting(this.checked)" ${window.announcerEnabled ? 'checked' : ''}>
+                <span style="font-size:0.8rem;">Announcer</span>
+            </label>
+            <select id="announcer-voice-select" style="padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.75rem; background:white; color:#1e293b; min-width:180px; max-width:260px;">
+                <option>Loading voices…</option>
+            </select>
             ${isShowCompleted(activeShowId) ? `<span style="display:inline-flex; align-items:center; gap:6px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px; font-size:0.75rem; font-weight:700; color:#475569; white-space:nowrap;">✅ Completed<span style="font-size:0.7rem; color:#64748b;">${futureShows.find(s => s.id === activeShowId)?.completedAt ? new Date(futureShows.find(s => s.id === activeShowId).completedAt).toLocaleDateString() : ''}</span></span>` : ''}
             <button onclick="createNewFutureShow()" style="background:#0369a1; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">+ Add Show</button>
             ${isShowCompleted(activeShowId) ? `<button onclick="restartCurrentShow()" style="background:#f97316; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">Restart Card</button>` : ''}
@@ -535,7 +668,8 @@ function renderCardRows(box, num, tierId, isMain) {
                         <option value="win_ko">KO/TKO</option>
                         <option value="win_submission">SUBMISSION</option>
                     </select>
-                    <button id="${uId}-log-btn" onclick="logMatchResult('${uId}')" style="background:#ef4444; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Log Result</button>
+                        <button id="${uId}-log-btn" onclick="logMatchResult('${uId}')" style="background:#ef4444; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Log Result</button>
+                        <button id="${uId}-announce-btn" class="announce-btn" onclick="maybeAnnounceSlot('${uId}', true)" style="background:#0b74ff; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Announce</button>
                 </div>
                                 <div style="width:30%; display:flex; justify-content:flex-end; gap:8px; font-size:0.7rem; font-weight:bold; color:#475569; align-items:center;">
                     <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="${uId}-title-check" onchange="toggleTitleFight('${uId}', this)"> 🏆 TITLE / BELT MATCH</label>
@@ -1828,12 +1962,14 @@ function saveCurrentCardDraft() {
         const id = row.id;
         const s1 = document.getElementById(`${id}-slot1`).querySelector('.fighter-search-input');
         const s2 = document.getElementById(`${id}-slot2`).querySelector('.fighter-search-input');
+        const gender = document.getElementById(`${id}-slot1`)?.getAttribute('data-gender') || 'male';
         
         draftData[id] = {
             f1Name: s1 ? s1.value : '',
             f1Id: s1 ? s1.getAttribute('data-fighter-id') : '',
             f2Name: s2 ? s2.value : '',
-            f2Id: s2 ? s2.getAttribute('data-fighter-id') : ''
+            f2Id: s2 ? s2.getAttribute('data-fighter-id') : '',
+            gender: gender
         };
     });
     localStorage.setItem(getCurrentDraftStorageKey(), JSON.stringify(draftData));
@@ -1887,6 +2023,9 @@ function restoreCurrentCardDraft() {
                 e.stopPropagation(); 
                 uploadFighterPhotoFromCard(d.f2Id); 
             };
+        }
+        if (d.gender) {
+            setMatchRowSelectedGender(id, d.gender);
         }
         if (d.f1Name || d.f2Name) {
             const winSelect = document.getElementById(`${id}-winner-select`);
