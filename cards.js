@@ -26,6 +26,141 @@ function loadFightersFromStorage() {
     }
 }
 
+function buildWwePopupModal() {
+    if (document.getElementById('wwePopupModal')) return;
+    const modal = document.createElement('div');
+    modal.id = 'wwePopupModal';
+    modal.style.cssText = 'position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(15,23,42,0.65); backdrop-filter:blur(2px); z-index:99999; padding:20px;';
+    modal.innerHTML = `
+        <div id="wwePopupDialog" style="width:min(520px,100%); background:#ffffff; border-radius:20px; overflow:hidden; box-shadow:0 24px 70px rgba(15,23,42,0.22); font-family:Inter,system-ui,sans-serif;">
+            <div style="padding:24px 24px 18px 24px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                    <div>
+                        <div id="wwePopupTitle" style="font-size:1.05rem; font-weight:800; color:#0f172a; margin-bottom:10px;">Notice</div>
+                        <div id="wwePopupMessage" style="color:#475569; line-height:1.75; white-space:pre-wrap; font-size:0.95rem;"></div>
+                    </div>
+                    <button id="wwePopupClose" style="background:transparent; border:none; color:#64748b; font-size:1.4rem; line-height:1; cursor:pointer;">×</button>
+                </div>
+                <div id="wwePopupInputWrap" style="margin-top:18px; display:none;">
+                    <input id="wwePopupInput" type="text" style="width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; font-size:0.95rem; color:#0f172a; background:#f8fafc; outline:none;" />
+                </div>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px; padding:18px 20px 20px; background:#f8fafc; border-top:1px solid #e2e8f0;">
+                <button id="wwePopupCancel" style="display:none; border:1px solid #cbd5e1; background:#ffffff; color:#475569; font-weight:700; padding:10px 16px; border-radius:14px; cursor:pointer;">Cancel</button>
+                <button id="wwePopupConfirm" style="border:none; background:#0b74ff; color:white; font-weight:700; padding:10px 16px; border-radius:14px; cursor:pointer;">OK</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const closeBtn = document.getElementById('wwePopupClose');
+    const cancelBtn = document.getElementById('wwePopupCancel');
+    const confirmBtn = document.getElementById('wwePopupConfirm');
+
+    closeBtn.onclick = () => {
+        hideWwePopupModal();
+        if (window._wwePopupCancel) {
+            window._wwePopupCancel(false);
+        } else if (window._wwePopupConfirm) {
+            const input = document.getElementById('wwePopupInput');
+            window._wwePopupConfirm(input ? input.value : true);
+        }
+    };
+    cancelBtn.onclick = () => {
+        hideWwePopupModal();
+        if (window._wwePopupCancel) window._wwePopupCancel(false);
+    };
+    confirmBtn.onclick = () => {
+        hideWwePopupModal();
+        const input = document.getElementById('wwePopupInput');
+        if (window._wwePopupConfirm) window._wwePopupConfirm(input ? input.value : true);
+    };
+    modal.onclick = (event) => {
+        if (event.target === modal) {
+            hideWwePopupModal();
+            if (window._wwePopupCancel) {
+                window._wwePopupCancel(false);
+            } else if (window._wwePopupConfirm) {
+                const input = document.getElementById('wwePopupInput');
+                window._wwePopupConfirm(input ? input.value : true);
+            }
+        }
+    };
+}
+
+function hideWwePopupModal() {
+    const modal = document.getElementById('wwePopupModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+    delete window._wwePopupConfirm;
+    delete window._wwePopupCancel;
+}
+
+function showWwePopupModal(options) {
+    buildWwePopupModal();
+    const modal = document.getElementById('wwePopupModal');
+    const titleEl = document.getElementById('wwePopupTitle');
+    const messageEl = document.getElementById('wwePopupMessage');
+    const cancelBtn = document.getElementById('wwePopupCancel');
+    const confirmBtn = document.getElementById('wwePopupConfirm');
+    const inputWrap = document.getElementById('wwePopupInputWrap');
+    const inputEl = document.getElementById('wwePopupInput');
+
+    titleEl.textContent = options.title || 'Notice';
+    messageEl.textContent = options.message || '';
+    confirmBtn.textContent = options.confirmText || 'OK';
+    cancelBtn.textContent = options.cancelText || 'Cancel';
+    cancelBtn.style.display = options.showCancel ? 'inline-flex' : 'none';
+    inputWrap.style.display = options.showInput ? 'block' : 'none';
+
+    if (options.showInput) {
+        inputEl.value = options.inputValue || '';
+        setTimeout(() => inputEl.focus(), 50);
+    }
+
+    window._wwePopupConfirm = options.onConfirm || function() {};
+    window._wwePopupCancel = options.onCancel || function() {};
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function customAlert(message, title = 'Notice', callback = function() {}) {
+    showWwePopupModal({
+        title,
+        message,
+        showCancel: false,
+        confirmText: 'OK',
+        onConfirm: function() { callback(); }
+    });
+}
+
+function customConfirm(message, callback, title = 'Confirm') {
+    showWwePopupModal({
+        title,
+        message,
+        showCancel: true,
+        confirmText: 'Yes',
+        cancelText: 'Cancel',
+        onConfirm: function() { callback(true); },
+        onCancel: function() { callback(false); }
+    });
+}
+
+function customPrompt(message, defaultValue, callback, title = 'Input') {
+    showWwePopupModal({
+        title,
+        message,
+        showCancel: true,
+        showInput: true,
+        inputValue: defaultValue || '',
+        confirmText: 'Save',
+        cancelText: 'Cancel',
+        onConfirm: function(value) { callback(value); },
+        onCancel: function() { callback(null); }
+    });
+}
+
 // === BETTING SYSTEM ===
 function initBettingSystem() {
     const stored = localStorage.getItem('wwe_betting_money');
@@ -57,7 +192,7 @@ function updateBettingMoneyDisplay() {
 
 window.resetBettingMoney = function() {
     setBettingMoney(1000);
-    alert('💵 Betting balance reset to $1,000.');
+    customAlert('💵 Betting balance reset to $1,000.', 'Betting Reset');
 }
 
 // Store active bets for each match
@@ -143,27 +278,30 @@ window.clearBet = function(matchId) {
 };
 
 window.placeBet = function(matchId) {
-    if (!window.bettingEnabled) return alert('Betting is currently disabled.');
+    if (!window.bettingEnabled) {
+        customAlert('Betting is currently disabled.', 'Betting Disabled');
+        return;
+    }
     const bet = activeBets[matchId] || {};
     
     if (!bet.selectedFighter) {
-        return alert('Select which fighter you want to bet on first!');
+        return customAlert('Select which fighter you want to bet on first!', 'Place Bet');
     }
     
     if (!bet.betAmount || bet.betAmount <= 0) {
-        return alert('Select a bet amount!');
+        return customAlert('Select a bet amount!', 'Place Bet');
     }
     
     const slot1Input = document.getElementById(`${matchId}-slot1`)?.querySelector('.fighter-search-input');
     const slot2Input = document.getElementById(`${matchId}-slot2`)?.querySelector('.fighter-search-input');
     
     if (!slot1Input?.value || !slot2Input?.value) {
-        return alert('Both fighters must be selected before placing a bet!');
+        return customAlert('Both fighters must be selected before placing a bet!', 'Place Bet');
     }
     
     const currentMoney = getBettingMoney();
     if (bet.betAmount > currentMoney) {
-        return alert('Insufficient funds!');
+        return customAlert('Insufficient funds!', 'Place Bet');
     }
     
     // Deduct bet from money
@@ -182,7 +320,7 @@ window.placeBet = function(matchId) {
         timestamp: Date.now()
     };
     
-    alert(`✅ Bet placed! $${bet.betAmount.toLocaleString()} on ${betOnFighterName} to win!\n\nYou could win $${(bet.betAmount * 2).toLocaleString()}`);
+    customAlert(`✅ Bet placed! $${bet.betAmount.toLocaleString()} on ${betOnFighterName} to win!\n\nYou could win $${(bet.betAmount * 2).toLocaleString()}`, 'Bet Placed');
     
     // Reset bet UI
     activeBets[matchId] = {};
@@ -277,11 +415,13 @@ function setShowCompleted(showId, value) {
 
 window.restartCurrentShow = function() {
     if (!activeShowId) return;
-    if (!confirm('Restart this completed fight card? This will clear the current archived layout and allow you to rebook the show from scratch.')) return;
-    setShowCompleted(activeShowId, false);
-    localStorage.removeItem('wwe_matches_' + activeShowId);
-    localStorage.removeItem('wwe_draft_' + activeShowId);
-    location.reload();
+    customConfirm('Restart this completed fight card? This will clear the current archived layout and allow you to rebook the show from scratch.', function(result) {
+        if (!result) return;
+        setShowCompleted(activeShowId, false);
+        localStorage.removeItem('wwe_matches_' + activeShowId);
+        localStorage.removeItem('wwe_draft_' + activeShowId);
+        location.reload();
+    }, 'Restart Card');
 };
 
 function applyCompletedShowVisuals() {
@@ -431,18 +571,20 @@ function applyAnnouncerState() {
 }
 
 function applyBettingState() {
+    const showCompleted = isShowCompleted(activeShowId);
     document.querySelectorAll('.betting-panel').forEach(panel => {
-        panel.style.display = window.bettingEnabled ? 'flex' : 'none';
+        panel.style.display = (!showCompleted && window.bettingEnabled) ? 'flex' : 'none';
     });
     const betControls = document.querySelectorAll('[id$="-bet-f1"], [id$="-bet-f2"], [id$="-bet-amount"], [id$="-potential-win"], button[onclick*="placeBet"], button[onclick*="clearBet"], button[onclick*="setBetAmount"], button[onclick*="selectBetFighter"]');
     betControls.forEach(el => {
-        el.disabled = !window.bettingEnabled;
+        const enabled = window.bettingEnabled && !showCompleted;
+        el.disabled = !enabled;
         if (el.style) {
-            el.style.opacity = window.bettingEnabled ? '1' : '0.35';
-            el.style.cursor = window.bettingEnabled ? 'pointer' : 'not-allowed';
+            el.style.opacity = enabled ? '1' : '0.35';
+            el.style.cursor = enabled ? 'pointer' : 'not-allowed';
         }
     });
-    if (!window.bettingEnabled) {
+    if (!window.bettingEnabled || showCompleted) {
         activeBets = {};
         if (window.placedBets) window.placedBets = {};
     }
@@ -615,7 +757,7 @@ window.switchActiveShowCard = function(showId) {
 window.createNewFutureShow = function() {
     const input = document.getElementById('eventNameInput');
     const name = input ? input.value.trim() : '';
-    if (!name) return alert('Type a name to book an upcoming event card!');
+    if (!name) return customAlert('Type a name to book an upcoming event card!', 'Create Event');
 
     const newId = 'show-' + Date.now();
     futureShows.push({ id: newId, name: name });
@@ -623,29 +765,28 @@ window.createNewFutureShow = function() {
     localStorage.setItem('wwe_active_show_id', newId);
     input.value = '';
     
-    alert(`Success! "${name}" added to your future show calendar.`);
+    customAlert(`Success! "${name}" added to your future show calendar.`, 'Event Created');
     location.reload();
 };
 
 window.editCurrentShowName = function() {
     if (!activeShowId || !futureShows.find(s => s.id === activeShowId)) {
-        alert('No show selected to edit.');
+        customAlert('No show selected to edit.', 'Edit Show');
         return;
     }
     
     const currentShow = futureShows.find(s => s.id === activeShowId);
-    const newName = prompt(`Edit show name:\n\nCurrent: ${currentShow.name}`, currentShow.name);
-    
-    if (newName === null) return;
-    if (!newName.trim()) {
-        alert('Show name cannot be empty.');
-        return;
-    }
-    
-    currentShow.name = newName.trim();
-    localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
-    alert(`Show renamed to "${currentShow.name}".`);
-    location.reload();
+    customPrompt(`Edit show name:\n\nCurrent: ${currentShow.name}`, currentShow.name, function(newName) {
+        if (newName === null) return;
+        if (!newName.trim()) {
+            customAlert('Show name cannot be empty.', 'Edit Show');
+            return;
+        }
+        currentShow.name = newName.trim();
+        localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+        customAlert(`Show renamed to "${currentShow.name}".`, 'Show Renamed');
+        location.reload();
+    }, 'Edit Show');
 };
 
 function renderCardRows(box, num, tierId, isMain) {
@@ -676,7 +817,7 @@ function renderCardRows(box, num, tierId, isMain) {
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
                         <div class="avatar-frame" style="position:relative; width:36px; height:36px;">
                             <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
-                            <div class="win-badge" style="display:none; position:absolute; right:-4px; bottom:-4px; width:18px; height:18px; border-radius:50%; background:#16a34a; color:white; border:2px solid white; display:flex; align-items:center; justify-content:center; font-size:0.75rem; box-shadow:0 0 0 2px rgba(22,163,74,0.15);">✓</div>
+                            <div class="win-badge" style="display:none; position:absolute; right:-2px; bottom:-2px; width:14px; height:14px; border-radius:50%; background:#16a34a; color:white; border:1px solid white; display:flex; align-items:center; justify-content:center; font-size:0.65rem; box-shadow:none;">✓</div>
                         </div>
                         <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
                     </div>
@@ -698,7 +839,7 @@ function renderCardRows(box, num, tierId, isMain) {
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
                         <div class="avatar-frame" style="position:relative; width:36px; height:36px;">
                             <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
-                            <div class="win-badge" style="display:none; position:absolute; right:-4px; bottom:-4px; width:18px; height:18px; border-radius:50%; background:#16a34a; color:white; border:2px solid white; display:flex; align-items:center; justify-content:center; font-size:0.75rem; box-shadow:0 0 0 2px rgba(22,163,74,0.15);">✓</div>
+                            <div class="win-badge" style="display:none; position:absolute; right:-2px; bottom:-2px; width:14px; height:14px; border-radius:50%; background:#16a34a; color:white; border:1px solid white; display:flex; align-items:center; justify-content:center; font-size:0.65rem; box-shadow:none;">✓</div>
                         </div>
                         <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
                     </div>
@@ -1157,14 +1298,14 @@ window.toggleTitleFight = function(matchRowId, checkbox) {
     }
 
     if (!fighter1 || !fighter2) {
-        alert('Select both competitors before enabling a Title fight.');
+        customAlert('Select both competitors before enabling a Title fight.', 'Title Fight');
         checkbox.checked = false;
         if (titleInput) { titleInput.style.display = 'none'; titleInput.value = ''; }
         return;
     }
 
     if ((fighter1.wins || 0) < 5 || (fighter2.wins || 0) < 5) {
-        alert('Title fights require both competitors to have 5 wins or more. Please book a qualifying matchup.');
+        customAlert('Title fights require both competitors to have 5 wins or more. Please book a qualifying matchup.', 'Title Fight');
         checkbox.checked = false;
         if (titleInput) { titleInput.style.display = 'none'; titleInput.value = ''; }
         return;
@@ -1229,17 +1370,17 @@ window.uploadFighterPhotoFromCard = function(fighterId) {
     input.onchange = function(e) {
         const file = e.target.files[0];
         if (!file) return;
-        
+
         const reader = new FileReader();
         reader.onload = function(event) {
-            openPhotoCropDialogCard(event.target.result, fighterId);
+            openPhotoCropDialog(event.target.result, fighterId, false);
         };
         reader.readAsDataURL(file);
     };
     input.click();
 };
 
-window.openPhotoCropDialogCard = function(imageSrc, fighterId) {
+window.openPhotoCropDialog = function(imageSrc, fighterId, isRoster) {
     if (document.getElementById('photoCropDialog')) {
         document.getElementById('photoCropDialog').remove();
     }
@@ -1252,20 +1393,34 @@ window.openPhotoCropDialogCard = function(imageSrc, fighterId) {
         <div style="background:white; border-radius:12px; padding:20px; max-width:500px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
             <h3 style="margin:0 0 16px 0; color:#0f172a; font-weight:800;">Crop Fighter Photo</h3>
             <div style="position:relative; width:100%; height:300px; background:#f1f5f9; border-radius:8px; overflow:hidden; margin-bottom:16px; display:flex; align-items:center; justify-content:center;">
-                <img id="cropImagePreview" src="${imageSrc}" style="max-width:150%; max-height:150%; cursor:grab; user-select:none;" draggable="false">
+                <img id="cropImagePreview" src="${imageSrc}" style="max-width:100%; max-height:100%; cursor:grab; user-select:none; object-fit:contain;" draggable="false">
+                <div id="cropFrame" style="position:absolute; width:200px; height:200px; border:2px dashed rgba(0,0,0,0.25); box-shadow:0 6px 16px rgba(0,0,0,0.15); border-radius:8px; pointer-events:none;"></div>
             </div>
-            <div style="position:relative; width:100%; height:150px; border:2px solid #0284c7; border-radius:50%; overflow:hidden; margin-bottom:16px; display:flex; align-items:center; justify-content:center; background:#f8fafc;">
-                <img src="${imageSrc}" id="cropCirclePreview" style="width:100%; height:100%; object-fit:cover;">
+            <div style="display:flex; gap:12px; align-items:center; margin-bottom:16px;">
+                <div style="position:relative; width:150px; height:150px; border:2px solid #0284c7; border-radius:50%; overflow:hidden; display:flex; align-items:center; justify-content:center; background:#f8fafc;">
+                    <canvas id="cropCircleCanvas" width="150" height="150" style="width:150px; height:150px; display:block; border-radius:50%;"></canvas>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    <div style="font-size:0.85rem; font-weight:700; color:#0f172a;">Avatar Preview</div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <div style="width:44px; height:44px; border-radius:50%; overflow:hidden; background:#fff; display:flex; align-items:center; justify-content:center;" id="cropSmallContainer">
+                            <canvas id="cropSmallCanvas" width="44" height="44" style="width:44px; height:44px; border-radius:50%; display:block;"></canvas>
+                        </div>
+                        <div style="width:72px; height:72px; border-radius:50%; overflow:hidden; background:#fff; display:flex; align-items:center; justify-content:center;" id="cropMediumContainer">
+                            <canvas id="cropMediumCanvas" width="72" height="72" style="width:72px; height:72px; border-radius:50%; display:block;"></canvas>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div style="display:flex; gap:8px; font-size:0.75rem; color:#64748b; margin-bottom:16px; align-items:center;">
                 <span>📏 Position:</span>
-                <input type="range" id="cropOffsetX" min="-100" max="100" value="0" style="flex:1;">
-                <input type="range" id="cropOffsetY" min="-100" max="100" value="0" style="flex:1;">
-                <input type="range" id="cropZoom" min="50" max="200" value="100" style="flex:1;">
+                <input type="range" id="cropOffsetX" min="-800" max="800" value="0" style="flex:1;">
+                <input type="range" id="cropOffsetY" min="-800" max="800" value="0" style="flex:1;">
+                <input type="range" id="cropZoom" min="10" max="400" value="100" style="flex:1;">
             </div>
             <div style="display:flex; gap:8px;">
-                <button onclick="saveCroppedPhotoCard('${fighterId}')" style="flex:1; background:#10b981; border:none; color:white; font-weight:bold; padding:10px; border-radius:6px; cursor:pointer;">✓ Save Photo</button>
-                <button onclick="deleteFighterPhotoCard('${fighterId}')" style="flex:1; background:#f97316; border:none; color:white; font-weight:bold; padding:10px; border-radius:6px; cursor:pointer;">🗑️ Delete Photo</button>
+                <button onclick="saveCroppedPhoto('${fighterId}', ${isRoster ? 'true' : 'false'})" style="flex:1; background:#10b981; border:none; color:white; font-weight:bold; padding:10px; border-radius:6px; cursor:pointer;">✓ Save Photo</button>
+                <button onclick="deleteFighterPhoto('${fighterId}', ${isRoster ? 'true' : 'false'})" style="flex:1; background:#f97316; border:none; color:white; font-weight:bold; padding:10px; border-radius:6px; cursor:pointer;">🗑️ Delete Photo</button>
                 <button onclick="document.getElementById('photoCropDialog').remove()" style="flex:1; background:#ef4444; border:none; color:white; font-weight:bold; padding:10px; border-radius:6px; cursor:pointer;">✕ Cancel</button>
             </div>
         </div>
@@ -1273,19 +1428,56 @@ window.openPhotoCropDialogCard = function(imageSrc, fighterId) {
     document.body.appendChild(dialog);
 
     const previewImg = document.getElementById('cropImagePreview');
-    const circlePreview = document.getElementById('cropCirclePreview');
+    const circleCanvas = document.getElementById('cropCircleCanvas');
+    const smallCanvas = document.getElementById('cropSmallCanvas');
+    const mediumCanvas = document.getElementById('cropMediumCanvas');
     const offsetXSlider = document.getElementById('cropOffsetX');
     const offsetYSlider = document.getElementById('cropOffsetY');
     const zoomSlider = document.getElementById('cropZoom');
     let isGrabbing = false;
     let grabStartX = 0, grabStartY = 0;
 
+    const srcImage = new Image();
+    srcImage.crossOrigin = 'anonymous';
+    srcImage.src = imageSrc;
+    window._rosterCropSrcImage = srcImage;
+
+    const drawPreviewToCanvas = (canvas, size) => {
+        if (!srcImage || !srcImage.naturalWidth) return;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2, 0, Math.PI*2);
+        ctx.clip();
+
+        const offsetX = parseInt(offsetXSlider.value, 10) || 0;
+        const offsetY = parseInt(offsetYSlider.value, 10) || 0;
+        const zoom = parseInt(zoomSlider.value, 10) || 100;
+
+        const scale = zoom / 100;
+        const scaledWidth = srcImage.naturalWidth * scale;
+        const scaledHeight = srcImage.naturalHeight * scale;
+        const factor = size / 200;
+        const dstWidth = scaledWidth * factor;
+        const dstHeight = scaledHeight * factor;
+        const x = size/2 - dstWidth/2 + offsetX * factor;
+        const y = size/2 - dstHeight/2 + offsetY * factor;
+        ctx.drawImage(srcImage, x, y, dstWidth, dstHeight);
+        ctx.restore();
+    };
+
     const updatePreview = () => {
-        const offsetX = parseInt(offsetXSlider.value);
-        const offsetY = parseInt(offsetYSlider.value);
-        const zoom = parseInt(zoomSlider.value);
-        circlePreview.style.objectPosition = `calc(50% + ${offsetX}px) calc(50% + ${offsetY}px)`;
-        circlePreview.style.transform = `scale(${zoom / 100})`;
+        const frame = document.getElementById('cropFrame');
+        if (frame) {
+            frame.style.left = `calc(50% - ${frame.offsetWidth/2}px)`;
+            frame.style.top = `calc(50% - ${frame.offsetHeight/2}px)`;
+        }
+        if (srcImage && srcImage.complete) {
+            drawPreviewToCanvas(circleCanvas, 150);
+            drawPreviewToCanvas(smallCanvas, 44);
+            drawPreviewToCanvas(mediumCanvas, 72);
+        }
     };
 
     previewImg.addEventListener('mousedown', (e) => {
@@ -1299,8 +1491,10 @@ window.openPhotoCropDialogCard = function(imageSrc, fighterId) {
         if (!isGrabbing) return;
         const deltaX = e.clientX - grabStartX;
         const deltaY = e.clientY - grabStartY;
-        offsetXSlider.value = Math.max(-100, Math.min(100, parseInt(offsetXSlider.value) + deltaX / 2));
-        offsetYSlider.value = Math.max(-100, Math.min(100, parseInt(offsetYSlider.value) + deltaY / 2));
+        const newX = Math.max(parseInt(offsetXSlider.min, 10), Math.min(parseInt(offsetXSlider.max, 10), parseInt(offsetXSlider.value || 0, 10) + deltaX));
+        const newY = Math.max(parseInt(offsetYSlider.min, 10), Math.min(parseInt(offsetYSlider.max, 10), parseInt(offsetYSlider.value || 0, 10) + deltaY));
+        offsetXSlider.value = newX;
+        offsetYSlider.value = newY;
         grabStartX = e.clientX;
         grabStartY = e.clientY;
         updatePreview();
@@ -1315,18 +1509,17 @@ window.openPhotoCropDialogCard = function(imageSrc, fighterId) {
     offsetYSlider.addEventListener('input', updatePreview);
     zoomSlider.addEventListener('input', updatePreview);
 
-    updatePreview();
+    srcImage.onload = updatePreview;
 };
 
-window.saveCroppedPhotoCard = function(fighterId) {
-    const circlePreview = document.getElementById('cropCirclePreview');
+window.saveCroppedPhoto = function(fighterId, isRoster) {
     const offsetXSlider = document.getElementById('cropOffsetX');
     const offsetYSlider = document.getElementById('cropOffsetY');
     const zoomSlider = document.getElementById('cropZoom');
 
-    const offsetX = parseInt(offsetXSlider.value);
-    const offsetY = parseInt(offsetYSlider.value);
-    const zoom = parseInt(zoomSlider.value);
+    const offsetX = parseInt(offsetXSlider.value, 10) || 0;
+    const offsetY = parseInt(offsetYSlider.value, 10) || 0;
+    const zoom = parseInt(zoomSlider.value, 10) || 100;
 
     const canvas = document.createElement('canvas');
     canvas.width = 200;
@@ -1338,19 +1531,36 @@ window.saveCroppedPhotoCard = function(fighterId) {
     ctx.arc(100, 100, 100, 0, Math.PI * 2);
     ctx.clip();
 
-    const img = new Image();
-    img.onload = function() {
+    const srcImage = window._rosterCropSrcImage || new Image();
+    const performSave = () => {
         const scale = zoom / 100;
-        const x = 100 - (img.width * scale) / 2 + (offsetX / 100) * 50;
-        const y = 100 - (img.height * scale) / 2 + (offsetY / 100) * 50;
-        ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+        const scaledWidth = srcImage.naturalWidth * scale;
+        const scaledHeight = srcImage.naturalHeight * scale;
+        const x = canvas.width / 2 - scaledWidth / 2 + offsetX;
+        const y = canvas.height / 2 - scaledHeight / 2 + offsetY;
+        ctx.drawImage(srcImage, x, y, scaledWidth, scaledHeight);
 
         const croppedPhoto = canvas.toDataURL('image/jpeg');
         const fighter = fighters.find(f => f.id === fighterId);
         if (fighter) {
             fighter.photo = croppedPhoto;
             localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
-            
+            if (isRoster) {
+                const rosterSearch = document.getElementById('rosterSearchInput');
+                const searchQuery = rosterSearch ? rosterSearch.value : '';
+                const hadFocus = rosterSearch && document.activeElement === rosterSearch;
+                renderRosterGrid();
+                const rs = document.getElementById('rosterSearchInput');
+                if (rs) {
+                    rs.value = searchQuery;
+                    filterRosterCards();
+                    if (hadFocus) rs.focus();
+                }
+                setTimeout(() => {
+                    const el = document.getElementById(`fighter-card-${fighterId}`);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 150);
+            }
             document.querySelectorAll(`.avatar-box`).forEach(av => {
                 const input = av.closest('.fighter-slot')?.querySelector('.fighter-search-input');
                 if (input && input.getAttribute('data-fighter-id') === fighterId) {
@@ -1360,23 +1570,54 @@ window.saveCroppedPhotoCard = function(fighterId) {
         }
         document.getElementById('photoCropDialog').remove();
     };
-    img.src = circlePreview.src;
+
+    if (srcImage && srcImage.naturalWidth) {
+        performSave();
+    } else {
+        srcImage.crossOrigin = 'anonymous';
+        srcImage.src = document.getElementById('cropImagePreview').src;
+        srcImage.onload = performSave;
+    }
+};
+
+window.deleteFighterPhoto = function(fighterId, isRoster) {
+    const fighter = fighters.find(f => f.id === fighterId);
+    if (!fighter) return;
+    customConfirm(`Delete ${fighter.name}'s photo? This cannot be undone.`, function(result) {
+        if (!result) return;
+        delete fighter.photo;
+        localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+        if (document.getElementById('photoCropDialog')) document.getElementById('photoCropDialog').remove();
+        if (isRoster) {
+            renderRosterGrid();
+        } else {
+            document.querySelectorAll(`.avatar-box`).forEach(av => {
+                const input = av.closest('.fighter-slot')?.querySelector('.fighter-search-input');
+                if (input && input.getAttribute('data-fighter-id') === fighterId) {
+                    av.innerHTML = fighter.name.charAt(0);
+                    av.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+                }
+            });
+        }
+    }, 'Delete Photo');
+    return;
+    localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+    if (document.getElementById('photoCropDialog')) document.getElementById('photoCropDialog').remove();
+    if (isRoster) {
+        renderRosterGrid();
+    } else {
+        document.querySelectorAll(`.avatar-box`).forEach(av => {
+            const input = av.closest('.fighter-slot')?.querySelector('.fighter-search-input');
+            if (input && input.getAttribute('data-fighter-id') === fighterId) {
+                av.innerHTML = fighter.name.charAt(0);
+                av.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+            }
+        });
+    }
 };
 
 window.deleteFighterPhotoCard = function(fighterId) {
-    const fighter = fighters.find(f => f.id === fighterId);
-    if (!fighter) return;
-    if (!confirm(`Delete ${fighter.name}'s photo? This cannot be undone.`)) return;
-    delete fighter.photo;
-    localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
-    document.querySelectorAll(`.avatar-box`).forEach(av => {
-        const input = av.closest('.fighter-slot')?.querySelector('.fighter-search-input');
-        if (input && input.getAttribute('data-fighter-id') === fighterId) {
-            av.innerHTML = fighter.name.charAt(0);
-            av.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
-        }
-    });
-    if (document.getElementById('photoCropDialog')) document.getElementById('photoCropDialog').remove();
+    deleteFighterPhoto(fighterId, false);
 };
 
 function buildModalContainer() {
@@ -1400,7 +1641,7 @@ window.randomizeMatchup = function(matchId) {
     const slot1 = document.getElementById(`${matchId}-slot1`);
     const slot2 = document.getElementById(`${matchId}-slot2`);
     
-    if (!slot1 || !slot2) return alert('Match row not found.');
+    if (!slot1 || !slot2) return customAlert('Match row not found.', 'Match Error');
     
     // Collect all booked fighter IDs (by explicit id or typed name) and logged/completed matches
     let bookedFighterIds = [];
@@ -1445,7 +1686,7 @@ window.randomizeMatchup = function(matchId) {
     });
 
     if (validGenderChoices.length === 0) {
-        return alert('Not enough available fighters of any gender! You need at least 2 unbooked fighters in the same division.');
+        return customAlert('Not enough available fighters of any gender! You need at least 2 unbooked fighters in the same division.', 'Randomize Matchup');
     }
 
     const selectedGender = validGenderChoices[Math.floor(Math.random() * validGenderChoices.length)];
@@ -1455,7 +1696,7 @@ window.randomizeMatchup = function(matchId) {
     const selectedDivision = randomDivision;
 
     if (!divisionalFighters.length) {
-        return alert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`);
+        return customAlert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`, 'Randomize Matchup');
     }
     
     // Pick 2 random fighters from the division
@@ -1514,7 +1755,7 @@ window.randomizeMatchup = function(matchId) {
     
     // Show confirmation
     const divisionDisplay = selectedDivision.charAt(0).toUpperCase() + selectedDivision.slice(1);
-    alert(`🎲 Randomized!\n\n${fighter1.name} vs ${fighter2.name}\n(${divisionDisplay})`);
+    customAlert(`🎲 Randomized!\n\n${fighter1.name} vs ${fighter2.name}\n(${divisionDisplay})`, 'Match Randomized');
 };
 
 window.suggestOpponent = function(id) {
@@ -1523,7 +1764,7 @@ window.suggestOpponent = function(id) {
     const sel1 = row.querySelector('.fighter-search-input');
     
     if (!sel1 || !sel1.getAttribute('data-fighter-id')) {
-        return alert('Select Fighter 1 first!');
+        return customAlert('Select Fighter 1 first!', 'Suggest Opponent');
     }
     
     const f1 = fighters.find(f => f.id === sel1.getAttribute('data-fighter-id'));
@@ -1601,7 +1842,7 @@ window.suggestOpponent = function(id) {
     randBtn.style.cssText = 'background:#ef4444; border:none; color:white; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:bold;';
     randBtn.onclick = function() {
         const list = window.__lastSuggestionCandidates || [];
-        if (!list.length) return alert('No candidates available to pick.');
+        if (!list.length) return customAlert('No candidates available to pick.', 'Random Pick');
         const pick = list[Math.floor(Math.random() * list.length)];
         bookSuggested(pick);
     };
@@ -1687,9 +1928,9 @@ window.logMatchResult = function(id) {
     const winSelect = document.getElementById(`${id}-winner-select`); 
     const methodSelect = document.getElementById(`${id}-method-select`);
     
-    if (!slot1 || !slot2 || !slot1.value || !slot2.value) return alert('Select both fighters before logging finishes!');
-    if (!winSelect || !winSelect.value) return alert('Please choose who won the fight!');
-    if (!methodSelect || !methodSelect.value) return alert('Please choose the method of victory!');
+    if (!slot1 || !slot2 || !slot1.value || !slot2.value) return customAlert('Select both fighters before logging finishes!', 'Log Match Result');
+    if (!winSelect || !winSelect.value) return customAlert('Please choose who won the fight!', 'Log Match Result');
+    if (!methodSelect || !methodSelect.value) return customAlert('Please choose the method of victory!', 'Log Match Result');
     
     let f1 = fighters.find(f => f.id === slot1.getAttribute('data-fighter-id')); 
     let f2 = fighters.find(f => f.id === slot2.getAttribute('data-fighter-id'));
@@ -1823,10 +2064,10 @@ window.logMatchResult = function(id) {
             // Double the money (original bet + winnings)
             const winnings = bet.betAmount * 2;
             updateBettingMoney(winnings);
-            alert(`🎉 BET WON! You won $${winnings.toLocaleString()}!`);
+            customAlert(`🎉 BET WON! You won $${winnings.toLocaleString()}!`, 'Bet Result');
         } else {
             // Bet lost (money already deducted when bet was placed)
-            alert(`😞 Bet lost. You had $${bet.betAmount.toLocaleString()} on ${bet.betOnFighterName}.`);
+            customAlert(`😞 Bet lost. You had $${bet.betAmount.toLocaleString()} on ${bet.betOnFighterName}.`, 'Bet Result');
         }
         
         // Clear the bet
@@ -2000,7 +2241,7 @@ window.finalizeFullEventCard = function() {
     const topInput = document.getElementById('eventNameInput');
     const shownShowName = topInput ? topInput.value.trim() : "";
     if (!shownShowName) {
-        alert("Archive Blocked!\nYou must enter an Event/Show Title Name before finalizing.");
+        customAlert("Archive Blocked!\nYou must enter an Event/Show Title Name before finalizing.", 'Finalize Event');
         return;
     }
 
@@ -2018,13 +2259,13 @@ window.finalizeFullEventCard = function() {
     });
 
     if (incompleteRows.length > 0) {
-        alert(`Archive Blocked!\nYou must log all ${allMatchRows.length} matches before completing the event.\n\nCurrent Progress: ${allMatchRows.length - incompleteRows.length}/${allMatchRows.length}`);
+        customAlert(`Archive Blocked!\nYou must log all ${allMatchRows.length} matches before completing the event.\n\nCurrent Progress: ${allMatchRows.length - incompleteRows.length}/${allMatchRows.length}`, 'Finalize Event');
         return;
     }
 
     // Award event archive bonus once per completed show
     updateBettingMoney(1000);
-    alert('🏆 Live show finalized! You earned a $1,000 bonus for archiving the event.');
+    customAlert('🏆 Live show finalized! You earned a $1,000 bonus for archiving the event.', 'Event Archived');
 
     let eventMatchesCompiled = allMatchRows.map(row => {
         const savedState = activeShowSavedData[row.id];
@@ -2146,8 +2387,9 @@ window.finalizeFullEventCard = function() {
     localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
 
     // Preserve the completed match data so the finalized fight card remains visible with winners saved.
-    alert(`Show Card Successfully Archived!\n\n"${shownShowName}" data loops synchronized, belts pushed, and rivalries logged seamlessly across all systems!`);
-    location.reload();
+    customAlert(`Show Card Successfully Archived!\n\n"${shownShowName}" data loops synchronized, belts pushed, and rivalries logged seamlessly across all systems!`, 'Show Archived', function() {
+        location.reload();
+    });
 };
 
 
@@ -2277,7 +2519,8 @@ window.changeMatchGender = function(matchRowId, gender) {
     saveCurrentCardDraft();
 };
 window.resetActiveShowDraft = function() {
-    if (confirm("Are you sure you want to clear this entire card layout?\n\nThis will empty out all selected fighters and wipe logged match results for this specific show, but your Master Roster stats and Championship Lineage will stay completely safe!")) {
+    customConfirm("Are you sure you want to clear this entire card layout?\n\nThis will empty out all selected fighters and wipe logged match results for this specific show, but your Master Roster stats and Championship Lineage will stay completely safe!", function(result) {
+        if (!result) return;
         const selector = document.getElementById('activeShowSelector');
         const targetShowId = selector && selector.value ? selector.value : activeShowId;
         if (targetShowId) {
@@ -2297,9 +2540,10 @@ window.resetActiveShowDraft = function() {
         document.querySelectorAll('.match-row').forEach(row => clearMatchWinnerBadges(row.id));
 
         window.skipDraftSaveOnUnload = true;
-        alert("Active card layout has been completely reset back to its clean draft state!");
-        location.reload();
-    }
+        customAlert("Active card layout has been completely reset back to its clean draft state!", 'Draft Reset', function() {
+            location.reload();
+        });
+    }, 'Reset Draft');
 };
 
 window.downloadAppBackup = function() {
@@ -2341,13 +2585,14 @@ window.importAppBackup = function() {
                     }
                 });
                 if (importedCount === 0) {
-                    return alert('No valid WWE backup data found in that file.');
+                    return customAlert('No valid WWE backup data found in that file.', 'Backup Import');
                 }
-                alert(`Imported ${importedCount} WWE storage item${importedCount !== 1 ? 's' : ''}. Refreshing page now.`);
-                location.reload();
+                customAlert(`Imported ${importedCount} WWE storage item${importedCount !== 1 ? 's' : ''}. Refreshing page now.`, 'Backup Imported', function() {
+                    location.reload();
+                });
             } catch (err) {
                 console.error(err);
-                alert('Backup import failed. Please select a valid JSON backup file.');
+                customAlert('Backup import failed. Please select a valid JSON backup file.', 'Backup Import');
             }
         };
         reader.readAsText(file);

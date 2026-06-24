@@ -766,7 +766,7 @@ function normalizeFighterRecord(fighter) {
     normalized.id = normalized.id || `f-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
     normalized.name = (normalized.name || `${normalized.firstName || ''} ${normalized.lastName || ''}`.trim() || normalized.alias || 'Unnamed Fighter').trim();
     normalized.gender = (normalized.gender || 'male').toString().toLowerCase();
-    normalized.division = (normalized.division || normalized.weightClass || 'Heavyweight').toString();
+    normalized.division = normalizeDivisionName(normalized.division || normalized.weightClass || 'HeavyWeight');
     normalized.wins = Number(normalized.wins || 0);
     normalized.losses = Number(normalized.losses || 0);
     normalized.defenses = Number(normalized.defenses || 0);
@@ -1239,7 +1239,7 @@ function setupSidebarFormEngine() {
                 id: 'f-' + Date.now(),
                 name: nameValue,
                 gender: genderSelect ? genderSelect.value.toLowerCase() : 'male',
-                division: (divisionInput && divisionInput.value.trim()) ? divisionInput.value.trim() : 'Heavyweight',
+                division: normalizeDivisionName((divisionInput && divisionInput.value.trim()) ? divisionInput.value.trim() : 'HeavyWeight'),
                 wins: 0, losses: 0, defenses: 0, title_fights: 0, win_pinfall: 0, win_ko: 0, win_submission: 0
             };
 
@@ -1472,7 +1472,7 @@ window.editSuperstar = function(id) {
             genderEl.value = (f.gender || 'male').toString().toLowerCase();
         }
         if (divEl) {
-            const currentDivision = f.division || 'HeavyWeight';
+            const currentDivision = normalizeDivisionName(f.division || 'HeavyWeight');
             const optionExists = Array.from(divEl.options).some(option => option.value === currentDivision);
             if (optionExists) {
                 divEl.value = currentDivision;
