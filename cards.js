@@ -567,7 +567,15 @@ window.announceEventRecap = function() {
     }
     
     const activeShowSavedData = JSON.parse(localStorage.getItem('wwe_matches_' + activeShowId)) || {};
-    const matchEntries = Object.values(activeShowSavedData).filter(state => state && state.winnerName && state.loserName && state.methodName);
+    const allMatchRows = Array.from(document.querySelectorAll('.match-row'));
+    const matchEntries = allMatchRows.slice().reverse().map(row => {
+        const state = activeShowSavedData[row.id];
+        if (!state || !state.winnerName || !state.loserName || !state.methodName) return null;
+        return {
+            ...state,
+            tierName: state.tierName || row.parentNode.querySelector('.tier-title')?.textContent || 'Match'
+        };
+    }).filter(Boolean);
     
     if (!matchEntries.length) {
         customAlert('No logged matches to recap. Log some results first!', 'No Matches');
@@ -624,7 +632,7 @@ window.announceEventRecap = function() {
     const orderedTiers = Object.keys(grouped).sort((a, b) => {
         const orderA = tierOrder[normalizeTier(a)] ?? 99;
         const orderB = tierOrder[normalizeTier(b)] ?? 99;
-        return orderA - orderB || a.localeCompare(b);
+        return orderB - orderA || a.localeCompare(b);
     });
 
     let recapParts = [];
