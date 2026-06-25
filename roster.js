@@ -750,9 +750,13 @@ function assignAutoDivision(list) {
         const gender = (f.gender || 'male').toString().toLowerCase();
         if (gender === 'female') return;
         const mappedDivision = getMappedDivisionForName(f.name);
+        // If there's no mapped division or the mapping is an unknown placeholder, skip
         if (!mappedDivision) return;
+        const mappedTrim = (mappedDivision || '').toString().trim();
+        if (!mappedTrim || mappedTrim === '???') return;
         const canonicalDivision = normalizeDivisionName(mappedDivision);
-        if (f.division !== canonicalDivision) {
+        // Do not overwrite an explicit/manual division choice. Only assign if empty.
+        if (!f.division || (typeof f.division === 'string' && f.division.trim() === '')) {
             f.division = canonicalDivision;
             rosterChanged = true;
         }
@@ -1657,7 +1661,7 @@ window.saveInlineEdit = function(id) {
 
         f.name = newName;
         f.gender = newGender;
-        f.division = newDivision;
+        f.division = normalizeDivisionName(newDivision);
         f.wins = newWins;
         f.losses = newLosses;
         f.win_pinfall = newPinfalls;
@@ -1671,9 +1675,10 @@ window.saveInlineEdit = function(id) {
             f.history = [];
         }
 
-        localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
-            renderRosterGrid();
-            refreshFighterNameDatalist();
+        // Use the central save method to ensure normalization and auto-division mapping
+        saveFighters(fighters);
+        renderRosterGrid();
+        refreshFighterNameDatalist();
     }
 };
 
