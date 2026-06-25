@@ -453,6 +453,7 @@ function applyCompletedShowVisuals() {
 window.announcerEnabled = localStorage.getItem('wwe_announcer_enabled') === '1';
 window.preferredAnnouncerGender = 'female'; // currently only female option requested
 window.bettingEnabled = localStorage.getItem('wwe_betting_enabled') === '1';
+window.announcerTimeoutId = null;
 
 function saveAnnouncerSetting(enabled) {
     window.announcerEnabled = !!enabled;
@@ -491,6 +492,26 @@ function speakText(text, onEnd) {
     speechSynthesis.speak(utter);
 }
 
+function scheduleAnnouncerSpeak(text, onEnd, delay = 0) {
+    if (window.announcerTimeoutId) {
+        clearTimeout(window.announcerTimeoutId);
+        window.announcerTimeoutId = null;
+    }
+    window.announcerTimeoutId = setTimeout(() => {
+        window.announcerTimeoutId = null;
+        speakText(text, onEnd);
+    }, delay);
+}
+
+function stopAnnouncer() {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    if (window.announcerTimeoutId) {
+        clearTimeout(window.announcerTimeoutId);
+        window.announcerTimeoutId = null;
+    }
+}
+
 function composeFighterAnnouncement(f) {
     if (!f) return '';
     const wins = Number(f.wins || 0);
@@ -521,16 +542,117 @@ function maybeAnnounceSlot(matchId, force) {
     const f2 = fighters.find(x => x.id === id2) || (slot2Input && slot2Input.value ? { name: slot2Input.value, wins:0, losses:0, win_ko:0, win_pinfall:0, win_submission:0, title_fights:0 } : null);
 
     if (f1 && f2) {
-        // speak sequentially
-        speakText(composeFighterAnnouncement(f1), function() {
-            setTimeout(() => speakText(composeFighterAnnouncement(f2)), 250);
+        scheduleAnnouncerSpeak(composeFighterAnnouncement(f1), function() {
+            window.announcerTimeoutId = setTimeout(() => {
+                window.announcerTimeoutId = null;
+                scheduleAnnouncerSpeak(composeFighterAnnouncement(f2));
+            }, 250);
         });
     } else if (f1) {
-        speakText(composeFighterAnnouncement(f1));
+        scheduleAnnouncerSpeak(composeFighterAnnouncement(f1));
     } else if (f2) {
-        speakText(composeFighterAnnouncement(f2));
+        scheduleAnnouncerSpeak(composeFighterAnnouncement(f2));
     }
 }
+
+window.announceEventRecap = function() {
+    if (!isShowCompleted(activeShowId)) {
+        customAlert('The show must be finalized first before recapping.', 'Show Not Finalized');
+        return;
+    }
+    
+    if (!window.announcerEnabled) {
+        customAlert('Announcer is disabled. Enable it in the controls above.', 'Announcer Off');
+        return;
+    }
+    
+    const activeShowSavedData = JSON.parse(localStorage.getItem('wwe_matches_' + activeShowId)) || {};
+    const matchEntries = Object.values(activeShowSavedData).filter(state => state && state.winnerName && state.loserName && state.methodName);
+    
+    if (!matchEntries.length) {
+        customAlert('No logged matches to recap. Log some results first!', 'No Matches');
+        return;
+    }
+    
+    const championshipsRegistry = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+    const tierOrder = {
+        'early prelims': 0,
+        'preliminary card': 1,
+        'prelims': 1,
+        'main card': 2,
+        'co-main event': 3,
+        'co-main': 3,
+        'main event': 4
+    };
+
+    const normalizeTier = (name) => {
+        if (!name) return 'other';
+        const key = name.toString().trim().toLowerCase();
+        if (key.includes('early')) return 'early prelims';
+        if (key.includes('co-main')) return 'co-main event';
+        if (key.includes('main card')) return 'main card';
+        if (key.includes('prelim')) return key.includes('early') ? 'early prelims' : 'preliminary card';
+        if (key.includes('main event')) return 'main event';
+        return key;
+    };
+
+    const tierIntro = (tierName, count) => {
+        const normalized = normalizeTier(tierName);
+        switch (normalized) {
+            case 'early prelims':
+                return count > 1 ? 'In the early prelims, we have the following victories.' : 'In the early prelims, we have one victory.';
+            case 'preliminary card':
+                return count > 1 ? 'Next, on the preliminary card, here are the results.' : 'Next, on the preliminary card, here is the result.';
+            case 'main card':
+                return count > 1 ? 'Now on the main card, the winners are:' : 'Now on the main card, the winner is:';
+            case 'co-main event':
+                return 'As we move into the co-main event, the result is:';
+            case 'main event':
+                return 'Finally, in the main event, the winner is:';
+            default:
+                return `For ${tierName}, here are the results.`;
+        }
+    };
+
+    const grouped = {};
+    matchEntries.forEach(state => {
+        const tierKey = state.tierName || 'Match';
+        if (!grouped[tierKey]) grouped[tierKey] = [];
+        grouped[tierKey].push(state);
+    });
+
+    const orderedTiers = Object.keys(grouped).sort((a, b) => {
+        const orderA = tierOrder[normalizeTier(a)] ?? 99;
+        const orderB = tierOrder[normalizeTier(b)] ?? 99;
+        return orderA - orderB || a.localeCompare(b);
+    });
+
+    let recapParts = [];
+    recapParts.push('Ladies and gentlemen, here is your official event recap.');
+
+    orderedTiers.forEach(tierName => {
+        const matches = grouped[tierName];
+        recapParts.push(tierIntro(tierName, matches.length));
+        matches.forEach(state => {
+            const methodLabel = state.methodName.replace('PINFALL', 'by pinfall').replace('KO/TKO', 'by knockout').replace('SUBMISSION', 'by submission').toLowerCase();
+            let matchAnnounce = `${state.winnerName} defeated ${state.loserName} ${methodLabel}.`;
+            if (state.isTitle) {
+                const titleBelt = championshipsRegistry.find(t => t.id === state.titleId);
+                if (titleBelt) {
+                    const defenseCount = titleBelt.defenses || 0;
+                    matchAnnounce += ` ${state.winnerName} retains the ${titleBelt.name}${defenseCount ? ` with ${defenseCount} successful defense${defenseCount !== 1 ? 's' : ''}` : ''}.`;
+                } else if (state.titleName) {
+                    matchAnnounce += ` ${state.winnerName} is the new champion of the ${state.titleName}.`;
+                }
+            }
+            recapParts.push(matchAnnounce);
+        });
+    });
+
+    recapParts.push('Thank you for watching!');
+    const fullRecap = recapParts.join(' ');
+    speakText(fullRecap);
+};
 
 function populateVoiceList() {
     if (!('speechSynthesis' in window)) return;
@@ -616,6 +738,12 @@ document.addEventListener('DOMContentLoaded', () => {
     applyAnnouncerState();
     applyBettingState();
     updateBettingMoneyDisplay();
+    updateFinalizeButtonState();
+    updateRandomizerState();
+    const eventNameInput = document.getElementById('eventNameInput');
+    if (eventNameInput) {
+        eventNameInput.addEventListener('input', updateFinalizeButtonState);
+    }
     // Populate available voices for announcer (may arrive asynchronously)
     try {
         populateVoiceList();
@@ -631,6 +759,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const id = matchRow.id;
                 const slot1Input = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input');
                 const slot2Input = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input');
+                const slotType = e.target.closest('.fighter-slot')?.id?.replace(`${id}-`, '') || '';
                 const hasEmptyFighter = !slot1Input?.value.trim() || !slot2Input?.value.trim();
                 const cb = document.getElementById(`${id}-title-check`);
                 const titleInput = document.getElementById(`${id}-title-name-input`);
@@ -648,24 +777,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         const label = slot.querySelector('.win-method-label');
                         if (badge) badge.style.display = 'none';
                         if (label) label.style.display = 'none';
+
+                        const matchRow = e.target.closest('.match-row');
+                        if (matchRow) {
+                            resetMatchRowRematchState(matchRow.id);
+                        }
                     }
                 }
 
+                refreshTitleFightState(id);
                 if (hasEmptyFighter) {
-                    if (cb) {
-                        cb.checked = false;
-                        cb.disabled = true;
-                    }
                     matchRow.style.border = '1px solid #bae6fd';
                     matchRow.style.background = '#ffffff';
                     if (id.includes('mainEventContainer') || id.includes('coMainContainer')) {
                         matchRow.style.border = '1px solid #fca5a5';
                         matchRow.style.background = 'linear-gradient(to right, #ffffff, #fff5f5, #ffffff)';
                     }
-                    if (titleInput) { titleInput.style.display = "none"; titleInput.value = ""; }
                 } else {
-                    if (cb) {
-                        cb.disabled = false;
+                    const accepted = getMatchRowAcceptedRematch(id);
+                    const currentF1Id = slot1Input?.getAttribute('data-fighter-id') || '';
+                    const currentF2Id = slot2Input?.getAttribute('data-fighter-id') || '';
+                    if (accepted && !areMatchRowRematchPairsEqual(currentF1Id, currentF2Id, accepted.fighter1Id, accepted.fighter2Id)) {
+                        resetMatchRowRematchState(id);
                     }
                     checkExistingFightRematch(id, slotType);
                 }
@@ -718,6 +851,8 @@ function buildShowSchedulerHeader() {
             <select id="activeShowSelector" onchange="switchActiveShowCard(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #cbd5e1; font-weight:bold; font-size:0.85rem; color:#1e293b; background:white; min-width:180px; max-width:260px; width:100%;">${opts}</select>
             <button onclick="editCurrentShowName()" style="background:#64748b; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase;">✏️ Edit</button>
             <button id="randomizeShowButton" onclick="randomizeEntireShow()" ${activeShowCompleted ? 'disabled' : ''} style="background:#7c3aed; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:${activeShowCompleted ? 'not-allowed' : 'pointer'}; text-transform:uppercase; white-space:nowrap; opacity:${activeShowCompleted ? '0.45' : '1'};">🎲 Randomize All</button>
+            <button id="recapButton" onclick="announceEventRecap()" style="background:#f59e0b; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">📢 Recap</button>
+            <button id="stopAnnouncerButton" onclick="stopAnnouncer()" style="background:#0f172a; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">⏹ Stop</button>
         </div>
         <div style="display:flex; align-items:center; gap:8px; flex:1 1 280px; min-width:220px; flex-wrap:wrap; justify-content:flex-end;">
             <input type="text" id="eventNameInput" placeholder="Name" value="${activeShowId ? (futureShows.find(s => s.id === activeShowId)?.name || '') : ''}" style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:600; outline:none; min-width:140px; max-width:200px; width:100%; background:white; color:#1e293b;">
@@ -1005,6 +1140,8 @@ window.triggerSearchFill = function(uId, slotType) {
                 updateFighterRecordDisplay(uId, slotType, f);
                 updateWinnerDropdown(uId);
                 checkExistingFightRematch(uId, slotType);
+                refreshTitleFightState(uId);
+                saveCurrentCardDraft();
             };
         }
         panel.appendChild(item);
@@ -1035,22 +1172,9 @@ document.addEventListener('input', (e) => {
     }
     updateWinnerDropdown(matchRow.id);
     checkExistingFightRematch(matchRow.id, slotType);
+    refreshTitleFightState(matchRow.id);
+    saveCurrentCardDraft();
 });
-
-window.populateDropdownGenders = function(matchRowId, genderVariant) {
-    const slot1 = document.getElementById(`${matchRowId}-slot1`);
-    const slot2 = document.getElementById(`${matchRowId}-slot2`);
-    if(slot1 && slot2) {
-        slot1.setAttribute('data-gender', genderVariant);
-        slot2.setAttribute('data-gender', genderVariant);
-        slot1.querySelector('.fighter-search-input').value = '';
-        slot2.querySelector('.fighter-search-input').value = '';
-        slot1.querySelector('.fighter-search-input').setAttribute('data-fighter-id', '');
-        slot2.querySelector('.fighter-search-input').setAttribute('data-fighter-id', '');
-        updateFighterRecordDisplay(matchRowId, 'slot1', null);
-        updateFighterRecordDisplay(matchRowId, 'slot2', null);
-    }
-};
 
 function setMatchRowSelectedGender(matchRowId, gender) {
     const btnMale = document.getElementById(`${matchRowId}-btn-male`);
@@ -1070,6 +1194,22 @@ function setMatchRowSelectedGender(matchRowId, gender) {
 
     if (slot1) slot1.setAttribute('data-gender', gender);
     if (slot2) slot2.setAttribute('data-gender', gender);
+}
+
+function populateDropdownGenders(matchRowId, genderVariant) {
+    const slot1 = document.getElementById(`${matchRowId}-slot1`);
+    const slot2 = document.getElementById(`${matchRowId}-slot2`);
+    if (slot1 && slot2) {
+        slot1.setAttribute('data-gender', genderVariant);
+        slot2.setAttribute('data-gender', genderVariant);
+        slot1.querySelector('.fighter-search-input').value = '';
+        slot2.querySelector('.fighter-search-input').value = '';
+        slot1.querySelector('.fighter-search-input').setAttribute('data-fighter-id', '');
+        slot2.querySelector('.fighter-search-input').setAttribute('data-fighter-id', '');
+        updateFighterRecordDisplay(matchRowId, 'slot1', null);
+        updateFighterRecordDisplay(matchRowId, 'slot2', null);
+        refreshTitleFightState(matchRowId);
+    }
 }
 
 function getFightHistoryBetween(f1, f2) {
@@ -1136,9 +1276,92 @@ function clearCardFighterSlot(matchRowId, slotType) {
         matchRow.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
     }
     
+    resetMatchRowRematchState(matchRowId);
     hideRematchWarning(matchRowId);
     updateWinnerDropdown(matchRowId);
     saveCurrentCardDraft();
+}
+
+function refreshTitleFightState(matchRowId) {
+    const titleCheckbox = document.getElementById(`${matchRowId}-title-check`);
+    const titleInput = document.getElementById(`${matchRowId}-title-name-input`);
+    const slot1Input = document.getElementById(`${matchRowId}-slot1`)?.querySelector('.fighter-search-input');
+    const slot2Input = document.getElementById(`${matchRowId}-slot2`)?.querySelector('.fighter-search-input');
+    const fighter1Identifier = slot1Input?.getAttribute('data-fighter-id') || slot1Input?.value.trim();
+    const fighter2Identifier = slot2Input?.getAttribute('data-fighter-id') || slot2Input?.value.trim();
+    const fighter1 = getFighterByIdOrName(fighter1Identifier);
+    const fighter2 = getFighterByIdOrName(fighter2Identifier);
+    const hasCompleteFighters = !!slot1Input?.value.trim() && !!slot2Input?.value.trim();
+    const hasValidFighterSelection = fighter1 && fighter2 && fighter1.id !== fighter2.id;
+    const validTitleFight = hasValidFighterSelection && (fighter1.wins || 0) >= 5 && (fighter2.wins || 0) >= 5;
+
+    if (!hasCompleteFighters || !hasValidFighterSelection) {
+        if (titleCheckbox) {
+            titleCheckbox.checked = false;
+            titleCheckbox.disabled = true;
+        }
+        if (titleInput) {
+            titleInput.style.display = 'none';
+            titleInput.value = '';
+            titleInput.innerHTML = '';
+        }
+    } else {
+        if (titleCheckbox) {
+            titleCheckbox.disabled = !validTitleFight;
+            if (!validTitleFight && titleCheckbox.checked) {
+                titleCheckbox.checked = false;
+                if (titleInput) {
+                    titleInput.style.display = 'none';
+                    titleInput.value = '';
+                    titleInput.innerHTML = '';
+                }
+            }
+        }
+    }
+}
+
+function resetMatchRowRematchState(matchRowId) {
+    const matchRow = document.getElementById(matchRowId);
+    const rematchCheckbox = matchRow ? matchRow.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]') : null;
+    const rematchCount = document.getElementById(`${matchRowId}-rematch-count`);
+    if (rematchCheckbox) {
+        rematchCheckbox.checked = false;
+    }
+    if (rematchCount) {
+        rematchCount.style.display = 'none';
+        rematchCount.value = '1';
+    }
+    if (matchRow) {
+        delete matchRow.dataset.rematchAccepted;
+        delete matchRow.dataset.rematchF1;
+        delete matchRow.dataset.rematchF2;
+        delete matchRow.dataset.rematchCount;
+    }
+}
+
+window.setMatchRowRematchAccepted = function(matchRowId, fighter1Id, fighter2Id, count) {
+    const matchRow = document.getElementById(matchRowId);
+    if (!matchRow) return;
+    matchRow.dataset.rematchAccepted = 'true';
+    matchRow.dataset.rematchF1 = fighter1Id || '';
+    matchRow.dataset.rematchF2 = fighter2Id || '';
+    matchRow.dataset.rematchCount = String(count || 1);
+};
+
+window.getMatchRowAcceptedRematch = function(matchRowId) {
+    const matchRow = document.getElementById(matchRowId);
+    if (!matchRow || matchRow.dataset.rematchAccepted !== 'true') return null;
+    return {
+        accepted: true,
+        fighter1Id: matchRow.dataset.rematchF1 || '',
+        fighter2Id: matchRow.dataset.rematchF2 || '',
+        count: Number(matchRow.dataset.rematchCount || '1')
+    };
+};
+
+function areMatchRowRematchPairsEqual(f1Id, f2Id, acceptedF1Id, acceptedF2Id) {
+    if (!f1Id || !f2Id || !acceptedF1Id || !acceptedF2Id) return false;
+    return (f1Id === acceptedF1Id && f2Id === acceptedF2Id) || (f1Id === acceptedF2Id && f2Id === acceptedF1Id);
 }
 
 function updateFighterRecordDisplay(matchRowId, slotType, fighter) {
@@ -1157,7 +1380,9 @@ function updateFighterRecordDisplay(matchRowId, slotType, fighter) {
 
 function getFighterByIdOrName(identifier) {
     if (!identifier) return null;
-    return fighters.find(f => f.id === identifier || f.name === identifier) || null;
+    const trimmedIdentifier = String(identifier).trim();
+    const normalizedIdentifier = trimmedIdentifier.toLowerCase();
+    return fighters.find(f => f.id === trimmedIdentifier || f.name.toLowerCase() === normalizedIdentifier) || null;
 }
 
 function checkExistingFightRematch(matchRowId, changedSlot) {
@@ -1168,6 +1393,11 @@ function checkExistingFightRematch(matchRowId, changedSlot) {
     const fighter1 = fighters.find(f => f.id === slot1.getAttribute('data-fighter-id') || f.name === slot1.value);
     const fighter2 = fighters.find(f => f.id === slot2.getAttribute('data-fighter-id') || f.name === slot2.value);
     if (!fighter1 || !fighter2 || fighter1.id === fighter2.id) return true;
+
+    const accepted = getMatchRowAcceptedRematch(matchRowId);
+    if (accepted && areMatchRowRematchPairsEqual(fighter1.id, fighter2.id, accepted.fighter1Id, accepted.fighter2Id)) {
+        return true;
+    }
 
     const historyEntries = getFightHistoryBetween(fighter1, fighter2);
     if (!historyEntries.length) {
@@ -1244,6 +1474,8 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
                 rematchCount.value = history.fightNumber;
                 rematchCount.style.display = 'inline-block';
             }
+            setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, history.fightNumber);
+            saveCurrentCardDraft();
             hideRematchWarning(matchRowId);
         };
     }
@@ -1659,8 +1891,8 @@ function pickTwoDistinctFighters(list) {
 }
 
 window.randomizeEntireShow = function() {
-    if (isShowCompleted(activeShowId)) {
-        customAlert('This show has been finalized and can no longer be randomized.', 'Randomize Disabled');
+    if (isShowCompleted(activeShowId) || window.hasActiveShowResults()) {
+        customAlert('This show has already begun or been finalized. Reset the show or switch cards before randomizing.', 'Randomize Disabled');
         return;
     }
     const matchRows = document.querySelectorAll('.match-row');
@@ -1695,6 +1927,7 @@ window.randomizeEntireShow = function() {
         });
         
         // Filter available fighters by gender and division groups
+        const reservedPairs = new Set(getReservedOpponentPairsFromOtherShows());
         const availableFighters = fighters.filter(f => !bookedFighterIds.includes(f.id));
         const fightersByGenderAndDivision = {};
         availableFighters.forEach(f => {
@@ -1721,10 +1954,22 @@ window.randomizeEntireShow = function() {
         }
 
         const [randomDivision, divisionalFighters] = validDivisions[Math.floor(Math.random() * validDivisions.length)];
-        const chosenPair = pickTwoDistinctFighters(divisionalFighters);
-        if (!chosenPair) {
-            return customAlert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`, 'Randomize Matchup');
+        const allowedPairs = [];
+        for (let i = 0; i < divisionalFighters.length - 1; i++) {
+            for (let j = i + 1; j < divisionalFighters.length; j++) {
+                const f1 = divisionalFighters[i];
+                const f2 = divisionalFighters[j];
+                const key = window.makeOpponentPairKey(f1.id, f2.id);
+                if (!reservedPairs.has(key)) {
+                    allowedPairs.push([f1, f2]);
+                }
+            }
         }
+        if (!allowedPairs.length) {
+            failCount++;
+            return;
+        }
+        const chosenPair = allowedPairs[Math.floor(Math.random() * allowedPairs.length)];
         const [fighter1, fighter2] = chosenPair;
         
         // Set the gender for this match based on the chosen fighters
@@ -1755,6 +2000,8 @@ window.randomizeEntireShow = function() {
             av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
             updateFighterRecordDisplay(matchId, 'slot2', fighter2);
             
+            refreshTitleFightState(matchId);
+
             // Update winner dropdown
             updateWinnerDropdown(matchId);
             
@@ -1776,8 +2023,8 @@ window.randomizeEntireShow = function() {
 };
 
 window.randomizeMatchup = function(matchId) {
-    if (isShowCompleted(activeShowId)) {
-        return customAlert('This show has been finalized and can no longer be randomized.', 'Randomize Disabled');
+    if (isShowCompleted(activeShowId) || window.hasActiveShowResults()) {
+        return customAlert('This show has already begun or been finalized. Reset the show or switch cards before randomizing.', 'Randomize Disabled');
     }
     const row = document.getElementById(matchId);
     const slot1 = document.getElementById(`${matchId}-slot1`);
@@ -1787,6 +2034,7 @@ window.randomizeMatchup = function(matchId) {
     
     // Collect all booked fighter IDs (by explicit id or typed name) and logged/completed matches
     let bookedFighterIds = [];
+    const reservedPairs = new Set(getReservedOpponentPairsFromOtherShows());
     document.querySelectorAll('.fighter-search-input').forEach(inp => {
         const fighterId = inp.getAttribute('data-fighter-id');
         if (fighterId) {
@@ -1841,10 +2089,21 @@ window.randomizeMatchup = function(matchId) {
         return customAlert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`, 'Randomize Matchup');
     }
 
-    const chosenPair = pickTwoDistinctFighters(divisionalFighters);
-    if (!chosenPair) {
-        return customAlert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`, 'Randomize Matchup');
+    const allowedPairs = [];
+    for (let i = 0; i < divisionalFighters.length - 1; i++) {
+        for (let j = i + 1; j < divisionalFighters.length; j++) {
+            const f1 = divisionalFighters[i];
+            const f2 = divisionalFighters[j];
+            const key = window.makeOpponentPairKey(f1.id, f2.id);
+            if (!reservedPairs.has(key)) {
+                allowedPairs.push([f1, f2]);
+            }
+        }
     }
+    if (!allowedPairs.length) {
+        return customAlert(`No weight class has 2+ available ${selectedGender} fighters who are not already paired elsewhere.`, 'Randomize Matchup');
+    }
+    const chosenPair = allowedPairs[Math.floor(Math.random() * allowedPairs.length)];
     const [fighter1, fighter2] = chosenPair;
     
     // Populate slot 1
@@ -1877,6 +2136,9 @@ window.randomizeMatchup = function(matchId) {
     av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
     av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
     
+    // Reset title fight state for the newly randomized match
+    refreshTitleFightState(matchId);
+
     // Sync gender controls to the chosen fighters' gender
     setMatchRowSelectedGender(matchId, selectedGender);
 
@@ -2213,6 +2475,100 @@ window.logMatchResult = function(id) {
     }
     
     restoreLoggedResult(id, matchSaveState);
+    updateFinalizeButtonState();
+    updateRandomizerState();
+};
+
+function getFinalizeEventButton() {
+    return document.getElementById('finalizeEventButton');
+}
+
+window.hasActiveShowResults = function() {
+    if (!activeShowId) return false;
+    const saved = JSON.parse(localStorage.getItem('wwe_matches_' + activeShowId)) || {};
+    return Object.keys(saved).length > 0;
+};
+
+window.makeOpponentPairKey = function(idA, idB) {
+    const a = idA || '';
+    const b = idB || '';
+    return a < b ? `${a}--${b}` : `${b}--${a}`;
+};
+
+window.getReservedOpponentPairsFromOtherShows = function() {
+    const reservedPairs = new Set();
+    futureShows.forEach(show => {
+        if (!show.id || show.id === activeShowId || isShowCompleted(show.id)) return;
+        const draftData = JSON.parse(localStorage.getItem('wwe_draft_' + show.id)) || {};
+        Object.values(draftData).forEach(entry => {
+            if (!entry || !entry.f1Name || !entry.f2Name) return;
+            const fighter1 = entry.f1Id ? fighters.find(f => f.id === entry.f1Id) : getFighterByIdOrName(entry.f1Name);
+            const fighter2 = entry.f2Id ? fighters.find(f => f.id === entry.f2Id) : getFighterByIdOrName(entry.f2Name);
+            if (fighter1 && fighter2 && fighter1.id !== fighter2.id) {
+                reservedPairs.add(window.makeOpponentPairKey(fighter1.id, fighter2.id));
+            }
+        });
+    });
+    return Array.from(reservedPairs).filter(Boolean);
+};
+
+window.updateRandomizerState = function() {
+    const showButton = document.getElementById('randomizeShowButton');
+    const rowButtons = Array.from(document.querySelectorAll('.randomizer-btn'));
+    const activeShowCompleted = isShowCompleted(activeShowId);
+    const showHasResults = window.hasActiveShowResults();
+    const disable = activeShowCompleted || showHasResults;
+
+    if (showButton) {
+        showButton.disabled = disable;
+        showButton.style.opacity = disable ? '0.45' : '1';
+        showButton.style.cursor = disable ? 'not-allowed' : 'pointer';
+        if (activeShowCompleted) {
+            showButton.title = 'This show has been finalized and can no longer be randomized.';
+        } else if (showHasResults) {
+            showButton.title = 'Randomization disabled after match results have started. Reset or switch cards to randomize again.';
+        } else {
+            showButton.title = 'Randomize all matchups in the active show.';
+        }
+    }
+    rowButtons.forEach(btn => {
+        btn.disabled = disable;
+        btn.style.opacity = disable ? '0.45' : '1';
+        btn.style.cursor = disable ? 'not-allowed' : 'pointer';
+        if (disable) {
+            btn.title = activeShowCompleted ? 'This match can no longer be randomized after the show was archived.' : 'Randomization disabled after match results have started.';
+        } else {
+            btn.title = btn.title || 'Reroll this matchup.';
+        }
+    });
+};
+
+window.updateFinalizeButtonState = function() {
+    const button = getFinalizeEventButton();
+    if (!button) return;
+
+    const eventNameValue = document.getElementById('eventNameInput')?.value.trim() || '';
+    const activeShowCompleted = isShowCompleted(activeShowId);
+    const allMatchRows = Array.from(document.querySelectorAll('.match-row'));
+    const activeShowSavedData = JSON.parse(localStorage.getItem('wwe_matches_' + activeShowId)) || {};
+    const incompleteRows = allMatchRows.filter(row => {
+        const saved = activeShowSavedData[row.id];
+        return !saved || !saved.winnerName || !saved.loserName || !saved.methodName;
+    });
+
+    const canEnable = !activeShowCompleted && eventNameValue.length > 0 && allMatchRows.length > 0 && incompleteRows.length === 0;
+    button.disabled = !canEnable;
+    button.style.opacity = canEnable ? '1' : '0.55';
+    button.style.cursor = canEnable ? 'pointer' : 'not-allowed';
+    if (activeShowCompleted) {
+        button.title = 'This show has already been finalized and archived.';
+    } else if (!eventNameValue) {
+        button.title = 'Enter an Event/Show Title Name before finalizing.';
+    } else if (incompleteRows.length > 0) {
+        button.title = `Log all ${allMatchRows.length} matches first (${allMatchRows.length - incompleteRows.length}/${allMatchRows.length}).`;
+    } else {
+        button.title = 'Finalize and archive the event.';
+    }
 };
 
 function restoreLoggedResult(id, state) {
@@ -2252,6 +2608,31 @@ function restoreLoggedResult(id, state) {
         fighters.find(f => f.id === state.slot2Id || f.name === state.slot2Name)?.gender ||
         'male';
     setMatchRowSelectedGender(id, rowGender);
+
+    const titleCheck = document.getElementById(`${id}-title-check`);
+    const titleInput = document.getElementById(`${id}-title-name-input`);
+    if (titleCheck) {
+        titleCheck.checked = !!state.isTitle;
+    }
+    if (titleInput) {
+        if (state.isTitle && state.titleId) {
+            titleInput.style.display = 'inline-block';
+            titleInput.value = state.titleId;
+            const existingOption = titleInput.querySelector(`option[value="${state.titleId}"]`);
+            if (!existingOption) {
+                const option = document.createElement('option');
+                option.value = state.titleId;
+                option.setAttribute('data-name', state.titleName || state.titleId);
+                option.text = state.titleName || state.titleId;
+                titleInput.appendChild(option);
+            }
+            if (titleInput.value !== state.titleId) titleInput.value = state.titleId;
+        } else {
+            titleInput.style.display = 'none';
+            titleInput.value = '';
+            titleInput.innerHTML = '';
+        }
+    }
 
     const hasSlot1Value = slot1Input?.value?.trim();
     const hasSlot2Value = slot2Input?.value?.trim();
@@ -2332,6 +2713,7 @@ function disableMatchRowControls(matchId) {
         el.disabled = true;
         el.style.opacity = '0.45';
         el.style.cursor = 'not-allowed';
+        el.style.pointerEvents = 'none';
         if (el.tagName === 'BUTTON' || el.tagName === 'SELECT' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
             el.title = 'This match is finalized and can no longer be changed.';
         }
@@ -2490,6 +2872,7 @@ window.finalizeFullEventCard = function() {
     });
     localStorage.setItem("wwe_event_history", JSON.stringify(eventHistoryCalendar));
     setShowCompleted(activeShowId, true);
+    updateFinalizeButtonState();
 
     eventMatchesCompiled.forEach(m => {
         const winnerFighter = fighters.find(f => f.name === m.winner);
@@ -2557,13 +2940,18 @@ function saveCurrentCardDraft() {
         const s1 = document.getElementById(`${id}-slot1`).querySelector('.fighter-search-input');
         const s2 = document.getElementById(`${id}-slot2`).querySelector('.fighter-search-input');
         const gender = document.getElementById(`${id}-slot1`)?.getAttribute('data-gender') || 'male';
+        const acceptedRematch = getMatchRowAcceptedRematch(id);
         
         draftData[id] = {
             f1Name: s1 ? s1.value : '',
             f1Id: s1 ? s1.getAttribute('data-fighter-id') : '',
             f2Name: s2 ? s2.value : '',
             f2Id: s2 ? s2.getAttribute('data-fighter-id') : '',
-            gender: gender
+            gender: gender,
+            rematchAccepted: acceptedRematch ? true : false,
+            rematchF1Id: acceptedRematch ? acceptedRematch.fighter1Id : '',
+            rematchF2Id: acceptedRematch ? acceptedRematch.fighter2Id : '',
+            rematchCount: acceptedRematch ? acceptedRematch.count : 1
         };
     });
     localStorage.setItem(getCurrentDraftStorageKey(), JSON.stringify(draftData));
@@ -2628,6 +3016,22 @@ function restoreCurrentCardDraft() {
             };
             updateFighterRecordDisplay(id, 'slot2', f2);
         }
+        
+        const hasRematchAccepted = d.rematchAccepted && d.rematchF1Id && d.rematchF2Id;
+        if (hasRematchAccepted) {
+            const currentF1Id = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') || '';
+            const currentF2Id = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') || '';
+            if (areMatchRowRematchPairsEqual(currentF1Id, currentF2Id, d.rematchF1Id, d.rematchF2Id)) {
+                const rematchCheckbox = document.querySelector(`#${id} input[type="checkbox"][onchange*="toggleRematchCounter"]`);
+                const rematchCount = document.getElementById(`${id}-rematch-count`);
+                if (rematchCheckbox) rematchCheckbox.checked = true;
+                if (rematchCount) {
+                    rematchCount.value = d.rematchCount || 1;
+                    rematchCount.style.display = 'inline-block';
+                }
+                setMatchRowRematchAccepted(id, d.rematchF1Id, d.rematchF2Id, d.rematchCount || 1);
+            }
+        }
         if (d.gender) {
             setMatchRowSelectedGender(id, d.gender);
         } else {
@@ -2648,6 +3052,7 @@ function restoreCurrentCardDraft() {
         if (d.f1Name && d.f2Name) {
             checkExistingFightRematch(id, 'both');
         }
+        refreshTitleFightState(id);
     });
 }
 

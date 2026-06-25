@@ -814,18 +814,13 @@ function saveFighters(list = fighters) {
 
 function ensureFemaleRosterEntries() {
     fighters = loadFighters();
+    if (fighters.length > 0) return;
+
     let rosterChanged = false;
 
     femaleFighterTemplates.forEach(template => {
         const existing = fighters.find(f => f.name.toLowerCase() === template.name.toLowerCase());
-        if (existing) {
-            const normalizedDivision = template.division.toString();
-            if (existing.division !== normalizedDivision || existing.gender !== 'female') {
-                existing.division = normalizedDivision;
-                existing.gender = 'female';
-                rosterChanged = true;
-            }
-        } else {
+        if (!existing) {
             fighters.push(normalizeFighterRecord({
                 id: `f-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
                 name: template.name,
