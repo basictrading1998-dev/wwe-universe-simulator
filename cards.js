@@ -2799,7 +2799,7 @@ window.logMatchResult = function(id) {
     if (!winnerAlreadyLogged) w.compiled_history_deck.push(winnerHistoryEntry);
     if (!loserAlreadyLogged) l.compiled_history_deck.push(loserHistoryEntry);
 
-    localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+    saveFighters(fighters);
     updateFighterRecordDisplay(id, 'slot1', f1);
     updateFighterRecordDisplay(id, 'slot2', f2);
     
@@ -2871,7 +2871,7 @@ window.logMatchResult = function(id) {
             targetBelt.championId = w.id;
             localStorage.setItem('wwe_titles', JSON.stringify(championshipsRegistry));
             // Update fighters storage with any modified defense counts
-            localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+            saveFighters(fighters);
         } catch (e) {
             console.error('Error applying title transfer', e);
         }
@@ -2975,7 +2975,7 @@ window.unlogMatchResult = function(id) {
         }
     }
 
-    localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+    saveFighters(fighters);
     delete completedMatches[id];
     const storageKey = getActiveShowMatchesStorageKey();
     if (storageKey) {
@@ -3503,7 +3503,7 @@ window.finalizeFullEventCard = function() {
             });
         }
     });
-    localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+    saveFighters(fighters);
 
     // Preserve the completed match data so the finalized fight card remains visible with winners saved.
     customAlert(`Show Card Successfully Archived!\n\n"${shownShowName}" data loops synchronized, belts pushed, and rivalries logged seamlessly across all systems!`, 'Show Archived', function() {
