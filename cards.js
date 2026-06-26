@@ -17,6 +17,7 @@ function loadFightersFromStorage() {
             win_ko: Number(f.win_ko || 0),
             win_submission: Number(f.win_submission || 0),
             photo: f.photo || '',
+            photo_key: f.photo_key || '',
             compiled_history_deck: Array.isArray(f.compiled_history_deck) ? f.compiled_history_deck : Array.isArray(f.history_deck) ? f.history_deck : Array.isArray(f.history) ? f.history : [],
             history_deck: Array.isArray(f.history_deck) ? f.history_deck : [],
             history: Array.isArray(f.history) ? f.history : []
@@ -24,6 +25,82 @@ function loadFightersFromStorage() {
     } catch {
         return [];
     }
+}
+
+function saveFighters(list = fighters) {
+    const payload = (list || []).map(f => {
+        if (!f || typeof f !== 'object') return null;
+        const normalized = { ...f };
+        normalized.id = normalized.id || `f-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+        normalized.name = normalized.name || 'Unknown Fighter';
+        normalized.gender = (normalized.gender || 'male').toString().toLowerCase();
+        normalized.division = normalized.division || normalized.weightClass || 'Heavyweight';
+        normalized.wins = Number(normalized.wins || 0);
+        normalized.losses = Number(normalized.losses || 0);
+        normalized.defenses = Number(normalized.defenses || 0);
+        normalized.title_fights = Number(normalized.title_fights || 0);
+        normalized.win_pinfall = Number(normalized.win_pinfall || 0);
+        normalized.win_ko = Number(normalized.win_ko || 0);
+        normalized.win_submission = Number(normalized.win_submission || 0);
+        normalized.photo_key = normalized.photo_key || '';
+        normalized.photo = normalized.photo_key ? '' : (normalized.photo || '');
+        return normalized;
+    }).filter(Boolean);
+    localStorage.setItem('wwe_fighters', JSON.stringify(payload));
+}
+
+async function openFighterPhotoDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('wwe_fighter_photos', 1);
+        request.onupgradeneeded = function(event) {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('photos')) {
+                db.createObjectStore('photos');
+            }
+        };
+        request.onsuccess = function(event) {
+            resolve(event.target.result);
+        };
+        request.onerror = function(event) {
+            reject(event.target.error || new Error('IndexedDB open failed'));
+        };
+    });
+}
+
+async function storeFighterPhotoInIDB(key, photoData) {
+    const db = await openFighterPhotoDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('photos', 'readwrite');
+        const store = tx.objectStore('photos');
+        const request = store.put(photoData, key);
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(request.error || new Error('Failed to save fighter photo in IndexedDB'));
+    });
+}
+
+async function loadFighterPhotoFromIDB(key) {
+    if (!key) return null;
+    try {
+        const db = await openFighterPhotoDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('photos', 'readonly');
+            const store = tx.objectStore('photos');
+            const request = store.get(key);
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () => reject(request.error || new Error('Failed to load fighter photo from IndexedDB'));
+        });
+    } catch (err) {
+        return null;
+    }
+}
+
+async function hydrateFighterPhotos() {
+    await Promise.all(fighters.map(async (fighter) => {
+        if (!fighter.photo && fighter.photo_key) {
+            const photo = await loadFighterPhotoFromIDB(fighter.photo_key);
+            if (photo) fighter.photo = photo;
+        }
+    }));
 }
 
 function buildWwePopupModal() {
@@ -729,7 +806,8 @@ function applyBettingState() {
 }
 
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await hydrateFighterPhotos();
     initBettingSystem();
     const tiers = ['mainEventContainer', 'coMainContainer', 'mainCardContainer', 'prelimsContainer', 'earlyPrelimsContainer'];
     tiers.forEach(id => {
@@ -1945,7 +2023,7 @@ window.openPhotoCropDialog = function(imageSrc, fighterId, isRoster) {
     srcImage.onload = updatePreview;
 };
 
-window.saveCroppedPhoto = function(fighterId, isRoster) {
+window.saveCroppedPhoto = async function(fighterId, isRoster) {
     const offsetXSlider = document.getElementById('cropOffsetX');
     const offsetYSlider = document.getElementById('cropOffsetY');
     const zoomSlider = document.getElementById('cropZoom');
@@ -1965,7 +2043,7 @@ window.saveCroppedPhoto = function(fighterId, isRoster) {
     ctx.clip();
 
     const srcImage = window._rosterCropSrcImage || new Image();
-    const performSave = () => {
+    const performSave = async () => {
         const scale = zoom / 100;
         const scaledWidth = srcImage.naturalWidth * scale;
         const scaledHeight = srcImage.naturalHeight * scale;
@@ -1975,41 +2053,111 @@ window.saveCroppedPhoto = function(fighterId, isRoster) {
 
         const croppedPhoto = canvas.toDataURL('image/jpeg');
         const fighter = fighters.find(f => f.id === fighterId);
-        if (fighter) {
-            fighter.photo = croppedPhoto;
-            localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
-            if (isRoster) {
-                const rosterSearch = document.getElementById('rosterSearchInput');
-                const searchQuery = rosterSearch ? rosterSearch.value : '';
-                const hadFocus = rosterSearch && document.activeElement === rosterSearch;
-                renderRosterGrid();
-                const rs = document.getElementById('rosterSearchInput');
-                if (rs) {
-                    rs.value = searchQuery;
-                    filterRosterCards();
-                    if (hadFocus) rs.focus();
-                }
-                setTimeout(() => {
-                    const el = document.getElementById(`fighter-card-${fighterId}`);
-                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }, 150);
+        if (!fighter) return;
+
+        let saved = false;
+        const photoKey = fighter.photo_key || `fighter-photo-${fighter.id}`;
+
+        const tryIDBDirect = async () => {
+            try {
+                await storeFighterPhotoInIDB(photoKey, croppedPhoto);
+                fighter.photo_key = photoKey;
+                fighter.photo = '';
+                localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+                return true;
+            } catch (err) {
+                console.warn('IDB save failed, trying smaller versions', err);
+                return false;
             }
-            document.querySelectorAll(`.avatar-box`).forEach(av => {
-                const input = av.closest('.fighter-slot')?.querySelector('.fighter-search-input');
-                if (input && input.getAttribute('data-fighter-id') === fighterId) {
-                    av.innerHTML = `<img src="${croppedPhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+        };
+
+        const tryIDBWithFallbacks = async () => {
+            const qualitySteps = [0.7, 0.5, 0.3, 0.1];
+            for (let q of qualitySteps) {
+                const smaller = canvas.toDataURL('image/jpeg', q);
+                try {
+                    await storeFighterPhotoInIDB(photoKey, smaller);
+                    fighter.photo_key = photoKey;
+                    fighter.photo = '';
+                    localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+                    return true;
+                } catch (err) {
+                    continue;
                 }
-            });
+            }
+
+            const dimensions = [150, 128, 100];
+            for (let size of dimensions) {
+                const smallCanvas = document.createElement('canvas');
+                smallCanvas.width = size;
+                smallCanvas.height = size;
+                const smallCtx = smallCanvas.getContext('2d');
+                smallCtx.fillStyle = '#ffffff';
+                smallCtx.fillRect(0, 0, size, size);
+                smallCtx.beginPath();
+                smallCtx.arc(size/2, size/2, size/2, 0, Math.PI * 2);
+                smallCtx.clip();
+                const factor = size / 200;
+                const xSmall = size / 2 - (srcImage.naturalWidth * zoom / 100) * factor / 2 + offsetX * factor;
+                const ySmall = size / 2 - (srcImage.naturalHeight * zoom / 100) * factor / 2 + offsetY * factor;
+                const scaledWidth = srcImage.naturalWidth * (zoom / 100) * factor;
+                const scaledHeight = srcImage.naturalHeight * (zoom / 100) * factor;
+                smallCtx.drawImage(srcImage, xSmall, ySmall, scaledWidth, scaledHeight);
+
+                for (let q of qualitySteps) {
+                    const smaller = smallCanvas.toDataURL('image/jpeg', q);
+                    try {
+                        await storeFighterPhotoInIDB(photoKey, smaller);
+                        fighter.photo_key = photoKey;
+                        fighter.photo = '';
+                        localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+                        return true;
+                    } catch (err) {
+                        continue;
+                    }
+                }
+            }
+            return false;
+        };
+
+        try {
+            saved = await tryIDBDirect();
+        } catch (err) {
+            saved = await tryIDBWithFallbacks();
         }
-        document.getElementById('photoCropDialog').remove();
+
+        if (!saved) {
+            alert('Unable to save this image due to an unexpected error. Please try again.');
+        }
+
+        if (isRoster) {
+            const rosterSearch = document.getElementById('rosterSearchInput');
+            const searchQuery = rosterSearch ? rosterSearch.value : '';
+            const hadFocus = document.activeElement === rosterSearch;
+            renderRosterGrid();
+            const rs = document.getElementById('rosterSearchInput');
+            if (rs) {
+                rs.value = searchQuery;
+                filterRosterCards();
+                if (hadFocus) rs.focus();
+            }
+            setTimeout(() => {
+                const el = document.getElementById(`fighter-card-${fighterId}`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 150);
+        }
     };
 
     if (srcImage && srcImage.naturalWidth) {
-        performSave();
+        await performSave();
     } else {
         srcImage.crossOrigin = 'anonymous';
         srcImage.src = document.getElementById('cropImagePreview').src;
-        srcImage.onload = performSave;
+        srcImage.onload = async () => await performSave();
+    }
+
+    if (document.getElementById('photoCropDialog')) {
+        document.getElementById('photoCropDialog').remove();
     }
 };
 

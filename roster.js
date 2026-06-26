@@ -778,8 +778,105 @@ function normalizeFighterRecord(fighter) {
     normalized.win_pinfall = Number(normalized.win_pinfall || 0);
     normalized.win_ko = Number(normalized.win_ko || 0);
     normalized.win_submission = Number(normalized.win_submission || 0);
-    normalized.photo = normalized.photo || '';
+    normalized.photo_key = normalized.photo_key || normalized.photoKey || '';
+    normalized.photo = normalized.photo_key ? '' : (normalized.photo || '');
     return normalized;
+}
+
+async function openFighterPhotoDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('wwe_fighter_photos', 1);
+        request.onupgradeneeded = function(event) {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains('photos')) {
+                db.createObjectStore('photos');
+            }
+        };
+        request.onsuccess = function(event) {
+            resolve(event.target.result);
+        };
+        request.onerror = function(event) {
+            reject(event.target.error || new Error('IndexedDB open failed'));
+        };
+    });
+}
+
+async function storeFighterPhotoInIDB(key, photoData) {
+    const db = await openFighterPhotoDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('photos', 'readwrite');
+        const store = tx.objectStore('photos');
+        const request = store.put(photoData, key);
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(request.error || new Error('Failed to save fighter photo in IndexedDB'));
+    });
+}
+
+async function loadFighterPhotoFromIDB(key) {
+    if (!key) return null;
+    try {
+        const db = await openFighterPhotoDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('photos', 'readonly');
+            const store = tx.objectStore('photos');
+            const request = store.get(key);
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () => reject(request.error || new Error('Failed to load fighter photo from IndexedDB'));
+        });
+    } catch (err) {
+        return null;
+    }
+}
+
+async function deleteFighterPhotoFromIDB(key) {
+    if (!key) return;
+    try {
+        const db = await openFighterPhotoDB();
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction('photos', 'readwrite');
+            const store = tx.objectStore('photos');
+            const request = store.delete(key);
+            request.onsuccess = () => resolve(true);
+            request.onerror = () => reject(request.error || new Error('Failed to delete fighter photo from IndexedDB'));
+        });
+    } catch (err) {
+        console.warn('deleteFighterPhotoFromIDB failed', err);
+        return null;
+    }
+}
+
+async function migrateExistingPhotosToIDB() {
+    const fightersToMigrate = fighters.filter(f => f.photo && f.photo.startsWith('data:image') && !f.photo_key);
+    if (fightersToMigrate.length === 0) return 0;
+    const db = await openFighterPhotoDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction('photos', 'readwrite');
+        const store = tx.objectStore('photos');
+        fightersToMigrate.forEach(f => {
+            const key = `fighter-photo-${f.id}`;
+            store.put(f.photo, key);
+            f.photo_key = key;
+            f.photo = '';
+        });
+        tx.oncomplete = () => {
+            try {
+                saveFighters(fighters);
+            } catch (err) {
+                console.warn('Failed to save fighter list during photo migration', err);
+            }
+            resolve(fightersToMigrate.length);
+        };
+        tx.onerror = () => reject(tx.error || new Error('Failed to migrate existing photos to IndexedDB'));
+    });
+}
+
+async function hydrateFighterPhotos() {
+    await Promise.all(fighters.map(async f => {
+        if (!f.photo && f.photo_key) {
+            const photo = await loadFighterPhotoFromIDB(f.photo_key);
+            if (photo) f.photo = photo;
+        }
+    }));
 }
 
 function migrateLegacyFighters() {
@@ -813,7 +910,13 @@ function loadFighters() {
 function saveFighters(list = fighters) {
     const normalized = (list || []).map(normalizeFighterRecord).filter(Boolean);
     assignAutoDivision(normalized);
-    localStorage.setItem('wwe_fighters', JSON.stringify(normalized));
+    const payload = normalized.map(f => {
+        if (f.photo_key) {
+            return { ...f, photo: '' };
+        }
+        return f;
+    });
+    localStorage.setItem('wwe_fighters', JSON.stringify(payload));
 }
 
 function ensureFemaleRosterEntries() {
@@ -961,8 +1064,14 @@ window.restoreLegacyRoster = function() {
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     fighters = loadFighters();
+    try {
+        await migrateExistingPhotosToIDB();
+        await hydrateFighterPhotos();
+    } catch (err) {
+        console.warn('Photo DB migration/hydration failed', err);
+    }
     ensureFemaleRosterEntries();
     refreshFighterNameDatalist();
     renderRosterGrid();
@@ -1892,7 +2001,7 @@ window.openPhotoCropDialog = function(imageSrc, fighterId, isRoster) {
 
 // ensure small preview images update if dialog reopened
 
-window.saveCroppedPhoto = function(fighterId, isRoster) {
+window.saveCroppedPhoto = async function(fighterId, isRoster) {
     const offsetXSlider = document.getElementById('cropOffsetX');
     const offsetYSlider = document.getElementById('cropOffsetY');
     const zoomSlider = document.getElementById('cropZoom');
@@ -1912,7 +2021,7 @@ window.saveCroppedPhoto = function(fighterId, isRoster) {
     ctx.clip();
 
     const srcImage = window._rosterCropSrcImage || new Image();
-    const performSave = () => {
+    const performSave = async () => {
         const scale = zoom / 100;
         const scaledWidth = srcImage.naturalWidth * scale;
         const scaledHeight = srcImage.naturalHeight * scale;
@@ -1922,110 +2031,136 @@ window.saveCroppedPhoto = function(fighterId, isRoster) {
 
         const croppedPhoto = canvas.toDataURL('image/jpeg');
         const fighter = fighters.find(f => f.id === fighterId);
-        if (fighter) {
-            fighter.photo = croppedPhoto;
+        if (!fighter) return;
 
-            const savePhoto = (photoData) => {
-                fighter.photo = photoData;
-                localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
-            };
+        let saved = false;
+        const photoKey = fighter.photo_key || `fighter-photo-${fighter.id}`;
 
-            const attemptSave = () => {
+        const tryIDBDirect = async () => {
+            try {
+                await storeFighterPhotoInIDB(photoKey, croppedPhoto);
+                fighter.photo_key = photoKey;
+                fighter.photo = '';
+                saveFighters(fighters);
+                return true;
+            } catch (err) {
+                console.warn('IDB save failed, trying smaller versions', err);
+                return false;
+            }
+        };
+
+        const tryIDBWithFallbacks = async () => {
+            const qualitySteps = [0.7, 0.5, 0.3, 0.1];
+            for (let q of qualitySteps) {
+                const smaller = canvas.toDataURL('image/jpeg', q);
                 try {
-                    savePhoto(croppedPhoto);
+                    await storeFighterPhotoInIDB(photoKey, smaller);
+                    fighter.photo_key = photoKey;
+                    fighter.photo = '';
+                    saveFighters(fighters);
                     return true;
-                } catch (e) {
-                    return false;
+                } catch (err) {
+                    continue;
                 }
-            };
+            }
 
-            const attemptSaveWithFallbacks = () => {
-                if (attemptSave()) return true;
+            const dimensions = [150, 128, 100];
+            for (let size of dimensions) {
+                const smallCanvas = document.createElement('canvas');
+                smallCanvas.width = size;
+                smallCanvas.height = size;
+                const smallCtx = smallCanvas.getContext('2d');
+                smallCtx.fillStyle = '#ffffff';
+                smallCtx.fillRect(0, 0, size, size);
+                smallCtx.beginPath();
+                smallCtx.arc(size/2, size/2, size/2, 0, Math.PI * 2);
+                smallCtx.clip();
+                const factor = size / 200;
+                const xSmall = size / 2 - (srcImage.naturalWidth * zoom / 100) * factor / 2 + offsetX * factor;
+                const ySmall = size / 2 - (srcImage.naturalHeight * zoom / 100) * factor / 2 + offsetY * factor;
+                const scaledWidth = srcImage.naturalWidth * (zoom / 100) * factor;
+                const scaledHeight = srcImage.naturalHeight * (zoom / 100) * factor;
+                smallCtx.drawImage(srcImage, xSmall, ySmall, scaledWidth, scaledHeight);
 
-                const qualitySteps = [0.7, 0.5, 0.3, 0.1];
                 for (let q of qualitySteps) {
-                    const smaller = canvas.toDataURL('image/jpeg', q);
+                    const smaller = smallCanvas.toDataURL('image/jpeg', q);
                     try {
-                        savePhoto(smaller);
+                        await storeFighterPhotoInIDB(photoKey, smaller);
+                        fighter.photo_key = photoKey;
+                        fighter.photo = '';
+                        saveFighters(fighters);
                         return true;
-                    } catch (e) {
+                    } catch (err) {
                         continue;
                     }
                 }
-
-                const dimensions = [150, 128, 100];
-                for (let size of dimensions) {
-                    const smallCanvas = document.createElement('canvas');
-                    smallCanvas.width = size;
-                    smallCanvas.height = size;
-                    const smallCtx = smallCanvas.getContext('2d');
-                    smallCtx.fillStyle = '#ffffff';
-                    smallCtx.fillRect(0, 0, size, size);
-                    smallCtx.beginPath();
-                    smallCtx.arc(size/2, size/2, size/2, 0, Math.PI * 2);
-                    smallCtx.clip();
-                    const x = size / 2 - (srcImage.naturalWidth * zoom / 100) / 2 + offsetX * (size / 200);
-                    const y = size / 2 - (srcImage.naturalHeight * zoom / 100) / 2 + offsetY * (size / 200);
-                    const scaledWidth = srcImage.naturalWidth * (zoom / 100) * (size / 200);
-                    const scaledHeight = srcImage.naturalHeight * (zoom / 100) * (size / 200);
-                    smallCtx.drawImage(srcImage, x, y, scaledWidth, scaledHeight);
-
-                    for (let q of qualitySteps) {
-                        const smaller = smallCanvas.toDataURL('image/jpeg', q);
-                        try {
-                            savePhoto(smaller);
-                            return true;
-                        } catch (e) {
-                            continue;
-                        }
-                    }
-                }
-                return false;
-            };
-
-            if (!attemptSaveWithFallbacks()) {
-                alert('Unable to save this image to the roster due to browser storage limits. Try a smaller image or delete some old roster avatars.');
             }
+            return false;
+        };
 
-            // preserve roster search and selection so grid doesn't jump/reset
-            const rosterSearch = document.getElementById('rosterSearchInput');
-            const searchQuery = rosterSearch ? rosterSearch.value : '';
-            const hadFocus = document.activeElement === rosterSearch;
-            if (isRoster) {
-                renderRosterGrid();
-                // restore search query and reapply filter
-                const rs = document.getElementById('rosterSearchInput');
-                if (rs) {
-                    rs.value = searchQuery;
-                    filterRosterCards();
-                    if (hadFocus) rs.focus();
-                }
-                // try to keep the edited fighter visible
-                setTimeout(() => {
-                    const el = document.getElementById(`fighter-card-${fighterId}`);
-                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }, 150);
-            }
+        try {
+            saved = await tryIDBDirect();
+        } catch (err) {
+            saved = await tryIDBWithFallbacks();
         }
-        document.getElementById('photoCropDialog').remove();
+
+        if (!saved) {
+            alert('Unable to save this image due to an unexpected error. Please try again.');
+        }
+
+        const rosterSearch = document.getElementById('rosterSearchInput');
+        const searchQuery = rosterSearch ? rosterSearch.value : '';
+        const hadFocus = document.activeElement === rosterSearch;
+        if (isRoster) {
+            await hydrateFighterPhotos();
+            renderRosterGrid();
+            const rs = document.getElementById('rosterSearchInput');
+            if (rs) {
+                rs.value = searchQuery;
+                filterRosterCards();
+                if (hadFocus) rs.focus();
+            }
+            setTimeout(() => {
+                const el = document.getElementById(`fighter-card-${fighterId}`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 150);
+        }
     };
 
     if (srcImage && srcImage.naturalWidth) {
-        performSave();
+        await performSave();
     } else {
         srcImage.crossOrigin = 'anonymous';
         srcImage.src = document.getElementById('cropImagePreview').src;
-        srcImage.onload = performSave;
+        srcImage.onload = async () => await performSave();
+    }
+
+    if (document.getElementById('photoCropDialog')) {
+        document.getElementById('photoCropDialog').remove();
     }
 };
 
-window.deleteFighterPhoto = function(fighterId, isRoster) {
+window.deleteFighterPhoto = async function(fighterId, isRoster) {
     const fighter = fighters.find(f => f.id === fighterId);
     if (!fighter) return;
     if (!confirm(`Delete ${fighter.name}'s photo? This cannot be undone.`)) return;
+    
+    if (fighter.photo_key) {
+        try {
+            await deleteFighterPhotoFromIDB(fighter.photo_key);
+        } catch (err) {
+            console.warn('Failed to delete photo from IDB', err);
+        }
+    }
+    
     delete fighter.photo;
-    localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
-    if (document.getElementById('photoCropDialog')) document.getElementById('photoCropDialog').remove();
+    delete fighter.photo_key;
+    saveFighters(fighters);
+    
+    if (document.getElementById('photoCropDialog')) {
+        document.getElementById('photoCropDialog').remove();
+    }
+    
     if (isRoster) {
         renderRosterGrid();
     }
