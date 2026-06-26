@@ -3152,12 +3152,23 @@ function restoreLoggedResult(id, state) {
     const hasCompleteMatch = hasSlot1Value && hasSlot2Value && state.winnerName && state.loserName;
 
     if (winSelect) {
+        const ensureWinnerOption = (value, label) => {
+            if (!value || !label) return;
+            const exists = Array.from(winSelect.options).some(opt => opt.value === value || opt.text === label);
+            if (!exists) {
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.text = label;
+                winSelect.appendChild(opt);
+            }
+        };
+        if (state.slot1Name) ensureWinnerOption('1', state.slot1Name);
+        if (state.slot2Name) ensureWinnerOption('2', state.slot2Name);
+
         if (slot1Input?.value === state.winnerName) winSelect.value = '1';
         else if (slot2Input?.value === state.winnerName) winSelect.value = '2';
-        else {
-            const winnerOption = Array.from(winSelect.options).find(opt => opt.text === state.winnerName || opt.value === state.winnerName);
-            if (winnerOption) winSelect.value = winnerOption.value;
-        }
+        else if (state.slot1Name === state.winnerName) winSelect.value = '1';
+        else if (state.slot2Name === state.winnerName) winSelect.value = '2';
     }
     if (methodSelect && state.methodId) {
         methodSelect.value = state.methodId;
