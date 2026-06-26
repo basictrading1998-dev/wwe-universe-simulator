@@ -1495,7 +1495,9 @@ function getFighterByIdOrName(identifier) {
     if (!identifier) return null;
     const trimmedIdentifier = String(identifier).trim();
     const normalizedIdentifier = trimmedIdentifier.toLowerCase();
-    return fighters.find(f => f.id === trimmedIdentifier || f.name.toLowerCase() === normalizedIdentifier) || null;
+    const exactMatch = fighters.find(f => f.id === trimmedIdentifier || f.name.toLowerCase() === normalizedIdentifier);
+    if (exactMatch) return exactMatch;
+    return fighters.find(f => f.name.toLowerCase().includes(normalizedIdentifier) || (f.id && f.id.toLowerCase().includes(normalizedIdentifier))) || null;
 }
 
 function checkExistingFightRematch(matchRowId, changedSlot) {
@@ -2669,16 +2671,32 @@ window.logMatchResult = function(id) {
     if (!slot1 || !slot2 || !slot1.value || !slot2.value) return customAlert('Select both fighters before logging finishes!', 'Log Match Result');
     if (!winSelect || !winSelect.value) return customAlert('Please choose who won the fight!', 'Log Match Result');
     if (!methodSelect || !methodSelect.value) return customAlert('Please choose the method of victory!', 'Log Match Result');
-    
-    let f1 = getFighterByIdOrName(slot1.getAttribute('data-fighter-id') || slot1.value);
-    let f2 = getFighterByIdOrName(slot2.getAttribute('data-fighter-id') || slot2.value);
+
+    const resolveFighterInput = (input) => {
+        const idValue = input.getAttribute('data-fighter-id');
+        const nameValue = input.value.trim();
+        let fighter = null;
+        if (idValue) {
+            fighter = fighters.find(f => f.id === idValue);
+        }
+        if (!fighter && nameValue) {
+            fighter = getFighterByIdOrName(nameValue);
+            if (fighter) {
+                input.setAttribute('data-fighter-id', fighter.id);
+            }
+        }
+        return fighter;
+    };
+
+    let f1 = resolveFighterInput(slot1);
+    let f2 = resolveFighterInput(slot2);
     if (!f1 || !f2) return customAlert('Unable to resolve both fighters. Please select each fighter from the search results.', 'Log Match Result');
 
     let w = (winSelect.value === '1') ? f1 : f2; 
     let l = (winSelect.value === '1') ? f2 : f1;
     
     if (!w || !l) return customAlert('Please choose a valid winner before logging the result.', 'Log Match Result');
-    if (!w[methodSelect.value] && typeof w[methodSelect.value] === 'undefined') return customAlert('The selected win method is invalid.', 'Log Match Result');
+    if (typeof w[methodSelect.value] === 'undefined') return customAlert('The selected win method is invalid.', 'Log Match Result');
 
     w.wins++; 
     w[methodSelect.value]++; 
