@@ -1924,7 +1924,69 @@ window.saveCroppedPhoto = function(fighterId, isRoster) {
         const fighter = fighters.find(f => f.id === fighterId);
         if (fighter) {
             fighter.photo = croppedPhoto;
-            localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+
+            const savePhoto = (photoData) => {
+                fighter.photo = photoData;
+                localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+            };
+
+            const attemptSave = () => {
+                try {
+                    savePhoto(croppedPhoto);
+                    return true;
+                } catch (e) {
+                    return false;
+                }
+            };
+
+            const attemptSaveWithFallbacks = () => {
+                if (attemptSave()) return true;
+
+                const qualitySteps = [0.7, 0.5, 0.3, 0.1];
+                for (let q of qualitySteps) {
+                    const smaller = canvas.toDataURL('image/jpeg', q);
+                    try {
+                        savePhoto(smaller);
+                        return true;
+                    } catch (e) {
+                        continue;
+                    }
+                }
+
+                const dimensions = [150, 128, 100];
+                for (let size of dimensions) {
+                    const smallCanvas = document.createElement('canvas');
+                    smallCanvas.width = size;
+                    smallCanvas.height = size;
+                    const smallCtx = smallCanvas.getContext('2d');
+                    smallCtx.fillStyle = '#ffffff';
+                    smallCtx.fillRect(0, 0, size, size);
+                    smallCtx.beginPath();
+                    smallCtx.arc(size/2, size/2, size/2, 0, Math.PI * 2);
+                    smallCtx.clip();
+                    const x = size / 2 - (srcImage.naturalWidth * zoom / 100) / 2 + offsetX * (size / 200);
+                    const y = size / 2 - (srcImage.naturalHeight * zoom / 100) / 2 + offsetY * (size / 200);
+                    const scaledWidth = srcImage.naturalWidth * (zoom / 100) * (size / 200);
+                    const scaledHeight = srcImage.naturalHeight * (zoom / 100) * (size / 200);
+                    smallCtx.drawImage(srcImage, x, y, scaledWidth, scaledHeight);
+
+                    for (let q of qualitySteps) {
+                        const smaller = smallCanvas.toDataURL('image/jpeg', q);
+                        try {
+                            savePhoto(smaller);
+                            return true;
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                }
+                return false;
+            };
+
+            if (!attemptSaveWithFallbacks()) {
+                alert('Unable to save this image to the roster due to browser storage limits. Try a smaller image or delete some old roster avatars.');
+            }
+
             // preserve roster search and selection so grid doesn't jump/reset
             const rosterSearch = document.getElementById('rosterSearchInput');
             const searchQuery = rosterSearch ? rosterSearch.value : '';
