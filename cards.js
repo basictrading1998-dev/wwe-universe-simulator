@@ -3146,8 +3146,22 @@ function restoreLoggedResult(id, state) {
 
     const hasSlot1Value = slot1Input?.value?.trim();
     const hasSlot2Value = slot2Input?.value?.trim();
+    const winSelect = document.getElementById(`${id}-winner-select`);
+    const methodSelect = document.getElementById(`${id}-method-select`);
     const resultPanel = document.getElementById(`${id}-result-panel`);
     const hasCompleteMatch = hasSlot1Value && hasSlot2Value && state.winnerName && state.loserName;
+
+    if (winSelect) {
+        if (slot1Input?.value === state.winnerName) winSelect.value = '1';
+        else if (slot2Input?.value === state.winnerName) winSelect.value = '2';
+        else {
+            const winnerOption = Array.from(winSelect.options).find(opt => opt.text === state.winnerName || opt.value === state.winnerName);
+            if (winnerOption) winSelect.value = winnerOption.value;
+        }
+    }
+    if (methodSelect && state.methodId) {
+        methodSelect.value = state.methodId;
+    }
 
     if (!hasCompleteMatch) {
         clearMatchWinnerBadges(id);
@@ -3195,6 +3209,14 @@ function restoreLoggedResult(id, state) {
 
         clearMatchWinnerBadges(id);
         if (winnerSlot) showMatchWinnerBadge(id, winnerSlot, state.methodName);
+    }
+
+    const unlogBtn = document.getElementById(`${id}-unlog-btn`);
+    if (unlogBtn) {
+        unlogBtn.style.display = 'inline-flex';
+        unlogBtn.disabled = false;
+        unlogBtn.style.opacity = '1';
+        unlogBtn.style.cursor = 'pointer';
     }
 }
 
