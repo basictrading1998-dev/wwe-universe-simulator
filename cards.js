@@ -62,10 +62,33 @@ function saveFighters(list = fighters) {
         normalized.win_ko = Number(normalized.win_ko || 0);
         normalized.win_submission = Number(normalized.win_submission || 0);
         normalized.photo_key = normalized.photo_key || '';
-        normalized.photo = normalized.photo_key ? '' : (normalized.photo || '');
+        normalized.photo = normalized.photo || '';
+        if (normalized.photo_key || (typeof normalized.photo === 'string' && normalized.photo.startsWith('data:'))) {
+            normalized.photo = '';
+        }
         return normalized;
     }).filter(Boolean);
-    localStorage.setItem('wwe_fighters', JSON.stringify(payload));
+
+    try {
+        localStorage.setItem('wwe_fighters', JSON.stringify(payload));
+    } catch (err) {
+        if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22 || err.code === 1014)) {
+            const fallbackPayload = payload.map(f => {
+                if (!f || typeof f !== 'object') return f;
+                if (typeof f.photo === 'string' && f.photo.startsWith('data:')) {
+                    return { ...f, photo: '' };
+                }
+                return f;
+            });
+            try {
+                localStorage.setItem('wwe_fighters', JSON.stringify(fallbackPayload));
+                return;
+            } catch (innerErr) {
+                console.error('Failed to save fighters after stripping inline photos:', innerErr);
+            }
+        }
+        console.error('Failed to save fighters:', err);
+    }
 }
 
 async function openFighterPhotoDB() {
