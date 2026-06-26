@@ -896,6 +896,7 @@ async function hydrateFighterPhotos() {
     if (loadedAny) {
         saveFighters(fighters);
     }
+    return loadedAny;
 }
 
 function recoverPortraitsFromLocalStorage() {
@@ -971,12 +972,19 @@ function loadFighters() {
     }
 }
 
+async function loadAndHydrateFighters() {
+    fighters = loadFighters();
+    await hydrateFighterPhotos();
+    recoverPortraitsFromLocalStorage();
+    return fighters;
+}
+
 function saveFighters(list = fighters) {
     const normalized = (list || []).map(normalizeFighterRecord).filter(Boolean);
     assignAutoDivision(normalized);
     const payload = normalized.map(f => {
         if (f.photo_key) {
-            return { ...f, photo: f.photo || '' };
+            return { ...f, photo: '' };
         }
         return f;
     });
@@ -1094,8 +1102,8 @@ window.importAppBackup = function() {
     input.click();
 };
 
-window.restoreLegacyRoster = function() {
-    fighters = loadFighters();
+window.restoreLegacyRoster = async function() {
+    await loadAndHydrateFighters();
     const legacyKeys = ['fighters'];
     let restored = 0;
 
@@ -1129,10 +1137,8 @@ window.restoreLegacyRoster = function() {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
-    fighters = loadFighters();
     try {
-        await migrateExistingPhotosToIDB();
-        await hydrateFighterPhotos();
+        await loadAndHydrateFighters();
         const restored = recoverPortraitsFromLocalStorage();
         if (restored > 0) {
             console.info(`Recovered ${restored} portrait${restored === 1 ? '' : 's'} from storage`);
@@ -1152,6 +1158,15 @@ function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
+
+    const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
+    if (missingPhotos) {
+        hydrateFighterPhotos().then(loaded => {
+            if (loaded) renderRosterGrid();
+        }).catch(() => {
+            // ignore hydration failures and render any available images
+        });
+    }
 
     // Use the already-loaded fighter list so hydrated photo data is preserved.
     refreshFighterNameDatalist();
@@ -1252,6 +1267,15 @@ function renderRosterGridWithoutReload() {
     const grid = document.getElementById('rosterGrid');
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
+
+    const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
+    if (missingPhotos) {
+        hydrateFighterPhotos().then(loaded => {
+            if (loaded) renderRosterGridWithoutReload();
+        }).catch(() => {
+            // ignore hydration failures and continue rendering current state
+        });
+    }
 
     const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
 
@@ -1526,11 +1550,9 @@ function setupSidebarFormEngine() {
     
     if (addBtn) {
         addBtn.removeAttribute('onclick');
-        addBtn.onclick = function(e) {
+        addBtn.onclick = async function(e) {
             e.preventDefault();
-            fighters = loadFighters();
-
-            const nameInput = document.getElementById('fighterName') || document.querySelector('input[placeholder*="Roman"]') || document.querySelector('input[placeholder*="Superstar"]') || document.querySelector('input[type="text"]');
+            await loadAndHydrateFighters();
             const divisionInput = document.getElementById('fighterDivision') || document.querySelector('input[placeholder*="Heavyweight"]') || document.querySelector('input[placeholder*="Weight"]');
             const genderSelect = document.getElementById('fighterGender') || document.querySelector('select');
 
@@ -1584,8 +1606,8 @@ window.toggleBulkImporter = function() {
     wrapper.style.display = wrapper.style.display === 'none' ? 'block' : 'none';
 };
 
-window.importBulkSuperstars = function() {
-    fighters = loadFighters();
+window.importBulkSuperstars = async function() {
+    await loadAndHydrateFighters();
     const textarea = document.getElementById('bulkNamesInput');
     const genderSelect = document.getElementById('bulkGender');
     const divisionSelect = document.getElementById('bulkDivision');
@@ -1627,8 +1649,8 @@ window.importBulkSuperstars = function() {
     alert(`${added} ${added === 1 ? 'superstar' : 'superstars'} imported successfully.`);
 };
 
-window.syncWWE2K24Roster = function() {
-    fighters = loadFighters();
+window.syncWWE2K24Roster = async function() {
+    await loadAndHydrateFighters();
     const existingKeys = fighters.map(f => normalizeLookupKey(f.name));
     let added = 0;
     let updated = 0;
@@ -1888,7 +1910,7 @@ window.sortRosterByMetric = function(metricType) {
 window.fireSuperstar = function(id) {
     if (confirm("Release this competitor from their contract? This will remove them completely from your Universe roster!")) {
         fighters = fighters.filter(f => f.id !== id);
-        localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+        saveFighters(fighters);
         renderRosterGrid();
     }
 };
@@ -2108,7 +2130,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
             try {
                 await storeFighterPhotoInIDB(photoKey, croppedPhoto);
                 fighter.photo_key = photoKey;
-                fighter.photo = '';
+                fighter.photo = croppedPhoto;
                 saveFighters(fighters);
                 return true;
             } catch (err) {
@@ -2124,7 +2146,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
                 try {
                     await storeFighterPhotoInIDB(photoKey, smaller);
                     fighter.photo_key = photoKey;
-                    fighter.photo = '';
+                    fighter.photo = smaller;
                     saveFighters(fighters);
                     return true;
                 } catch (err) {
@@ -2155,7 +2177,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
                     try {
                         await storeFighterPhotoInIDB(photoKey, smaller);
                         fighter.photo_key = photoKey;
-                        fighter.photo = '';
+                        fighter.photo = smaller;
                         saveFighters(fighters);
                         return true;
                     } catch (err) {

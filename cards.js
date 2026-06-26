@@ -2062,7 +2062,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
             try {
                 await storeFighterPhotoInIDB(photoKey, croppedPhoto);
                 fighter.photo_key = photoKey;
-                fighter.photo = '';
+                fighter.photo = croppedPhoto;
                 saveFighters(fighters);
                 return true;
             } catch (err) {
@@ -2078,7 +2078,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
                 try {
                     await storeFighterPhotoInIDB(photoKey, smaller);
                     fighter.photo_key = photoKey;
-                    fighter.photo = '';
+                    fighter.photo = smaller;
                     saveFighters(fighters);
                     return true;
                 } catch (err) {
@@ -2109,7 +2109,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
                     try {
                         await storeFighterPhotoInIDB(photoKey, smaller);
                         fighter.photo_key = photoKey;
-                        fighter.photo = '';
+                        fighter.photo = smaller;
                         saveFighters(fighters);
                         return true;
                     } catch (err) {
