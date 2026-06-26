@@ -443,6 +443,11 @@ window.fighters = fighters;
 let futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
 let activeShowId = localStorage.getItem('wwe_active_show_id') || '';
 
+function getActiveShowMatchesStorageKey() {
+    if (!activeShowId || !futureShows.find(s => s.id === activeShowId)) return null;
+    return `wwe_matches_${activeShowId}`;
+}
+
 function ensureActiveShowSelected() {
     if (activeShowId && futureShows.find(s => s.id === activeShowId)) {
         if (localStorage.getItem('wwe_matches_')) {
@@ -466,6 +471,9 @@ function ensureActiveShowSelected() {
     localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
     activeShowId = newId;
     localStorage.setItem('wwe_active_show_id', activeShowId);
+    if (localStorage.getItem('wwe_matches_')) {
+        localStorage.removeItem('wwe_matches_');
+    }
 }
 
 ensureActiveShowSelected();
@@ -476,7 +484,8 @@ window.skipDraftSaveOnUnload = false;
 function loadCompletedMatchesForShow(showId) {
     refreshFightersFromStorage();
     if (!showId) return {};
-    const storedMatches = JSON.parse(localStorage.getItem("wwe_matches_" + showId)) || {};
+    const storageKey = `wwe_matches_${showId}`;
+    const storedMatches = JSON.parse(localStorage.getItem(storageKey)) || {};
     if (Object.keys(storedMatches).length > 0) {
         let updated = false;
         Object.values(storedMatches).forEach(state => {
@@ -488,7 +497,7 @@ function loadCompletedMatchesForShow(showId) {
             }
         });
         if (updated) {
-            localStorage.setItem("wwe_matches_" + showId, JSON.stringify(storedMatches));
+            localStorage.setItem(storageKey, JSON.stringify(storedMatches));
         }
         return storedMatches;
     }
@@ -510,8 +519,8 @@ function loadCompletedMatchesForShow(showId) {
             winnerGender: winnerFighter ? winnerFighter.gender : 'male',
             slot1Name: match.winner,
             slot2Name: match.loser,
-            slot1Id: '',
-            slot2Id: '',
+            slot1Id: winnerFighter?.id || '',
+            slot2Id: loserFighter?.id || '',
             gender: inferredGender,
             methodId: match.methodId || '',
             methodName: match.method || '',
@@ -522,7 +531,7 @@ function loadCompletedMatchesForShow(showId) {
     });
 
     if (Object.keys(recovered).length > 0) {
-        localStorage.setItem("wwe_matches_" + showId, JSON.stringify(recovered));
+        localStorage.setItem(storageKey, JSON.stringify(recovered));
     }
     return recovered;
 }
@@ -549,7 +558,8 @@ window.restartCurrentShow = function() {
     customConfirm('Restart this completed fight card? This will clear the current archived layout and allow you to rebook the show from scratch.', function(result) {
         if (!result) return;
         setShowCompleted(activeShowId, false);
-        localStorage.removeItem('wwe_matches_' + activeShowId);
+        const storageKey = getActiveShowMatchesStorageKey();
+        if (storageKey) localStorage.removeItem(storageKey);
         localStorage.removeItem('wwe_draft_' + activeShowId);
         location.reload();
     }, 'Restart Card');
@@ -691,7 +701,7 @@ window.announceEventRecap = function() {
         return;
     }
     
-    const activeShowSavedData = JSON.parse(localStorage.getItem('wwe_matches_' + activeShowId)) || {};
+    const activeShowSavedData = JSON.parse(localStorage.getItem(getActiveShowMatchesStorageKey() || '')) || {};
     const allMatchRows = Array.from(document.querySelectorAll('.match-row'));
     const matchEntries = allMatchRows.slice().reverse().map(row => {
         const state = activeShowSavedData[row.id];
@@ -2714,6 +2724,11 @@ window.bookSuggested = function(fId) {
     window.closeSuggestionModal();
 };
 window.logMatchResult = function(id) {
+    if (!activeShowId || !futureShows.find(s => s.id === activeShowId)) {
+        ensureActiveShowSelected();
+    }
+    if (!activeShowId) return customAlert('No active show is selected. Please select or create a show before logging results.', 'Log Match Result');
+
     const row = document.getElementById(id); 
     const slot1 = document.getElementById(`${id}-slot1`).querySelector('.fighter-search-input');
     const slot2 = document.getElementById(`${id}-slot2`).querySelector('.fighter-search-input');
@@ -2862,7 +2877,10 @@ window.logMatchResult = function(id) {
         }
     }
     completedMatches[id] = matchSaveState; 
-    localStorage.setItem("wwe_matches_" + activeShowId, JSON.stringify(completedMatches));
+    const storageKey = getActiveShowMatchesStorageKey();
+    if (storageKey) {
+        localStorage.setItem(storageKey, JSON.stringify(completedMatches));
+    }
     
     clearMatchWinnerBadges(id);
     const winningSlot = winSelect.value === '1' ? 'slot1' : 'slot2';
@@ -2899,6 +2917,11 @@ window.logMatchResult = function(id) {
 };
 
 window.unlogMatchResult = function(id) {
+    if (!activeShowId || !futureShows.find(s => s.id === activeShowId)) {
+        ensureActiveShowSelected();
+    }
+    if (!activeShowId) return customAlert('No active show is selected. Please select or create a show before unlogging results.', 'Unlog Match Result');
+
     const savedMatch = completedMatches[id];
     if (!savedMatch) return;
 
@@ -2954,7 +2977,10 @@ window.unlogMatchResult = function(id) {
 
     localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
     delete completedMatches[id];
-    localStorage.setItem('wwe_matches_' + activeShowId, JSON.stringify(completedMatches));
+    const storageKey = getActiveShowMatchesStorageKey();
+    if (storageKey) {
+        localStorage.setItem(storageKey, JSON.stringify(completedMatches));
+    }
 
     const row = document.getElementById(id);
     if (row) {
@@ -2994,8 +3020,9 @@ function getFinalizeEventButton() {
 }
 
 window.hasActiveShowResults = function() {
-    if (!activeShowId) return false;
-    const saved = JSON.parse(localStorage.getItem('wwe_matches_' + activeShowId)) || {};
+    const storageKey = getActiveShowMatchesStorageKey();
+    if (!storageKey) return false;
+    const saved = JSON.parse(localStorage.getItem(storageKey)) || {};
     return Object.keys(saved).length > 0;
 };
 
@@ -3060,7 +3087,7 @@ window.updateFinalizeButtonState = function() {
     const eventNameValue = document.getElementById('eventNameInput')?.value.trim() || '';
     const activeShowCompleted = isShowCompleted(activeShowId);
     const allMatchRows = Array.from(document.querySelectorAll('.match-row'));
-    const activeShowSavedData = JSON.parse(localStorage.getItem('wwe_matches_' + activeShowId)) || {};
+    const activeShowSavedData = JSON.parse(localStorage.getItem(getActiveShowMatchesStorageKey() || '')) || {};
     const incompleteRows = allMatchRows.filter(row => {
         const saved = activeShowSavedData[row.id];
         return !saved || !saved.winnerName || !saved.loserName || !saved.methodName;
@@ -3091,27 +3118,38 @@ function restoreLoggedResult(id, state) {
     const restoreSlot = (slotEl, inputEl, fighterName, fighterId) => {
         if (!slotEl || !inputEl || !fighterName) return;
         inputEl.value = fighterName;
-        if (fighterId) inputEl.setAttribute('data-fighter-id', fighterId);
-        const f = fighters.find(fighter => fighter.id === fighterId);
+        let fighter = null;
+        if (fighterId) {
+            inputEl.setAttribute('data-fighter-id', fighterId);
+            fighter = fighters.find(f => f.id === fighterId) || null;
+        }
+        if (!fighter) {
+            fighter = fighters.find(f => f.name === fighterName) || null;
+            if (fighter) {
+                inputEl.setAttribute('data-fighter-id', fighter.id);
+            } else {
+                inputEl.setAttribute('data-fighter-id', '');
+            }
+        }
         const avatar = slotEl.querySelector('.avatar-box');
         if (avatar) {
             let avatarContent = '';
-            if (f && f.photo) {
-                avatarContent = `<img src="${f.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+            if (fighter && fighter.photo) {
+                avatarContent = `<img src="${fighter.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
             } else {
                 avatarContent = fighterName.charAt(0);
             }
             avatar.innerHTML = avatarContent;
             avatar.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
-            avatar.onclick = function(e) { e.stopPropagation(); if (fighterId) uploadFighterPhotoFromCard(fighterId); };
+            avatar.onclick = function(e) { e.stopPropagation(); if (fighter && fighter.id) uploadFighterPhotoFromCard(fighter.id); };
         }
     };
 
     restoreSlot(slot1, slot1Input, state.slot1Name, state.slot1Id);
     restoreSlot(slot2, slot2Input, state.slot2Name, state.slot2Id);
 
-    updateFighterRecordDisplay(id, 'slot1', fighters.find(f => f.id === state.slot1Id));
-    updateFighterRecordDisplay(id, 'slot2', fighters.find(f => f.id === state.slot2Id));
+    updateFighterRecordDisplay(id, 'slot1', fighters.find(f => f.id === state.slot1Id) || getFighterByIdOrName(state.slot1Name));
+    updateFighterRecordDisplay(id, 'slot2', fighters.find(f => f.id === state.slot2Id) || getFighterByIdOrName(state.slot2Name));
 
     const rowGender = state.gender ||
         fighters.find(f => f.id === state.slot1Id || f.name === state.slot1Name)?.gender ||
@@ -3262,6 +3300,14 @@ function disableMatchRowControls(matchId) {
             el.title = 'Unlog this result and edit the match again.';
             return;
         }
+        if (el.classList && el.classList.contains('announce-btn')) {
+            el.disabled = false;
+            el.style.opacity = '1';
+            el.style.cursor = 'pointer';
+            el.style.pointerEvents = 'auto';
+            el.title = 'Announce this match result.';
+            return;
+        }
         el.disabled = true;
         el.style.opacity = '0.45';
         el.style.cursor = 'not-allowed';
@@ -3323,7 +3369,7 @@ window.finalizeFullEventCard = function() {
         localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
     }
 
-    const activeShowSavedData = JSON.parse(localStorage.getItem("wwe_matches_" + activeShowId)) || {};
+    const activeShowSavedData = JSON.parse(localStorage.getItem(getActiveShowMatchesStorageKey() || '')) || {};
     const allMatchRows = Array.from(document.querySelectorAll('.match-row'));
     const incompleteRows = allMatchRows.filter(row => {
         const saved = activeShowSavedData[row.id];
@@ -3620,8 +3666,8 @@ window.resetActiveShowDraft = function() {
         const targetShowId = selector && selector.value ? selector.value : activeShowId;
         if (targetShowId) {
             setShowCompleted(targetShowId, false);
-            localStorage.removeItem("wwe_matches_" + targetShowId);
-            localStorage.removeItem("wwe_draft_" + targetShowId);
+            localStorage.removeItem(`wwe_matches_${targetShowId}`);
+            localStorage.removeItem(`wwe_draft_${targetShowId}`);
         }
         localStorage.removeItem('wwe_draft_default');
 
