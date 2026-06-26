@@ -2670,11 +2670,16 @@ window.logMatchResult = function(id) {
     if (!winSelect || !winSelect.value) return customAlert('Please choose who won the fight!', 'Log Match Result');
     if (!methodSelect || !methodSelect.value) return customAlert('Please choose the method of victory!', 'Log Match Result');
     
-    let f1 = fighters.find(f => f.id === slot1.getAttribute('data-fighter-id')); 
-    let f2 = fighters.find(f => f.id === slot2.getAttribute('data-fighter-id'));
+    let f1 = getFighterByIdOrName(slot1.getAttribute('data-fighter-id') || slot1.value);
+    let f2 = getFighterByIdOrName(slot2.getAttribute('data-fighter-id') || slot2.value);
+    if (!f1 || !f2) return customAlert('Unable to resolve both fighters. Please select each fighter from the search results.', 'Log Match Result');
+
     let w = (winSelect.value === '1') ? f1 : f2; 
     let l = (winSelect.value === '1') ? f2 : f1;
     
+    if (!w || !l) return customAlert('Please choose a valid winner before logging the result.', 'Log Match Result');
+    if (!w[methodSelect.value] && typeof w[methodSelect.value] === 'undefined') return customAlert('The selected win method is invalid.', 'Log Match Result');
+
     w.wins++; 
     w[methodSelect.value]++; 
     l.losses++;
