@@ -1342,10 +1342,10 @@ function getChampionshipCount(fighter) {
 
 
 function setupSidebarFormEngine() {
-    let addBtn = null;
-    document.querySelectorAll('button').forEach(btn => {
-        if (btn.textContent.toLowerCase().includes('add to roster')) addBtn = btn;
-    });
+    let addBtn = document.getElementById('addFighterButton');
+    if (!addBtn) {
+        addBtn = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.toLowerCase().includes('add to roster')) || null;
+    }
     
     if (addBtn) {
         addBtn.removeAttribute('onclick');
@@ -1374,7 +1374,7 @@ function setupSidebarFormEngine() {
             refreshFighterNameDatalist();
             
             if (nameInput) nameInput.value = '';
-            if (divisionInput) divisionInput.value = '';
+            if (divisionInput) divisionInput.value = 'HeavyWeight';
             
             alert(`Contract Signed! "${newFighter.name}" has officially been added back to your Universe roster!`);
             renderRosterGrid();
