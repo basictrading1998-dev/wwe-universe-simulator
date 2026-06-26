@@ -442,6 +442,33 @@ let fighters = loadFightersFromStorage();
 window.fighters = fighters;
 let futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
 let activeShowId = localStorage.getItem('wwe_active_show_id') || '';
+
+function ensureActiveShowSelected() {
+    if (activeShowId && futureShows.find(s => s.id === activeShowId)) {
+        if (localStorage.getItem('wwe_matches_')) {
+            localStorage.removeItem('wwe_matches_');
+        }
+        return;
+    }
+
+    if (futureShows.length > 0) {
+        activeShowId = futureShows[0].id;
+        localStorage.setItem('wwe_active_show_id', activeShowId);
+        if (localStorage.getItem('wwe_matches_')) {
+            localStorage.removeItem('wwe_matches_');
+        }
+        return;
+    }
+
+    const newId = 'show-' + Date.now();
+    const defaultName = 'Show';
+    futureShows.push({ id: newId, name: defaultName });
+    localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+    activeShowId = newId;
+    localStorage.setItem('wwe_active_show_id', activeShowId);
+}
+
+ensureActiveShowSelected();
 let completedMatches = loadCompletedMatchesForShow(activeShowId);
 let activeMatchId = null;
 window.skipDraftSaveOnUnload = false;
