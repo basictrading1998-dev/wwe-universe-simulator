@@ -908,7 +908,7 @@ function recoverPortraitsFromLocalStorage() {
             value.forEach(inspectValue);
             return;
         }
-        const hasPhoto = typeof value.photo === 'string' && value.photo.startsWith('data:image');
+        const hasPhoto = typeof value.photo === 'string' && value.photo.trim().length > 0;
         const hasIdOrName = typeof value.id === 'string' || typeof value.name === 'string';
         if (hasPhoto && hasIdOrName) {
             candidates.push(value);
@@ -927,7 +927,7 @@ function recoverPortraitsFromLocalStorage() {
     });
 
     candidates.forEach(candidate => {
-        if (!candidate.photo || !candidate.photo.startsWith('data:image')) return;
+        if (!candidate.photo || typeof candidate.photo !== 'string') return;
         const matchById = candidate.id ? fighters.find(f => f.id === candidate.id) : null;
         const matchByName = candidate.name ? fighters.find(f => f.name.toLowerCase() === candidate.name.toLowerCase()) : null;
         const fighter = matchById || matchByName;
