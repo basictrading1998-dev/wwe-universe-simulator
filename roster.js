@@ -779,7 +779,7 @@ function normalizeFighterRecord(fighter) {
     normalized.win_ko = Number(normalized.win_ko || 0);
     normalized.win_submission = Number(normalized.win_submission || 0);
     normalized.photo_key = normalized.photo_key || normalized.photoKey || '';
-    normalized.photo = normalized.photo_key ? '' : (normalized.photo || '');
+    normalized.photo = normalized.photo || '';
     return normalized;
 }
 
@@ -883,12 +883,64 @@ async function migrateExistingPhotosToIDB() {
 }
 
 async function hydrateFighterPhotos() {
+    let loadedAny = false;
     await Promise.all(fighters.map(async f => {
         if (!f.photo && f.photo_key) {
             const photo = await loadFighterPhotoFromIDB(f.photo_key);
-            if (photo) f.photo = photo;
+            if (photo) {
+                f.photo = photo;
+                loadedAny = true;
+            }
         }
     }));
+    if (loadedAny) {
+        saveFighters(fighters);
+    }
+}
+
+function recoverPortraitsFromLocalStorage() {
+    let restored = 0;
+    const candidates = [];
+
+    const inspectValue = (value) => {
+        if (!value || typeof value !== 'object') return;
+        if (Array.isArray(value)) {
+            value.forEach(inspectValue);
+            return;
+        }
+        const hasPhoto = typeof value.photo === 'string' && value.photo.startsWith('data:image');
+        const hasIdOrName = typeof value.id === 'string' || typeof value.name === 'string';
+        if (hasPhoto && hasIdOrName) {
+            candidates.push(value);
+        }
+        Object.values(value).forEach(inspectValue);
+    };
+
+    Object.keys(localStorage).forEach(key => {
+        try {
+            const raw = localStorage.getItem(key);
+            const parsed = JSON.parse(raw);
+            inspectValue(parsed);
+        } catch (e) {
+            // ignore non-JSON values
+        }
+    });
+
+    candidates.forEach(candidate => {
+        if (!candidate.photo || !candidate.photo.startsWith('data:image')) return;
+        const matchById = candidate.id ? fighters.find(f => f.id === candidate.id) : null;
+        const matchByName = candidate.name ? fighters.find(f => f.name.toLowerCase() === candidate.name.toLowerCase()) : null;
+        const fighter = matchById || matchByName;
+        if (fighter && !fighter.photo) {
+            fighter.photo = candidate.photo;
+            restored++;
+        }
+    });
+
+    if (restored > 0) {
+        saveFighters(fighters);
+    }
+    return restored;
 }
 
 function migrateLegacyFighters() {
@@ -924,7 +976,7 @@ function saveFighters(list = fighters) {
     assignAutoDivision(normalized);
     const payload = normalized.map(f => {
         if (f.photo_key) {
-            return { ...f, photo: '' };
+            return { ...f, photo: f.photo || '' };
         }
         return f;
     });
@@ -1081,6 +1133,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         await migrateExistingPhotosToIDB();
         await hydrateFighterPhotos();
+        const restored = recoverPortraitsFromLocalStorage();
+        if (restored > 0) {
+            console.info(`Recovered ${restored} portrait${restored === 1 ? '' : 's'} from storage`);
+        }
     } catch (err) {
         console.warn('Photo DB migration/hydration failed', err);
     }
@@ -1097,7 +1153,7 @@ function renderRosterGrid() {
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
 
-    fighters = loadFighters();
+    // Use the already-loaded fighter list so hydrated photo data is preserved.
     refreshFighterNameDatalist();
     const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
 
