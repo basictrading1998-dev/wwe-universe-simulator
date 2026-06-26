@@ -2063,7 +2063,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
                 await storeFighterPhotoInIDB(photoKey, croppedPhoto);
                 fighter.photo_key = photoKey;
                 fighter.photo = '';
-                localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+                saveFighters(fighters);
                 return true;
             } catch (err) {
                 console.warn('IDB save failed, trying smaller versions', err);
@@ -2079,7 +2079,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
                     await storeFighterPhotoInIDB(photoKey, smaller);
                     fighter.photo_key = photoKey;
                     fighter.photo = '';
-                    localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+                    saveFighters(fighters);
                     return true;
                 } catch (err) {
                     continue;
@@ -2110,7 +2110,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
                         await storeFighterPhotoInIDB(photoKey, smaller);
                         fighter.photo_key = photoKey;
                         fighter.photo = '';
-                        localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+                        saveFighters(fighters);
                         return true;
                     } catch (err) {
                         continue;
@@ -2161,13 +2161,21 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
     }
 };
 
-window.deleteFighterPhoto = function(fighterId, isRoster) {
+window.deleteFighterPhoto = async function(fighterId, isRoster) {
     const fighter = fighters.find(f => f.id === fighterId);
     if (!fighter) return;
-    customConfirm(`Delete ${fighter.name}'s photo? This cannot be undone.`, function(result) {
+    customConfirm(`Delete ${fighter.name}'s photo? This cannot be undone.`, async function(result) {
         if (!result) return;
+        if (fighter.photo_key) {
+            try {
+                await deleteFighterPhotoFromIDB(fighter.photo_key);
+            } catch (err) {
+                console.warn('Failed to delete photo from IDB', err);
+            }
+        }
         delete fighter.photo;
-        localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
+        delete fighter.photo_key;
+        saveFighters(fighters);
         if (document.getElementById('photoCropDialog')) document.getElementById('photoCropDialog').remove();
         if (isRoster) {
             renderRosterGrid();
@@ -2181,20 +2189,6 @@ window.deleteFighterPhoto = function(fighterId, isRoster) {
             });
         }
     }, 'Delete Photo');
-    return;
-    localStorage.setItem('wwe_fighters', JSON.stringify(fighters));
-    if (document.getElementById('photoCropDialog')) document.getElementById('photoCropDialog').remove();
-    if (isRoster) {
-        renderRosterGrid();
-    } else {
-        document.querySelectorAll(`.avatar-box`).forEach(av => {
-            const input = av.closest('.fighter-slot')?.querySelector('.fighter-search-input');
-            if (input && input.getAttribute('data-fighter-id') === fighterId) {
-                av.innerHTML = fighter.name.charAt(0);
-                av.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
-            }
-        });
-    }
 };
 
 window.deleteFighterPhotoCard = function(fighterId) {

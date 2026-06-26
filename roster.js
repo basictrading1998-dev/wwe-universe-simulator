@@ -852,13 +852,19 @@ async function migrateExistingPhotosToIDB() {
     return new Promise((resolve, reject) => {
         const tx = db.transaction('photos', 'readwrite');
         const store = tx.objectStore('photos');
+        const pendingUpdates = [];
+
         fightersToMigrate.forEach(f => {
             const key = `fighter-photo-${f.id}`;
             store.put(f.photo, key);
-            f.photo_key = key;
-            f.photo = '';
+            pendingUpdates.push({ fighter: f, key, photo: f.photo });
         });
+
         tx.oncomplete = () => {
+            pendingUpdates.forEach(update => {
+                update.fighter.photo_key = update.key;
+                update.fighter.photo = '';
+            });
             try {
                 saveFighters(fighters);
             } catch (err) {
@@ -866,7 +872,13 @@ async function migrateExistingPhotosToIDB() {
             }
             resolve(fightersToMigrate.length);
         };
-        tx.onerror = () => reject(tx.error || new Error('Failed to migrate existing photos to IndexedDB'));
+
+        tx.onerror = () => {
+            pendingUpdates.forEach(update => {
+                update.fighter.photo = update.photo;
+            });
+            reject(tx.error || new Error('Failed to migrate existing photos to IndexedDB'));
+        };
     });
 }
 
