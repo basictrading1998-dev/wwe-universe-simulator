@@ -27,8 +27,27 @@ function loadFightersFromStorage() {
     }
 }
 
+function refreshFightersFromStorage() {
+    const loaded = loadFightersFromStorage();
+    if (!Array.isArray(fighters) || fighters.length === 0 || loaded.length > fighters.length) {
+        fighters = loaded;
+    }
+    if (!window.fighters || !window.fighters.length) {
+        window.fighters = fighters;
+    }
+    return fighters;
+}
+
+function getFighterList() {
+    if (!Array.isArray(fighters) || fighters.length === 0) {
+        refreshFightersFromStorage();
+    }
+    return fighters;
+}
+
 function saveFighters(list = fighters) {
-    const payload = (list || []).map(f => {
+    const baseList = list === undefined || list === null ? getFighterList() : list;
+    const payload = (baseList || []).map(f => {
         if (!f || typeof f !== 'object') return null;
         const normalized = { ...f };
         normalized.id = normalized.id || `f-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
@@ -420,6 +439,7 @@ window.placeBet = function(matchId) {
 };
 
 let fighters = loadFightersFromStorage();
+window.fighters = fighters;
 let futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
 let activeShowId = localStorage.getItem('wwe_active_show_id') || '';
 let completedMatches = loadCompletedMatchesForShow(activeShowId);
@@ -427,6 +447,7 @@ let activeMatchId = null;
 window.skipDraftSaveOnUnload = false;
 
 function loadCompletedMatchesForShow(showId) {
+    refreshFightersFromStorage();
     if (!showId) return {};
     const storedMatches = JSON.parse(localStorage.getItem("wwe_matches_" + showId)) || {};
     if (Object.keys(storedMatches).length > 0) {
@@ -807,6 +828,7 @@ function applyBettingState() {
 
 
 document.addEventListener('DOMContentLoaded', async () => {
+    refreshFightersFromStorage();
     await hydrateFighterPhotos();
     initBettingSystem();
     const tiers = ['mainEventContainer', 'coMainContainer', 'mainCardContainer', 'prelimsContainer', 'earlyPrelimsContainer'];
@@ -1173,6 +1195,7 @@ function renderCardRows(box, num, tierId, isMain) {
 }
 
 window.triggerSearchFill = function(uId, slotType) {
+    refreshFightersFromStorage();
     const slot = document.getElementById(`${uId}-${slotType}`);
     const input = slot.querySelector('.fighter-search-input');
     const panel = slot.querySelector('.search-results-floating-panel');
@@ -1493,11 +1516,13 @@ function refreshFighterRecordDisplaysForId(fighterId) {
 
 function getFighterByIdOrName(identifier) {
     if (!identifier) return null;
+    const fighterList = (Array.isArray(fighters) && fighters.length > 0) ? fighters : loadFightersFromStorage();
+    if (!Array.isArray(fighterList) || fighterList.length === 0) return null;
     const trimmedIdentifier = String(identifier).trim();
     const normalizedIdentifier = trimmedIdentifier.toLowerCase();
-    const exactMatch = fighters.find(f => f.id === trimmedIdentifier || f.name.toLowerCase() === normalizedIdentifier);
+    const exactMatch = fighterList.find(f => f.id === trimmedIdentifier || f.name.toLowerCase() === normalizedIdentifier);
     if (exactMatch) return exactMatch;
-    return fighters.find(f => f.name.toLowerCase().includes(normalizedIdentifier) || (f.id && f.id.toLowerCase().includes(normalizedIdentifier))) || null;
+    return fighterList.find(f => f.name.toLowerCase().includes(normalizedIdentifier) || (f.id && f.id.toLowerCase().includes(normalizedIdentifier))) || null;
 }
 
 function checkExistingFightRematch(matchRowId, changedSlot) {
