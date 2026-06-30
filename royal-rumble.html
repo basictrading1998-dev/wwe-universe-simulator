@@ -92,7 +92,7 @@
                         <option value="30">30</option>
                     </select>
                 </label>
-                <button onclick="autoFillFighters()" style="background:#f59e0b; color:white; padding:8px 12px; border-radius:6px; border:none; font-weight:700; cursor:pointer; font-size:0.8rem; text-transform:uppercase; opacity:0.8;">🔧 Auto Fill (Temp)</button>
+                <!-- Auto Fill (Temp) removed -->
             </div>
         </div>
     </div>
@@ -280,19 +280,7 @@
             buildRoyalRosterDatalist(genderFilter?.value || 'all');
         }
 
-        function autoFillFighters() {
-            const roster = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
-            const inputs = document.querySelectorAll('.fighter-name-input');
-            let rosterIndex = 0;
-            
-            inputs.forEach(input => {
-                if (!input.value.trim() && rosterIndex < roster.length) {
-                    input.value = roster[rosterIndex].name;
-                    input.dispatchEvent(new Event('input'));
-                    rosterIndex++;
-                }
-            });
-        }
+        // autoFillFighters removed (temporary feature)
 
         function checkForRumbleWinner() {
             const fighters = document.querySelectorAll('.fighter');

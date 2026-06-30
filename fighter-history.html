@@ -100,12 +100,74 @@
     <script>
         // SMART DETECTOR: Parses all possible variations of the local storage keys so nothing gets skipped
         let fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || JSON.parse(localStorage.getItem('fighters')) || [];
+        // historyFighters is a shallow, in-memory copy used only by this page to avoid mutating
+        // the master `fighters` array stored by the roster. Photos hydrated here will not
+        // be written back to localStorage.
+        let historyFighters = [];
 
-        document.addEventListener('DOMContentLoaded', () => {
+        async function openFighterPhotoDB() {
+            return new Promise((resolve, reject) => {
+                try {
+                    const request = indexedDB.open('wwe_fighter_photos', 1);
+                    request.onupgradeneeded = function(event) {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains('photos')) {
+                            db.createObjectStore('photos');
+                        }
+                    };
+                    request.onsuccess = function(event) { resolve(event.target.result); };
+                    request.onerror = function(event) { reject(event.target.error || new Error('IndexedDB open failed')); };
+                } catch (err) {
+                    reject(err);
+                }
+            });
+        }
+
+        async function loadFighterPhotoFromIDB(key) {
+            if (!key) return null;
+            try {
+                const db = await openFighterPhotoDB();
+                return new Promise((resolve, reject) => {
+                    try {
+                        const tx = db.transaction('photos', 'readonly');
+                        const store = tx.objectStore('photos');
+                        const request = store.get(key);
+                        request.onsuccess = () => resolve(request.result || null);
+                        request.onerror = () => reject(request.error || new Error('Failed to load fighter photo from IndexedDB'));
+                    } catch (err) { resolve(null); }
+                });
+            } catch (err) {
+                return null;
+            }
+        }
+
+        async function hydratePortraitsForHistory() {
+            if (!Array.isArray(historyFighters) || historyFighters.length === 0) return;
+            const candidates = historyFighters.filter(f => !f.photo && f.photo_key);
+            if (candidates.length === 0) return;
+            await Promise.all(candidates.map(async f => {
+                try {
+                    const photo = await loadFighterPhotoFromIDB(f.photo_key);
+                    if (photo) f.photo = photo; // only mutates the historyFighters copy
+                } catch (err) {
+                    // ignore per-fighter failures
+                }
+            }));
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
             fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || JSON.parse(localStorage.getItem('fighters')) || [];
             fighters.sort((a, b) => a.name.localeCompare(b.name));
+            // create an in-memory shallow copy for rendering/hydration so we don't alter the
+            // master roster data in localStorage
+            historyFighters = fighters.map(f => ({ ...f }));
             buildHistoryDatalist();
             updateHistoryCompareDatalists();
+            try {
+                await hydratePortraitsForHistory();
+            } catch (err) {
+                // ignore hydration errors and continue rendering
+            }
             renderWidescreenHistoryMatrix();
         });
 
@@ -115,9 +177,9 @@
             if (!container) return;
 
             container.innerHTML = '';
-            if (totalBadge) totalBadge.textContent = `${fighters.length} Superstars`;
+            if (totalBadge) totalBadge.textContent = `${historyFighters.length} Superstars`;
 
-            fighters.forEach(f => {
+            historyFighters.forEach(f => {
                 const row = document.createElement('div');
                 row.className = 'fighter-history-row';
 
@@ -154,7 +216,7 @@
                         const recordClass = isWin ? 'win' : 'loss';
 
                         // CROSS-REFERENCE ENGINE: Pulls the OPPONENT'S live win/loss record directly out of the main roster data
-                        const oppObj = fighters.find(item => item.name === fight.opponent);
+                        const oppObj = historyFighters.find(item => item.name === fight.opponent);
                         let oppLiveRecord = oppObj ? `${oppObj.wins || 0}W ${oppObj.losses || 0}L` : "0W 0L";
 
                         const rematchText = fight.rematchNumber ? `Rematch #${fight.rematchNumber}` : '';
@@ -192,7 +254,7 @@
                 document.body.appendChild(data);
             }
             data.innerHTML = '';
-            fighters.forEach(f => {
+            historyFighters.forEach(f => {
                 if (f.name) {
                     const option = document.createElement('option');
                     option.value = f.name;
@@ -219,7 +281,7 @@
             listA.innerHTML = '';
             listB.innerHTML = '';
 
-            const names = fighters.map(f => f.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+            const names = historyFighters.map(f => f.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
             names.forEach(name => {
                 const lower = name.toLowerCase();
                 if (selectedB && lower === selectedB) return;
@@ -240,7 +302,7 @@
             const portraitEl = document.getElementById(portraitId);
             
             const fighterName = inputEl?.value.trim();
-            const fighter = fighters.find(f => f.name.toLowerCase() === fighterName.toLowerCase());
+            const fighter = historyFighters.find(f => f.name.toLowerCase() === fighterName.toLowerCase());
             
             if (fighter && fighter.photo) {
                 portraitEl.innerHTML = `<img src="${fighter.photo}" style="width:100%; height:100%; object-fit:cover;">`;
@@ -272,8 +334,8 @@
                 return;
             }
 
-            const fighterA = fighters.find(f => f.name.toLowerCase() === nameA.toLowerCase());
-            const fighterB = fighters.find(f => f.name.toLowerCase() === nameB.toLowerCase());
+            const fighterA = historyFighters.find(f => f.name.toLowerCase() === nameA.toLowerCase());
+            const fighterB = historyFighters.find(f => f.name.toLowerCase() === nameB.toLowerCase());
             if (!fighterA || !fighterB) {
                 alert('One or both fighters were not found in your roster.');
                 return;
