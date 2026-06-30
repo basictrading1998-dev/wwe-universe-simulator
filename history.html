@@ -33,6 +33,14 @@
         .method-line { font-size: 0.65rem; font-weight: 800; color: #38bdf8; text-transform: uppercase; letter-spacing: 0.05em; margin: 1px 0; }
         .loser-line { font-size: 0.85rem; font-weight: 600; color: #94a3b8; text-decoration: line-through; opacity: 0.7; margin: 2px 0; }
         .clear-btn { background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.75rem; cursor: pointer; text-transform: uppercase; box-shadow: 0 2px 4px rgba(239,68,68,0.1); }
+        
+        .filter-controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 20px; padding: 16px; background: white; border: 1px solid #bae6fd; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.03); }
+        .search-box { padding: 8px 12px; border: 1px solid #bae6fd; border-radius: 6px; font-size: 0.9rem; width: 250px; box-sizing: border-box; }
+        .event-type-toggle { display: flex; gap: 2px; }
+        .toggle-btn { padding: 8px 16px; border: 1px solid #bae6fd; background: white; color: #0369a1; font-weight: bold; font-size: 0.85rem; cursor: pointer; border-radius: 0; transition: 0.2s; }
+        .toggle-btn:first-child { border-radius: 6px 0 0 6px; }
+        .toggle-btn:last-child { border-radius: 0 6px 6px 0; }
+        .toggle-btn.active { background: #ef4444; color: white; border-color: #ef4444; }
     </style>
 </head>
 <body>
@@ -48,6 +56,7 @@
             <a href="history.html" style="background: #ef4444; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase; box-shadow: 0 2px 4px rgba(239,68,68,0.2);">Event History</a>
             <a href="fighter-history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fighter History</a>
             <a href="lineage.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Championship Lineage</a>
+            <a href="royal-rumble.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Royal Rumble</a>
         </div>
 
         <div style="flex: 0 0 200px;"></div>
@@ -60,22 +69,143 @@
             <button onclick="clearAllHistoricalLogs()" class="clear-btn">Wipe History</button>
         </div>
 
+        <div class="filter-controls">
+            <input type="text" id="eventSearchBox" placeholder="Search event name..." class="search-box" oninput="applyEventFilters()">
+            <div class="event-type-toggle">
+                <button class="toggle-btn active" onclick="setEventTypeFilter('all'); applyEventFilters()">All Events</button>
+                <button class="toggle-btn" onclick="setEventTypeFilter('fight-card'); applyEventFilters()">Fight Cards</button>
+                <button class="toggle-btn" onclick="setEventTypeFilter('royal-rumble'); applyEventFilters()">Royal Rumble</button>
+            </div>
+        </div>
+
         <div id="historicalEventsContainer"></div>
     </main>
 
     <script>
+        let currentEventTypeFilter = 'all';
+        let allEvents = [];
+
         document.addEventListener('DOMContentLoaded', () => {
             renderHistoricalCalendar();
         });
 
-        function renderHistoricalCalendar() {
+        function setEventTypeFilter(type) {
+            currentEventTypeFilter = type;
+            // Update button states
+            document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+            if (type === 'all') {
+                document.querySelectorAll('.toggle-btn')[0].classList.add('active');
+            } else if (type === 'fight-card') {
+                document.querySelectorAll('.toggle-btn')[1].classList.add('active');
+            } else if (type === 'royal-rumble') {
+                document.querySelectorAll('.toggle-btn')[2].classList.add('active');
+            }
+        }
+
+        function applyEventFilters() {
+            const searchQuery = document.getElementById('eventSearchBox')?.value.toLowerCase() || '';
             const container = document.getElementById('historicalEventsContainer');
             if (!container) return;
 
-            let historyLog = JSON.parse(localStorage.getItem("wwe_event_history")) || [];
             container.innerHTML = '';
 
-            if (historyLog.length === 0) {
+            let filteredEvents = allEvents.filter(event => {
+                const eventName = (event.name || event.showTitle || '').toLowerCase();
+                const matchesSearch = !searchQuery || eventName.includes(searchQuery);
+                
+                let matchesType = true;
+                if (currentEventTypeFilter === 'fight-card') {
+                    matchesType = !event.type || event.type === 'fight-card';
+                } else if (currentEventTypeFilter === 'royal-rumble') {
+                    matchesType = event.type === 'royal-rumble';
+                }
+                
+                return matchesSearch && matchesType;
+            });
+
+            if (filteredEvents.length === 0) {
+                container.innerHTML = `<div style="background:white; border:1px dashed #bae6fd; border-radius:12px; padding:40px; text-align:center; color:#64748b; font-weight:bold;">
+                    <p style="margin:0; font-size:1.1rem;">No events found.</p>
+                </div>`;
+                return;
+            }
+
+            filteredEvents.forEach(event => {
+                renderEventCard(event, container);
+            });
+        }
+
+        function renderEventCard(event, container) {
+            const eventCard = document.createElement('div');
+            eventCard.className = 'event-log-card';
+
+            const eventName = event.name || event.showTitle || 'Event';
+            const eventDate = event.date || (event.completedAt ? new Date(event.completedAt).toLocaleString() : 'Unknown');
+            const openCardButton = event.showId ? `<button class="show-link-btn" onclick="openShowCard('${event.showId}')">Open Show</button>` : '';
+
+            let matchesHtml = '';
+            
+            if (event.type === 'royal-rumble') {
+                // Display Royal Rumble participants
+                if (event.participants && Array.isArray(event.participants)) {
+                    event.participants.forEach(p => {
+                        matchesHtml += `
+                            <div class="history-match-cell">
+                                <span class="tier-tag undercard">Participant</span>
+                                <div class="winner-line">👤 ${p.name}</div>
+                                <div class="method-line">Entered: ${p.enteredAt || 'N/A'}</div>
+                                <div class="loser-line">${p.eliminatedAt ? `Eliminated: ${p.eliminatedAt}` : 'Still Active'}</div>
+                            </div>`;
+                    });
+                } else if (!matchesHtml) {
+                    matchesHtml = '<span class="empty-history-text">No participant data</span>';
+                }
+                if (event.totalTime) {
+                    matchesHtml += `<div style="grid-column: 1 / -1; padding: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.85rem; font-weight: bold; color: #0369a1;">Event Duration: ${event.totalTime}</div>`;
+                }
+            } else {
+                // Display Fight Card matches
+                if (event.matches && Array.isArray(event.matches)) {
+                    event.matches.forEach(m => {
+                        const isMain = m.tierName.toLowerCase().includes('main event') || m.tierName.toLowerCase().includes('co-main');
+                        const tagClass = isMain ? 'main-event' : 'undercard';
+                        const goldTitleBadge = m.isTitle ? '🏆 Title Fight' : '';
+
+                        matchesHtml += `
+                            <div class="history-match-cell">
+                                <span class="tier-tag ${tagClass}">${m.tierName}</span>
+                                <span class="title-fight-gold-tag">${goldTitleBadge}</span>
+                                <div class="winner-line">👑 ${m.winner}</div>
+                                <div class="method-line">${m.method}</div>
+                                <div class="loser-line">Defeated ${m.loser}</div>
+                            </div>`;
+                    });
+                } else {
+                    matchesHtml = '<span class="empty-history-text">No matches recorded</span>';
+                }
+            }
+
+            eventCard.innerHTML = `
+                <div class="event-header-row">
+                    <div>
+                        <h3 class="event-title-badge">🎬 ${eventName}</h3>
+                        <div style="margin-top:6px; color:#475569; font-size:0.8rem;">Show ID: ${event.showId || (event.type === 'royal-rumble' ? 'Royal Rumble Event' : 'N/A')}</div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+                        <span class="event-date-stamp">📅 Logged: ${eventDate}</span>
+                        ${openCardButton}
+                    </div>
+                </div>
+                <div class="history-match-grid">${matchesHtml}</div>`;
+            
+            container.appendChild(eventCard);
+        }
+
+        function renderHistoricalCalendar() {
+            allEvents = JSON.parse(localStorage.getItem("wwe_event_history")) || [];
+            
+            if (allEvents.length === 0) {
+                const container = document.getElementById('historicalEventsContainer');
                 container.innerHTML = `<div style="background:white; border:1px dashed #bae6fd; border-radius:12px; padding:40px; text-align:center; color:#64748b; font-weight:bold;">
                     <p style="margin:0; font-size:1.1rem;">Your Event History log is currently empty.</p>
                     <p style="margin:4px 0 0 0; font-size:0.8rem; font-weight:600; color:#94a3b8;">Go complete all 14 fight slots on a Card draft and click Finalize to log your first show!</p>
@@ -83,47 +213,8 @@
                 return;
             }
 
-            historyLog.sort((a, b) => a.id.localeCompare(b.id));
-
-            historyLog.forEach(event => {
-                const eventCard = document.createElement('div');
-                eventCard.className = 'event-log-card';
-
-                const eventName = event.name || event.showTitle || 'Event';
-                const eventDate = event.date || (event.completedAt ? new Date(event.completedAt).toLocaleString() : 'Unknown');
-                const openCardButton = event.showId ? `<button class="show-link-btn" onclick="openShowCard('${event.showId}')">Open Show</button>` : '';
-
-                let matchesHtml = '';
-                event.matches.forEach(m => {
-                    const isMain = m.tierName.toLowerCase().includes('main event') || m.tierName.toLowerCase().includes('co-main');
-                    const tagClass = isMain ? 'main-event' : 'undercard';
-                    const goldTitleBadge = m.isTitle ? '🏆 Title Fight' : '';
-
-                    matchesHtml += `
-                        <div class="history-match-cell">
-                            <span class="tier-tag ${tagClass}">${m.tierName}</span>
-                            <span class="title-fight-gold-tag">${goldTitleBadge}</span>
-                            <div class="winner-line">👑 ${m.winner}</div>
-                            <div class="method-line">${m.method}</div>
-                            <div class="loser-line">Defeated ${m.loser}</div>
-                        </div>`;
-                });
-
-                eventCard.innerHTML = `
-                    <div class="event-header-row">
-                        <div>
-                            <h3 class="event-title-badge">🎬 ${eventName}</h3>
-                            <div style="margin-top:6px; color:#475569; font-size:0.8rem;">Show ID: ${event.showId || 'N/A'}</div>
-                        </div>
-                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
-                            <span class="event-date-stamp">📅 Logged: ${eventDate}</span>
-                            ${openCardButton}
-                        </div>
-                    </div>
-                    <div class="history-match-grid">${matchesHtml}</div>`;
-                
-                container.appendChild(eventCard);
-            });
+            allEvents.sort((a, b) => a.id.localeCompare(b.id));
+            applyEventFilters();
         }
 
         function clearAllHistoricalLogs() {

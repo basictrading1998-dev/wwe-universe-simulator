@@ -1014,11 +1014,13 @@ function buildShowSchedulerHeader() {
             <span style="font-size:0.75rem; font-weight:800; color:#0369a1; text-transform:uppercase;">📅 Active Schedule:</span>
             <select id="activeShowSelector" onchange="switchActiveShowCard(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #cbd5e1; font-weight:bold; font-size:0.85rem; color:#1e293b; background:white; min-width:180px; max-width:260px; width:100%;">${opts}</select>
             <button onclick="editCurrentShowName()" style="background:#64748b; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase;">✏️ Edit</button>
+            <button onclick="deleteCurrentFutureShow()" style="background:#ef4444; border:none; color:white; font-weight:bold; padding:6px 8px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase;">🗑️ Delete</button>
             <button id="randomizeShowButton" onclick="randomizeEntireShow()" ${activeShowCompleted ? 'disabled' : ''} style="background:#7c3aed; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:${activeShowCompleted ? 'not-allowed' : 'pointer'}; text-transform:uppercase; white-space:nowrap; opacity:${activeShowCompleted ? '0.45' : '1'};">🎲 Randomize All</button>
             <button id="recapButton" onclick="announceEventRecap()" style="background:#f59e0b; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">📢 Recap</button>
             <button id="stopAnnouncerButton" onclick="stopAnnouncer()" style="background:#0f172a; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">⏹ Stop</button>
         </div>
         <div style="display:flex; align-items:center; gap:8px; flex:1 1 280px; min-width:220px; flex-wrap:wrap; justify-content:flex-end;">
+            
             <input type="text" id="eventNameInput" placeholder="Name" value="${activeShowId ? (futureShows.find(s => s.id === activeShowId)?.name || '') : ''}" style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:600; outline:none; min-width:140px; max-width:200px; width:100%; background:white; color:#1e293b;">
             <label style="display:inline-flex; align-items:center; gap:8px; padding:6px 8px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-weight:700; color:#475569; white-space:nowrap;">
                 <input id="announcer-toggle" type="checkbox" onchange="saveAnnouncerSetting(this.checked)" ${window.announcerEnabled ? 'checked' : ''}>
@@ -1033,6 +1035,10 @@ function buildShowSchedulerHeader() {
             </select>
             ${isShowCompleted(activeShowId) ? `<span style="display:inline-flex; align-items:center; gap:6px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px; font-size:0.75rem; font-weight:700; color:#475569; white-space:nowrap;">✅ Completed<span style="font-size:0.7rem; color:#64748b;">${futureShows.find(s => s.id === activeShowId)?.completedAt ? new Date(futureShows.find(s => s.id === activeShowId).completedAt).toLocaleDateString() : ''}</span></span>` : ''}
             <button onclick="createNewFutureShow()" style="background:#0369a1; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">+ Add Show</button>
+            <label style="display:inline-flex; align-items:center; gap:6px; margin-left:6px;">
+                <input id="bulkShowCount" type="number" min="1" value="1" style="width:72px; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-weight:700;">
+                <button onclick="bulkCreateFutureShows()" style="background:#06b6d4; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer;">+ Add Many</button>
+            </label>
             ${isShowCompleted(activeShowId) ? `<button onclick="restartCurrentShow()" style="background:#f97316; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">Restart Card</button>` : ''}
             <button onclick="downloadAppBackup()" style="background:#0f766e; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">⬇️ Backup</button>
             <button onclick="importAppBackup()" style="background:#0c4a6e; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">⬆️ Restore</button>
@@ -1064,6 +1070,8 @@ window.switchActiveShowCard = function(showId) {
     location.reload();
 };
 
+
+
 window.createNewFutureShow = function() {
     const input = document.getElementById('eventNameInput');
     const name = input ? input.value.trim() : '';
@@ -1076,6 +1084,82 @@ window.createNewFutureShow = function() {
     input.value = '';
     
     customAlert(`Success! "${name}" added to your future show calendar.`, 'Event Created');
+    location.reload();
+};
+
+window.deleteCurrentFutureShow = function() {
+    const selector = document.getElementById('activeShowSelector');
+    const showId = selector ? selector.value : activeShowId;
+    if (!showId) return customAlert('No show selected to delete.', 'Delete Show');
+
+    const show = futureShows.find(s => s.id === showId);
+    if (!show) return customAlert('Selected show not found.', 'Delete Show');
+
+    customConfirm(`Delete "${show.name}"? This will remove the show from your schedule and clear its draft and match data for this show. This cannot be undone. Continue?`, function(result) {
+        if (!result) return;
+        // remove from array
+        futureShows = futureShows.filter(s => s.id !== showId);
+        localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+
+        // clear associated storage keys
+        try { localStorage.removeItem(`wwe_matches_${showId}`); } catch(e) {}
+        try { localStorage.removeItem(`wwe_draft_${showId}`); } catch(e) {}
+
+        // if deleted was active, pick a new active show or create a default
+        if (activeShowId === showId) {
+            if (futureShows.length > 0) {
+                activeShowId = futureShows[0].id;
+                localStorage.setItem('wwe_active_show_id', activeShowId);
+            } else {
+                // create a new placeholder show
+                const newId = 'show-' + Date.now();
+                futureShows.push({ id: newId, name: 'Show' });
+                localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+                activeShowId = newId;
+                localStorage.setItem('wwe_active_show_id', activeShowId);
+            }
+        }
+
+        customAlert(`Deleted "${show.name}".`, 'Show Deleted');
+        location.reload();
+    }, 'Delete Show');
+};
+
+window.bulkCreateFutureShows = function() {
+    const countEl = document.getElementById('bulkShowCount');
+    const nameInput = document.getElementById('eventNameInput');
+    if (!countEl) return alert('Bulk create control not found.');
+    const count = Math.max(0, parseInt(countEl.value, 10) || 0);
+    if (!count) return alert('Enter a number greater than zero.');
+    // Determine a clean label (strip any trailing number from the provided base)
+    let rawBase = (nameInput && nameInput.value.trim()) ? nameInput.value.trim() : 'Fight Card';
+    const trailingNumMatch = rawBase.match(/^(.*?)[\s-_]*#?(\d+)$/);
+    let label = trailingNumMatch ? trailingNumMatch[1].trim() : rawBase;
+    if (!label) label = 'Fight Card';
+    if (label.toLowerCase() === 'fight card') label = 'Fight Card';
+
+    // Find the highest existing numeric suffix for this label (names like "Label 3")
+    const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('^' + escapeRegExp(label) + '\\s*(\\d+)$', 'i');
+    let maxIndex = 0;
+    futureShows.forEach(s => {
+        if (!s || !s.name) return;
+        const m = String(s.name).trim().match(re);
+        if (m) {
+            const v = parseInt(m[1], 10) || 0;
+            if (v > maxIndex) maxIndex = v;
+        }
+    });
+
+    const startIndex = Math.max(1, maxIndex + 1);
+    const timestamp = Date.now();
+    for (let i = 0; i < count; i++) {
+        const newId = `show-${timestamp}-${i}-${Math.floor(Math.random() * 9999)}`;
+        const name = `${label} ${startIndex + i}`;
+        futureShows.push({ id: newId, name });
+    }
+    localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+    customAlert(`Added ${count} shows to your schedule.`, 'Bulk Shows Created');
     location.reload();
 };
 
@@ -1102,6 +1186,8 @@ window.editCurrentShowName = function() {
 function renderCardRows(box, num, tierId, isMain) {
     for (let i = 1; i <= num; i++) {
         const uId = `${tierId}-m${i}`;
+        // If the row already exists, skip creating it so bulk-add can safely call renderCardRows
+        if (document.getElementById(uId)) continue;
         const matchRow = document.createElement('div');
         matchRow.className = 'match-row';
         matchRow.id = uId;
@@ -1416,6 +1502,13 @@ function getFightHistoryBetween(f1, f2) {
     }));
 }
 
+function getNextRematchNumberForPair(f1, f2) {
+    if (!f1 || !f2 || f1.id === f2.id) return 0;
+    const historyEntries = getFightHistoryBetween(f1, f2);
+    if (!historyEntries.length) return 0;
+    return Math.max(1, historyEntries.length);
+}
+
 function clearCardFighterSlot(matchRowId, slotType) {
     const slot = document.getElementById(`${matchRowId}-${slotType}`);
     if (!slot) return;
@@ -1605,22 +1698,31 @@ function checkExistingFightRematch(matchRowId, changedSlot) {
         return true;
     }
 
-    const priorCount = historyEntries.length;
-    const lastFight = historyEntries[historyEntries.length - 1];
-    const lastWinner = lastFight.winner || 'Unknown';
-    const fightNumber = priorCount + 1;
-    const showName = lastFight.showName || 'Unknown show';
-    const methodLabel = lastFight.method ? `${lastFight.method}` : 'Unknown method';
-
-    showRematchWarning(matchRowId, fighter1, fighter2, {
+    const priorCount = getNextRematchNumberForPair(fighter1, fighter2);
+    const historySummary = {
         priorCount,
-        lastWinner,
-        fightNumber,
-        showName,
-        methodLabel
-    }, changedSlot);
+        lastWinner: historyEntries[historyEntries.length - 1]?.winner || fighter1.name,
+        showName: historyEntries[historyEntries.length - 1]?.showName || 'Previous show',
+        methodLabel: historyEntries[historyEntries.length - 1]?.method || 'Previous result',
+        fightNumber: priorCount + 1
+    };
 
-    return false;
+    const matchRow = document.getElementById(matchRowId);
+    const rematchCheckbox = matchRow ? matchRow.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]') : null;
+    const rematchCount = document.getElementById(`${matchRowId}-rematch-count`);
+
+    if (rematchCheckbox) {
+        rematchCheckbox.checked = true;
+    }
+    if (rematchCount) {
+        rematchCount.value = priorCount;
+        rematchCount.style.display = 'inline-block';
+    }
+
+    setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, priorCount);
+    showRematchWarning(matchRowId, fighter1, fighter2, historySummary, changedSlot);
+
+    return true;
 }
 
 function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot) {
@@ -1671,10 +1773,10 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
                 rematchCheckbox.checked = true;
             }
             if (rematchCount) {
-                rematchCount.value = history.fightNumber;
+                rematchCount.value = history.priorCount;
                 rematchCount.style.display = 'inline-block';
             }
-            setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, history.fightNumber);
+            setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, history.priorCount);
             saveCurrentCardDraft();
             hideRematchWarning(matchRowId);
         };
@@ -2321,23 +2423,163 @@ window.randomizeEntireShow = function() {
         return;
     }
 
-    let successCount = 0;
-    let failCount = 0;
-    
-    matchRows.forEach(row => {
-        const matchId = row.id;
-        if (!matchId) return;
+    customConfirm('Randomize all matches? This will replace all current fighters with random ones.', function(confirmed) {
+        if (!confirmed) return;
+
+        let successCount = 0;
+        let failCount = 0;
         
-        // Collect all currently booked fighter IDs
-        let bookedFighterIds = [];
-        document.querySelectorAll('.fighter-search-input').forEach(inp => {
-            const fighterId = inp.getAttribute('data-fighter-id');
-            if (fighterId && !bookedFighterIds.includes(fighterId)) bookedFighterIds.push(fighterId);
+        matchRows.forEach(row => {
+            const matchId = row.id;
+            if (!matchId) return;
+            
+            // Collect all currently booked fighter IDs
+            let bookedFighterIds = [];
+            document.querySelectorAll('.fighter-search-input').forEach(inp => {
+                const fighterId = inp.getAttribute('data-fighter-id');
+                if (fighterId && !bookedFighterIds.includes(fighterId)) bookedFighterIds.push(fighterId);
+            });
+            
+            // Also exclude fighters in completed matches
+            Object.keys(completedMatches || {}).forEach(cMatchId => {
+                const state = completedMatches[cMatchId];
+                if (state) {
+                    const fWin = fighters.find(f => f.name === state.winnerName);
+                    const fLos = fighters.find(f => f.name === state.loserName);
+                    if (fWin && !bookedFighterIds.includes(fWin.id)) bookedFighterIds.push(fWin.id);
+                    if (fLos && !bookedFighterIds.includes(fLos.id)) bookedFighterIds.push(fLos.id);
+                }
+            });
+            
+            // Filter available fighters by gender and division groups
+            const reservedPairs = new Set(getReservedOpponentPairsFromOtherShows());
+            const availableFighters = fighters.filter(f => !bookedFighterIds.includes(f.id));
+            const fightersByGenderAndDivision = {};
+            availableFighters.forEach(f => {
+                const gender = (f.gender || 'male').toLowerCase();
+                const div = (f.division || 'Heavyweight').toLowerCase();
+                fightersByGenderAndDivision[gender] = fightersByGenderAndDivision[gender] || {};
+                fightersByGenderAndDivision[gender][div] = fightersByGenderAndDivision[gender][div] || [];
+                fightersByGenderAndDivision[gender][div].push(f);
+            });
+
+            const validGenderChoices = Object.keys(fightersByGenderAndDivision).filter(gender => {
+                return Object.values(fightersByGenderAndDivision[gender]).some(list => list.length >= 2);
+            });
+            if (validGenderChoices.length === 0) {
+                failCount++;
+                return;
+            }
+
+            const selectedGender = validGenderChoices[Math.floor(Math.random() * validGenderChoices.length)];
+            const validDivisions = Object.entries(fightersByGenderAndDivision[selectedGender]).filter(([, list]) => list.length >= 2);
+            if (!validDivisions.length) {
+                failCount++;
+                return;
+            }
+
+            const [randomDivision, divisionalFighters] = validDivisions[Math.floor(Math.random() * validDivisions.length)];
+            const allowedPairs = [];
+            for (let i = 0; i < divisionalFighters.length - 1; i++) {
+                for (let j = i + 1; j < divisionalFighters.length; j++) {
+                    const f1 = divisionalFighters[i];
+                    const f2 = divisionalFighters[j];
+                    const key = window.makeOpponentPairKey(f1.id, f2.id);
+                    if (!reservedPairs.has(key)) {
+                        allowedPairs.push([f1, f2]);
+                    }
+                }
+            }
+            if (!allowedPairs.length) {
+                failCount++;
+                return;
+            }
+            const chosenPair = allowedPairs[Math.floor(Math.random() * allowedPairs.length)];
+            const [fighter1, fighter2] = chosenPair;
+            
+            // Set the gender for this match based on the chosen fighters
+            setMatchRowSelectedGender(matchId, selectedGender);
+            
+            // Populate both slots
+            const slot1 = document.getElementById(`${matchId}-slot1`);
+            const slot2 = document.getElementById(`${matchId}-slot2`);
+            
+            if (slot1 && slot2) {
+                // Slot 1
+                const input1 = slot1.querySelector('.fighter-search-input');
+                input1.value = fighter1.name;
+                input1.setAttribute('data-fighter-id', fighter1.id);
+                const av1 = slot1.querySelector('.avatar-box');
+                av1.innerHTML = fighter1.photo ? `<img src="${fighter1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter1.name.charAt(0);
+                av1.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+                av1.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter1.id); };
+                updateFighterRecordDisplay(matchId, 'slot1', fighter1);
+                
+                // Slot 2
+                const input2 = slot2.querySelector('.fighter-search-input');
+                input2.value = fighter2.name;
+                input2.setAttribute('data-fighter-id', fighter2.id);
+                const av2 = slot2.querySelector('.avatar-box');
+                av2.innerHTML = fighter2.photo ? `<img src="${fighter2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter2.name.charAt(0);
+                av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+                av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
+                updateFighterRecordDisplay(matchId, 'slot2', fighter2);
+                
+                refreshTitleFightState(matchId);
+
+                // Update winner dropdown
+                updateWinnerDropdown(matchId);
+                
+                // Check for rematch warnings
+                checkExistingFightRematch(matchId, 'both');
+                // Also check for duplicate-name warnings (show warnings but continue)
+                try { checkDuplicateOnCard(matchId, 'both'); } catch (e) {}
+                
+                successCount++;
+            }
         });
         
-        // Also exclude fighters in completed matches
-        Object.keys(completedMatches || {}).forEach(cMatchId => {
-            const state = completedMatches[cMatchId];
+        // Save draft
+        saveCurrentCardDraft();
+        
+        const message = failCount > 0 
+            ? `🎲 Randomized ${successCount} match${successCount !== 1 ? 'es' : ''}!\n\n⚠️ Could not randomize ${failCount} match${failCount !== 1 ? 'es' : ''} - not enough available fighters.`
+            : `🎲 All ${successCount} match${successCount !== 1 ? 'es' : ''} randomized! Gender sliders updated.`;
+        
+        customAlert(message, 'Randomize Show');
+    }, 'Randomize All');
+};
+
+window.randomizeMatchup = function(matchId) {
+    if (isShowCompleted(activeShowId) || window.hasActiveShowResults()) {
+        return customAlert('This show has already begun or been finalized. Reset the show or switch cards before randomizing.', 'Randomize Disabled');
+    }
+    const row = document.getElementById(matchId);
+    const slot1 = document.getElementById(`${matchId}-slot1`);
+    const slot2 = document.getElementById(`${matchId}-slot2`);
+    
+    if (!slot1 || !slot2) return customAlert('Match row not found.', 'Match Error');
+
+    customConfirm('Randomize this match? Current fighters will be replaced.', function(confirmed) {
+        if (!confirmed) return;
+
+        // Collect all booked fighter IDs (by explicit id or typed name) and logged/completed matches
+        let bookedFighterIds = [];
+        const reservedPairs = new Set(getReservedOpponentPairsFromOtherShows());
+        document.querySelectorAll('.fighter-search-input').forEach(inp => {
+            const fighterId = inp.getAttribute('data-fighter-id');
+            if (fighterId) {
+                if (!bookedFighterIds.includes(fighterId)) bookedFighterIds.push(fighterId);
+            } else if (inp.value && inp.value.trim()) {
+                // If user typed a name but didn't select from dropdown, resolve it to an id
+                const typed = inp.value.trim();
+                const found = fighters.find(ff => ff.name === typed);
+                if (found && !bookedFighterIds.includes(found.id)) bookedFighterIds.push(found.id);
+            }
+        });
+        // Also exclude fighters already logged in completed matches for the active show
+        Object.keys(completedMatches || {}).forEach(matchId => {
+            const state = completedMatches[matchId];
             if (state) {
                 const fWin = fighters.find(f => f.name === state.winnerName);
                 const fLos = fighters.find(f => f.name === state.loserName);
@@ -2346,12 +2588,14 @@ window.randomizeEntireShow = function() {
             }
         });
         
-        // Filter available fighters by gender and division groups
-        const reservedPairs = new Set(getReservedOpponentPairsFromOtherShows());
-        const availableFighters = fighters.filter(f => !bookedFighterIds.includes(f.id));
+        // Filter available fighters: same gender, not booked, have a valid division
+        const availableFighters = fighters.filter(f => 
+            !bookedFighterIds.includes(f.id)
+        );
+        
         const fightersByGenderAndDivision = {};
         availableFighters.forEach(f => {
-            const gender = (f.gender || 'male').toLowerCase();
+            const gender = f.gender || 'male';
             const div = (f.division || 'Heavyweight').toLowerCase();
             fightersByGenderAndDivision[gender] = fightersByGenderAndDivision[gender] || {};
             fightersByGenderAndDivision[gender][div] = fightersByGenderAndDivision[gender][div] || [];
@@ -2361,19 +2605,21 @@ window.randomizeEntireShow = function() {
         const validGenderChoices = Object.keys(fightersByGenderAndDivision).filter(gender => {
             return Object.values(fightersByGenderAndDivision[gender]).some(list => list.length >= 2);
         });
+
         if (validGenderChoices.length === 0) {
-            failCount++;
-            return;
+            return customAlert('Not enough available fighters of any gender! You need at least 2 unbooked fighters in the same division.', 'Randomize Matchup');
         }
 
         const selectedGender = validGenderChoices[Math.floor(Math.random() * validGenderChoices.length)];
         const validDivisions = Object.entries(fightersByGenderAndDivision[selectedGender]).filter(([, list]) => list.length >= 2);
-        if (!validDivisions.length) {
-            failCount++;
-            return;
+        const randomDivision = validDivisions[Math.floor(Math.random() * validDivisions.length)][0];
+        const divisionalFighters = fightersByGenderAndDivision[selectedGender][randomDivision] || [];
+        const selectedDivision = randomDivision;
+
+        if (!divisionalFighters.length) {
+            return customAlert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`, 'Randomize Matchup');
         }
 
-        const [randomDivision, divisionalFighters] = validDivisions[Math.floor(Math.random() * validDivisions.length)];
         const allowedPairs = [];
         for (let i = 0; i < divisionalFighters.length - 1; i++) {
             for (let j = i + 1; j < divisionalFighters.length; j++) {
@@ -2386,201 +2632,65 @@ window.randomizeEntireShow = function() {
             }
         }
         if (!allowedPairs.length) {
-            failCount++;
-            return;
+            return customAlert(`No weight class has 2+ available ${selectedGender} fighters who are not already paired elsewhere.`, 'Randomize Matchup');
         }
         const chosenPair = allowedPairs[Math.floor(Math.random() * allowedPairs.length)];
         const [fighter1, fighter2] = chosenPair;
         
-        // Set the gender for this match based on the chosen fighters
+        // Populate slot 1
+        const input1 = slot1.querySelector('.fighter-search-input');
+        input1.value = fighter1.name;
+        input1.setAttribute('data-fighter-id', fighter1.id);
+        const av1 = slot1.querySelector('.avatar-box');
+        let content1 = '';
+        if (fighter1.photo) {
+            content1 = `<img src="${fighter1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
+        } else {
+            content1 = fighter1.name.charAt(0);
+        }
+        av1.innerHTML = content1;
+        av1.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+        av1.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter1.id); };
+        
+        // Populate slot 2
+        const input2 = slot2.querySelector('.fighter-search-input');
+        input2.value = fighter2.name;
+        input2.setAttribute('data-fighter-id', fighter2.id);
+        const av2 = slot2.querySelector('.avatar-box');
+        let content2 = '';
+        if (fighter2.photo) {
+            content2 = `<img src="${fighter2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
+        } else {
+            content2 = fighter2.name.charAt(0);
+        }
+        av2.innerHTML = content2;
+        av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+        av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
+        
+        // Reset title fight state for the newly randomized match
+        refreshTitleFightState(matchId);
+
+        // Sync gender controls to the chosen fighters' gender
         setMatchRowSelectedGender(matchId, selectedGender);
+
+        // Check for previous fight history between the chosen fighters
+        if (!checkExistingFightRematch(matchId, 'both')) {
+            return;
+        }
+        if (!checkDuplicateOnCard(matchId, 'both')) {
+            return;
+        }
+
+        // Update winner dropdown
+        updateWinnerDropdown(matchId);
         
-        // Populate both slots
-        const slot1 = document.getElementById(`${matchId}-slot1`);
-        const slot2 = document.getElementById(`${matchId}-slot2`);
+        // Save draft
+        saveCurrentCardDraft();
         
-        if (slot1 && slot2) {
-            // Slot 1
-            const input1 = slot1.querySelector('.fighter-search-input');
-            input1.value = fighter1.name;
-            input1.setAttribute('data-fighter-id', fighter1.id);
-            const av1 = slot1.querySelector('.avatar-box');
-            av1.innerHTML = fighter1.photo ? `<img src="${fighter1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter1.name.charAt(0);
-            av1.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
-            av1.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter1.id); };
-            updateFighterRecordDisplay(matchId, 'slot1', fighter1);
-            
-            // Slot 2
-            const input2 = slot2.querySelector('.fighter-search-input');
-            input2.value = fighter2.name;
-            input2.setAttribute('data-fighter-id', fighter2.id);
-            const av2 = slot2.querySelector('.avatar-box');
-            av2.innerHTML = fighter2.photo ? `<img src="${fighter2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter2.name.charAt(0);
-            av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
-            av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
-            updateFighterRecordDisplay(matchId, 'slot2', fighter2);
-            
-            refreshTitleFightState(matchId);
-
-            // Update winner dropdown
-            updateWinnerDropdown(matchId);
-            
-            // Check for rematch warnings
-            checkExistingFightRematch(matchId, 'both');
-            // Also check for duplicate-name warnings (show warnings but continue)
-            try { checkDuplicateOnCard(matchId, 'both'); } catch (e) {}
-            
-            successCount++;
-        }
-    });
-    
-    // Save draft
-    saveCurrentCardDraft();
-    
-    const message = failCount > 0 
-        ? `🎲 Randomized ${successCount} match${successCount !== 1 ? 'es' : ''}!\n\n⚠️ Could not randomize ${failCount} match${failCount !== 1 ? 'es' : ''} - not enough available fighters.`
-        : `🎲 All ${successCount} match${successCount !== 1 ? 'es' : ''} randomized! Gender sliders updated.`;
-    
-    customAlert(message, 'Randomize Show');
-};
-
-window.randomizeMatchup = function(matchId) {
-    if (isShowCompleted(activeShowId) || window.hasActiveShowResults()) {
-        return customAlert('This show has already begun or been finalized. Reset the show or switch cards before randomizing.', 'Randomize Disabled');
-    }
-    const row = document.getElementById(matchId);
-    const slot1 = document.getElementById(`${matchId}-slot1`);
-    const slot2 = document.getElementById(`${matchId}-slot2`);
-    
-    if (!slot1 || !slot2) return customAlert('Match row not found.', 'Match Error');
-    
-    // Collect all booked fighter IDs (by explicit id or typed name) and logged/completed matches
-    let bookedFighterIds = [];
-    const reservedPairs = new Set(getReservedOpponentPairsFromOtherShows());
-    document.querySelectorAll('.fighter-search-input').forEach(inp => {
-        const fighterId = inp.getAttribute('data-fighter-id');
-        if (fighterId) {
-            if (!bookedFighterIds.includes(fighterId)) bookedFighterIds.push(fighterId);
-        } else if (inp.value && inp.value.trim()) {
-            // If user typed a name but didn't select from dropdown, resolve it to an id
-            const typed = inp.value.trim();
-            const found = fighters.find(ff => ff.name === typed);
-            if (found && !bookedFighterIds.includes(found.id)) bookedFighterIds.push(found.id);
-        }
-    });
-    // Also exclude fighters already logged in completed matches for the active show
-    Object.keys(completedMatches || {}).forEach(matchId => {
-        const state = completedMatches[matchId];
-        if (state) {
-            const fWin = fighters.find(f => f.name === state.winnerName);
-            const fLos = fighters.find(f => f.name === state.loserName);
-            if (fWin && !bookedFighterIds.includes(fWin.id)) bookedFighterIds.push(fWin.id);
-            if (fLos && !bookedFighterIds.includes(fLos.id)) bookedFighterIds.push(fLos.id);
-        }
-    });
-    
-    // Filter available fighters: same gender, not booked, have a valid division
-    const availableFighters = fighters.filter(f => 
-        !bookedFighterIds.includes(f.id)
-    );
-    
-    const fightersByGenderAndDivision = {};
-    availableFighters.forEach(f => {
-        const gender = f.gender || 'male';
-        const div = (f.division || 'Heavyweight').toLowerCase();
-        fightersByGenderAndDivision[gender] = fightersByGenderAndDivision[gender] || {};
-        fightersByGenderAndDivision[gender][div] = fightersByGenderAndDivision[gender][div] || [];
-        fightersByGenderAndDivision[gender][div].push(f);
-    });
-
-    const validGenderChoices = Object.keys(fightersByGenderAndDivision).filter(gender => {
-        return Object.values(fightersByGenderAndDivision[gender]).some(list => list.length >= 2);
-    });
-
-    if (validGenderChoices.length === 0) {
-        return customAlert('Not enough available fighters of any gender! You need at least 2 unbooked fighters in the same division.', 'Randomize Matchup');
-    }
-
-    const selectedGender = validGenderChoices[Math.floor(Math.random() * validGenderChoices.length)];
-    const validDivisions = Object.entries(fightersByGenderAndDivision[selectedGender]).filter(([, list]) => list.length >= 2);
-    const randomDivision = validDivisions[Math.floor(Math.random() * validDivisions.length)][0];
-    const divisionalFighters = fightersByGenderAndDivision[selectedGender][randomDivision] || [];
-    const selectedDivision = randomDivision;
-
-    if (!divisionalFighters.length) {
-        return customAlert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`, 'Randomize Matchup');
-    }
-
-    const allowedPairs = [];
-    for (let i = 0; i < divisionalFighters.length - 1; i++) {
-        for (let j = i + 1; j < divisionalFighters.length; j++) {
-            const f1 = divisionalFighters[i];
-            const f2 = divisionalFighters[j];
-            const key = window.makeOpponentPairKey(f1.id, f2.id);
-            if (!reservedPairs.has(key)) {
-                allowedPairs.push([f1, f2]);
-            }
-        }
-    }
-    if (!allowedPairs.length) {
-        return customAlert(`No weight class has 2+ available ${selectedGender} fighters who are not already paired elsewhere.`, 'Randomize Matchup');
-    }
-    const chosenPair = allowedPairs[Math.floor(Math.random() * allowedPairs.length)];
-    const [fighter1, fighter2] = chosenPair;
-    
-    // Populate slot 1
-    const input1 = slot1.querySelector('.fighter-search-input');
-    input1.value = fighter1.name;
-    input1.setAttribute('data-fighter-id', fighter1.id);
-    const av1 = slot1.querySelector('.avatar-box');
-    let content1 = '';
-    if (fighter1.photo) {
-        content1 = `<img src="${fighter1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
-    } else {
-        content1 = fighter1.name.charAt(0);
-    }
-    av1.innerHTML = content1;
-    av1.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
-    av1.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter1.id); };
-    
-    // Populate slot 2
-    const input2 = slot2.querySelector('.fighter-search-input');
-    input2.value = fighter2.name;
-    input2.setAttribute('data-fighter-id', fighter2.id);
-    const av2 = slot2.querySelector('.avatar-box');
-    let content2 = '';
-    if (fighter2.photo) {
-        content2 = `<img src="${fighter2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
-    } else {
-        content2 = fighter2.name.charAt(0);
-    }
-    av2.innerHTML = content2;
-    av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
-    av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
-    
-    // Reset title fight state for the newly randomized match
-    refreshTitleFightState(matchId);
-
-    // Sync gender controls to the chosen fighters' gender
-    setMatchRowSelectedGender(matchId, selectedGender);
-
-    // Check for previous fight history between the chosen fighters
-    if (!checkExistingFightRematch(matchId, 'both')) {
-        return;
-    }
-    if (!checkDuplicateOnCard(matchId, 'both')) {
-        return;
-    }
-
-    // Update winner dropdown
-    updateWinnerDropdown(matchId);
-    
-    // Save draft
-    saveCurrentCardDraft();
-    
-    // Show confirmation
-    const divisionDisplay = selectedDivision.charAt(0).toUpperCase() + selectedDivision.slice(1);
-    customAlert(`🎲 Randomized!\n\n${fighter1.name} vs ${fighter2.name}\n(${divisionDisplay})`, 'Match Randomized');
+        // Show confirmation
+        const divisionDisplay = selectedDivision.charAt(0).toUpperCase() + selectedDivision.slice(1);
+        customAlert(`🎲 Randomized!\n\n${fighter1.name} vs ${fighter2.name}\n(${divisionDisplay})`, 'Match Randomized');
+    }, 'Randomize Match');
 };
 
 window.suggestOpponent = function(id) {
@@ -2799,7 +2909,7 @@ window.logMatchResult = function(id) {
     if (!w.compiled_history_deck) w.compiled_history_deck = [];
     if (!l.compiled_history_deck) l.compiled_history_deck = [];
     const priorHeadToHead = getFightHistoryBetween(w, l).length;
-    const rematchNumber = priorHeadToHead;
+    const rematchNumber = getNextRematchNumberForPair(w, l);
 
     const winnerHistoryEntry = {
         outcome: 'win',
@@ -3489,6 +3599,7 @@ window.finalizeFullEventCard = function() {
         showId: activeShowId,
         date: eventDate.toLocaleString(),
         completedAt: eventDate.toISOString(),
+        type: 'fight-card',
         matches: eventMatchesCompiled
     });
     localStorage.setItem("wwe_event_history", JSON.stringify(eventHistoryCalendar));

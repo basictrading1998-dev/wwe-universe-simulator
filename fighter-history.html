@@ -54,6 +54,7 @@
             <a href="history.html" class="nav-btn">Event History</a>
             <a href="fighter-history.html" class="nav-btn active">Fight History Log</a>
             <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="royal-rumble.html" class="nav-btn">Royal Rumble</a>
         </div>
         <div style="flex: 0 0 200px;"></div>
     </nav>
@@ -67,11 +68,17 @@
         <div style="background:#111827; border:1px solid #334155; border-radius:12px; padding:18px; display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
             <div style="flex:1 1 220px; min-width:220px;">
                 <label style="display:block; margin-bottom:6px; font-size:0.75rem; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fighter A</label>
-                <input id="compareHistoryFighterA" list="compareHistoryNamesA" oninput="updateHistoryCompareDatalists()" placeholder="Type fighter name" style="width:100%; padding:10px 12px; border-radius:10px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.95rem;">
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <input id="compareHistoryFighterA" list="compareHistoryNamesA" oninput="updateHistoryCompareDatalists(); updateComparePortrait('A')" placeholder="Type fighter name" style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.95rem;">
+                    <div id="comparePortraitA" style="width:36px; height:36px; background:#1e293b; border-radius:50%; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">👤</div>
+                </div>
             </div>
             <div style="flex:1 1 220px; min-width:220px;">
                 <label style="display:block; margin-bottom:6px; font-size:0.75rem; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fighter B</label>
-                <input id="compareHistoryFighterB" list="compareHistoryNamesB" oninput="updateHistoryCompareDatalists()" placeholder="Type fighter name" style="width:100%; padding:10px 12px; border-radius:10px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.95rem;">
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <input id="compareHistoryFighterB" list="compareHistoryNamesB" oninput="updateHistoryCompareDatalists(); updateComparePortrait('B')" placeholder="Type fighter name" style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.95rem;">
+                    <div id="comparePortraitB" style="width:36px; height:36px; background:#1e293b; border-radius:50%; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">👤</div>
+                </div>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
                 <button onclick="compareHistoryFighters()" style="background:#ef4444; color:white; border:none; border-radius:10px; padding:10px 16px; font-weight:700; cursor:pointer;">Compare</button>
@@ -226,6 +233,24 @@
             });
         }
 
+        function updateComparePortrait(slot) {
+            const inputId = slot === 'A' ? 'compareHistoryFighterA' : 'compareHistoryFighterB';
+            const portraitId = slot === 'A' ? 'comparePortraitA' : 'comparePortraitB';
+            const inputEl = document.getElementById(inputId);
+            const portraitEl = document.getElementById(portraitId);
+            
+            const fighterName = inputEl?.value.trim();
+            const fighter = fighters.find(f => f.name.toLowerCase() === fighterName.toLowerCase());
+            
+            if (fighter && fighter.photo) {
+                portraitEl.innerHTML = `<img src="${fighter.photo}" style="width:100%; height:100%; object-fit:cover;">`;
+            } else if (fighter) {
+                portraitEl.textContent = fighter.name.charAt(0);
+            } else {
+                portraitEl.textContent = '👤';
+            }
+        }
+
         function filterHistoryByComparison(selectedNames = []) {
             document.querySelectorAll('#historyMasterLogContainer .fighter-history-row').forEach(row => {
                 const nameEl = row.querySelector('.fighter-name');
@@ -260,8 +285,12 @@
         function clearHistoryCompare() {
             const inputA = document.getElementById('compareHistoryFighterA');
             const inputB = document.getElementById('compareHistoryFighterB');
+            const portraitA = document.getElementById('comparePortraitA');
+            const portraitB = document.getElementById('comparePortraitB');
             if (inputA) inputA.value = '';
             if (inputB) inputB.value = '';
+            if (portraitA) portraitA.textContent = '👤';
+            if (portraitB) portraitB.textContent = '👤';
             updateHistoryCompareDatalists();
             filterHistoryByComparison([]);
         }

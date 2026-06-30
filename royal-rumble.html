@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Royal Rumble</title>
+    <style>
+        :root { --cols: 10; }
+        body { background-color: #fff; color: #0f172a; font-family: Inter, system-ui, sans-serif; margin: 0; }
+        header { background-color: #0284c7; color: white; padding: 12px 18px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 100; }
+        .header-inner { max-width: 1200px; margin: 0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+        .controls { display:flex; gap:12px; align-items:center; }
+        button { cursor: pointer; border: none; padding: 10px 14px; border-radius:6px; font-weight:700; }
+        button.start { background:#16a34a; color:white; }
+        button.stop { background:#ef4444; color:white; }
+        button.display { background:#10b981; color:white; }
+        .select-cols { padding:8px 10px; border-radius:6px; border:1px solid #cbd5e1; font-weight:700; }
+        main { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+        .top-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+        .global-time { font-weight:800; color:#0369a1; background:#e0f2fe; padding:8px 12px; border-radius:8px; }
+        /* new roster-style layout */
+        .rows { display:flex; flex-direction:column; gap:12px; }
+        .row { border: 1px solid #e6e9ee; border-radius:6px; padding:8px; display:flex; gap:12px; align-items:center; background: #fbfdff; }
+        .row.eliminated { background: rgba(220, 38, 38, 0.1); border-color: #dc2626; }
+        .row.winner { background: rgba(22, 163, 74, 0.08); border-color: #16a34a; border-width: 2px; }
+        .avatar.winner { background: #dcfce7 !important; border-color: #16a34a !important; box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.24), inset 0 0 0 1px rgba(22, 163, 74, 0.55) !important; position: relative; }
+        .win-badge { position: absolute; right: -2px; bottom: -2px; width: 14px; height: 14px; border-radius: 50%; background: #16a34a; color: white; border: 1px solid white; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; box-shadow: none; }
+        /* fighter row: avatar on left, wide content on right with horizontal history cards */
+        .fighter { display:flex; gap:12px; align-items:center; width:100%; }
+        .avatar { width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:800; color:#0f172a; background:#f1f5f9; flex:0 0 48px; position: relative; overflow: hidden; }
+        .fighter-main { flex:1; display:flex; gap:12px; align-items:center; }
+        .fighter-info { min-width:200px; display:flex; flex-direction:column; gap:6px; }
+        .fighter-info input.fighter-name-input { padding:8px 10px; border-radius:6px; border:1px solid #e6eef8; font-weight:800; font-size:0.95rem; width:320px; box-sizing:border-box; }
+        .fighter .name { font-weight:800; font-size:0.95rem; }
+        .fighter .record { font-size:0.85rem; color:#6b7280; }
+        .history-scroll { display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; max-width:600px; }
+        .history-card { min-width:160px; background:#ffffff; border:1px solid #e6eef8; padding:10px; border-radius:8px; box-shadow:0 1px 2px rgba(15,23,42,0.03); }
+        .times { display:flex; gap:8px; align-items:center; margin-top:4px; }
+        .time-box { padding:6px 10px; border-radius:6px; font-weight:800; min-width:90px; text-align:center; }
+        .time-enter { background:#effaf0; color:#14532d; border:1px solid #bbf7d0; }
+        .time-elim { background:#fff1f2; color:#7f1d1d; border:1px solid #fecaca; }
+        .fighter-controls { display:flex; gap:8px; margin-top:6px; }
+        .enter-btn { background:#16a34a; color:white; padding:6px 8px; border-radius:6px; font-weight:700; }
+        .elim-btn { background:#dc2626; color:white; padding:6px 8px; border-radius:6px; font-weight:700; }
+        .small-muted { font-size:0.8rem; color:#6b7280; }
+        @media (max-width: 900px) { .columns { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+</head>
+<body>
+    <nav style="background-color: #0284c7; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-family: sans-serif; position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; left: 0; right: 0;">
+        <h1 class="logo" style="color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px;">WWE Universe</h1>
+        
+        <!-- CENTERED LINKS DECK -->
+        <div class="nav-links" style="display: flex; gap: 16px; justify-content: center; flex: 1;">
+            <a href="index.html" style="background: transparent; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fight Cards</a>
+            <a href="fighters.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Master Roster</a>
+            <a href="history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Event History</a>
+            <a href="fighter-history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fighter History</a>
+            <a href="lineage.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Championship Lineage</a>
+            <a href="royal-rumble.html" id="royalRumbleTab" style="background: #ef4444; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase; box-shadow: 0 2px 4px rgba(239,68,68,0.2);">Royal Rumble</a>
+        </div>
+
+        <div style="flex: 0 0 200px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+            <div id="betting-money-display" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.95rem; text-align: right;">$1,000</div>
+            <button onclick="resetBettingMoney()" style="background:#ffffff33; color:white; border:1px solid rgba(255,255,255,0.35); padding:6px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:700;">Reset</button>
+        </div>
+    </nav>
+
+    <div style="background-color: #0284c7; padding: 12px 18px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <div class="header-inner" style="max-width:1200px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+            <div style="display:flex;align-items:center;gap:12px;">
+                <h2 style="margin:0; font-size:1rem; text-transform:uppercase; color:white;">Royal Rumble</h2>
+            </div>
+            <div class="controls" style="display:flex; gap:12px; align-items:center;">
+                <button class="start" id="startBtn">Start</button>
+                <button class="stop" id="stopBtn" disabled>Stop</button>
+                <button class="display" id="finalizeBtn" disabled onclick="finalizeRoyalRumbleEvent()">Finalize</button>
+                <button onclick="clearRoyalRumbleEvent()" style="background:#64748b; color:white; padding:10px 14px; border-radius:6px; border:none; font-weight:700; cursor:pointer; font-size:0.85rem; text-transform:uppercase;">Clear</button>
+                <div id="displayBox" class="global-time" style="display:inline-block; margin-left:8px; background:#0ea5e9; color:white; padding:6px 10px; border-radius:6px; font-weight:900;">00:00:00.0</div>
+                <label style="display:flex;align-items:center;gap:8px;font-weight:700;color:white;">
+                    Gender
+                    <select id="genderFilter" class="select-cols">
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;font-weight:700;color:white;">
+                    Add
+                    <select id="colSelect" class="select-cols">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="30">30</option>
+                    </select>
+                </label>
+                <button onclick="autoFillFighters()" style="background:#f59e0b; color:white; padding:8px 12px; border-radius:6px; border:none; font-weight:700; cursor:pointer; font-size:0.8rem; text-transform:uppercase; opacity:0.8;">🔧 Auto Fill (Temp)</button>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <div class="top-bar">
+            <div class="small-muted">Use the dropdown to set how many rows to display.</div>
+        </div>
+
+        <div class="rows" id="rowsContainer" style="--cols: 1;"></div>
+    </main>
+
+    <script>
+        // Global timer
+        let globalStart = null;
+        let globalElapsed = 0;
+        let globalTimer = null;
+
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const rowsContainer = document.getElementById('rowsContainer');
+        const colSelect = document.getElementById('colSelect');
+        const displayBox = document.getElementById('displayBox');
+        const genderFilter = document.getElementById('genderFilter');
+
+        function formatTime(ms) {
+            const totalSec = Math.floor(ms/1000);
+            const hours = Math.floor(totalSec/3600);
+            const mins = Math.floor((totalSec%3600)/60);
+            const secs = totalSec % 60;
+            const tenths = Math.floor((ms % 1000)/100);
+            return `${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}.${tenths}`;
+        }
+
+        function updateFighterPortrait(fighterName, fighterElement) {
+            const roster = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
+            const fighter = roster.find(f => f.name === fighterName);
+            const avatarEl = fighterElement.querySelector('.avatar');
+            
+            if (fighter && fighter.photo) {
+                avatarEl.innerHTML = `<img src="${fighter.photo}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+            } else {
+                avatarEl.textContent = fighter ? fighter.name.charAt(0) : '👤';
+            }
+        }
+
+        function startGlobal() {
+            const inputs = document.querySelectorAll('.fighter-name-input');
+            const allFilled = Array.from(inputs).every(input => input.value.trim() !== '');
+            
+            if (!allFilled) {
+                alert('Please fill in all fighter names before starting the event.');
+                return;
+            }
+            
+            if (globalTimer) return;
+            if (!globalStart) globalStart = Date.now() - globalElapsed;
+            globalTimer = setInterval(() => {
+                globalElapsed = Date.now() - globalStart;
+                refreshDisplayBox();
+            }, 100);
+            startBtn.disabled = true; stopBtn.disabled = false;
+        }
+
+        function stopGlobal() {
+            if (!globalTimer) return;
+            clearInterval(globalTimer); globalTimer = null;
+            globalElapsed = Date.now() - globalStart;
+            refreshDisplayBox();
+            startBtn.disabled = false; stopBtn.disabled = true;
+            document.getElementById('finalizeBtn').disabled = false;
+        }
+
+        startBtn.addEventListener('click', startGlobal);
+        stopBtn.addEventListener('click', stopGlobal);
+        function refreshDisplayBox(){ displayBox.textContent = formatTime(globalElapsed); }
+
+        // Columns
+        function createRows(n) {
+            rowsContainer.innerHTML = '';
+            for (let i=0;i<n;i++) {
+                const row = document.createElement('div'); row.className = 'row';
+                const fighter = document.createElement('div'); fighter.className = 'fighter';
+                const id = 'fighter-' + (i+1);
+                fighter.dataset.id = id;
+
+                const avatar = document.createElement('div'); avatar.className = 'avatar'; avatar.textContent = '👤';
+                const fighterMain = document.createElement('div'); fighterMain.className = 'fighter-main';
+                const info = document.createElement('div'); info.className = 'fighter-info';
+
+                const nameLabel = document.createElement('label'); nameLabel.textContent = 'Fighter name'; nameLabel.style.fontSize='0.85rem'; nameLabel.style.fontWeight='700';
+                const nameInputWrapper = document.createElement('div'); nameInputWrapper.style.display = 'flex'; nameInputWrapper.style.gap = '6px'; nameInputWrapper.style.alignItems = 'center';
+                const nameInput = document.createElement('input'); nameInput.placeholder = 'Fighter name'; nameInput.className = 'fighter-name-input'; nameInput.setAttribute('list','royalRosterList'); nameInput.style.flex = '1';
+                const clearBtn = document.createElement('button'); clearBtn.textContent = '✕'; clearBtn.style.cssText = 'padding:8px 10px; border-radius:6px; border:1px solid #cbd5e1; background:#f1f5f9; color:#64748b; font-weight:700; cursor:pointer; font-size:0.85rem; min-width:36px;';
+                clearBtn.addEventListener('click', ()=> { 
+                    nameInput.value = ''; 
+                    nameDisplay.textContent = 'Unnamed';
+                    updateFighterPortrait('', fighter);
+                    updateRoyalRosterDatalist();
+                });
+                nameInputWrapper.appendChild(nameInput);
+                nameInputWrapper.appendChild(clearBtn);
+                
+                const nameDisplay = document.createElement('div'); nameDisplay.className = 'name'; nameDisplay.textContent = 'Unnamed'; nameDisplay.style.display = 'none';
+                nameInput.addEventListener('input', ()=> { 
+                    nameDisplay.textContent = nameInput.value || 'Unnamed'; 
+                    updateFighterPortrait(nameInput.value, fighter);
+                    updateRoyalRosterDatalist();
+                });
+
+                const timesRow = document.createElement('div'); timesRow.className = 'times';
+                const enterBox = document.createElement('div'); enterBox.className = 'time-box time-enter'; enterBox.textContent = '00:00:00.0';
+                const elimBox = document.createElement('div'); elimBox.className = 'time-box time-elim'; elimBox.textContent = '00:00:00.0';
+                timesRow.appendChild(enterBox); timesRow.appendChild(elimBox);
+
+                const controls = document.createElement('div'); controls.className = 'fighter-controls';
+                const enterBtn = document.createElement('button'); enterBtn.className = 'enter-btn'; enterBtn.textContent = 'Enter';
+                const elimBtn = document.createElement('button'); elimBtn.className = 'elim-btn'; elimBtn.textContent = 'Eliminated'; elimBtn.disabled = true;
+                controls.appendChild(enterBtn); controls.appendChild(elimBtn);
+
+                info.appendChild(nameLabel);
+                info.appendChild(nameInputWrapper);
+                info.appendChild(nameDisplay);
+                info.appendChild(timesRow);
+                info.appendChild(controls);
+
+                const historyScroll = document.createElement('div'); historyScroll.className = 'history-scroll';
+                for (let j=0;j<1;j++){ const card = document.createElement('div'); card.className='history-card'; card.textContent=''; historyScroll.appendChild(card); }
+
+                fighterMain.appendChild(info);
+                fighterMain.appendChild(historyScroll);
+                fighter.appendChild(avatar);
+                fighter.appendChild(fighterMain);
+                row.appendChild(fighter);
+                rowsContainer.appendChild(row);
+
+                // state
+                fighter._state = { enteredAt: null, eliminatedAt: null, runningInterval: null };
+
+                enterBtn.addEventListener('click', ()=>{
+                    if (!globalStart) { alert('Start the event first'); return; }
+                    if (fighter._state.enteredAt) return;
+                    fighter._state.enteredAt = globalElapsed;
+                    enterBox.textContent = formatTime(fighter._state.enteredAt);
+                    enterBtn.disabled = true; elimBtn.disabled = false;
+                    fighter._state.runningInterval = setInterval(()=>{
+                        const duration = globalElapsed - fighter._state.enteredAt;
+                        enterBox.textContent = formatTime(fighter._state.enteredAt) + ' (' + formatTime(duration) + ')';
+                    }, 200);
+                });
+
+                elimBtn.addEventListener('click', ()=>{
+                    if (!fighter._state.enteredAt) { alert('This fighter has not entered yet'); return; }
+                    if (fighter._state.eliminatedAt) return;
+                    fighter._state.eliminatedAt = globalElapsed;
+                    elimBox.textContent = formatTime(fighter._state.eliminatedAt);
+                    if (fighter._state.runningInterval) { clearInterval(fighter._state.runningInterval); fighter._state.runningInterval = null; }
+                    const duration = fighter._state.eliminatedAt - fighter._state.enteredAt;
+                    enterBox.textContent = formatTime(fighter._state.enteredAt) + ' (Duration: ' + formatTime(duration) + ')';
+                    elimBtn.disabled = true;
+                    row.classList.add('eliminated');
+                    
+                    checkForRumbleWinner();
+                });
+            }
+        }
+
+        // datalist for roster names
+        function buildRoyalRosterDatalist(filterGender='all'){
+            let data = document.getElementById('royalRosterList');
+            if (!data) { data = document.createElement('datalist'); data.id = 'royalRosterList'; document.body.appendChild(data); }
+            data.innerHTML = '';
+            const roster = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
+            const selectedNames = new Set();
+            document.querySelectorAll('.fighter-name-input').forEach(input => {
+                if (input.value.trim()) selectedNames.add(input.value.trim());
+            });
+            let names = roster.map(f => ({ name: f.name, gender: (f.gender||f.sex||'').toLowerCase() }));
+            if (filterGender && filterGender !== 'all') names = names.filter(x => x.gender === filterGender);
+            names = names.map(x=>x.name).filter(Boolean).filter(n => !selectedNames.has(n)).sort();
+            names.forEach(n => { const opt = document.createElement('option'); opt.value = n; data.appendChild(opt); });
+        }
+
+        function updateRoyalRosterDatalist() {
+            buildRoyalRosterDatalist(genderFilter?.value || 'all');
+        }
+
+        function autoFillFighters() {
+            const roster = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
+            const inputs = document.querySelectorAll('.fighter-name-input');
+            let rosterIndex = 0;
+            
+            inputs.forEach(input => {
+                if (!input.value.trim() && rosterIndex < roster.length) {
+                    input.value = roster[rosterIndex].name;
+                    input.dispatchEvent(new Event('input'));
+                    rosterIndex++;
+                }
+            });
+        }
+
+        function checkForRumbleWinner() {
+            const fighters = document.querySelectorAll('.fighter');
+            let activeCount = 0;
+            let lastActiveFighter = null;
+            let lastActiveName = null;
+
+            fighters.forEach(fighter => {
+                const nameInput = fighter.querySelector('.fighter-name-input');
+                const hasName = nameInput.value.trim();
+                const isActive = fighter._state && fighter._state.enteredAt !== null && fighter._state.eliminatedAt === null;
+                
+                if (hasName && isActive) {
+                    activeCount++;
+                    lastActiveFighter = fighter;
+                    lastActiveName = nameInput.value.trim();
+                }
+            });
+
+            if (activeCount === 1) {
+                stopGlobal();
+                if (globalTimer) clearInterval(globalTimer);
+                globalTimer = null;
+                
+                alert(`🏆 ${lastActiveName} is the Royal Rumble Winner! 🏆`);
+                document.getElementById('finalizeBtn').disabled = false;
+                
+                // Apply winner styling to the winning fighter
+                if (lastActiveFighter) {
+                    const row = lastActiveFighter.closest('.row');
+                    const avatar = lastActiveFighter.querySelector('.avatar');
+                    
+                    if (row) row.classList.add('winner');
+                    if (avatar) {
+                        avatar.classList.add('winner');
+                        
+                        // Add checkmark badge if it doesn't exist
+                        if (!avatar.querySelector('.win-badge')) {
+                            const badge = document.createElement('div');
+                            badge.className = 'win-badge';
+                            badge.textContent = '✓';
+                            avatar.style.position = 'relative';
+                            avatar.appendChild(badge);
+                        }
+                    }
+                }
+                
+                // Disable all fighter boxes
+                disableAllFighterBoxes();
+            }
+        }
+
+        function disableAllFighterBoxes() {
+            const fighters = document.querySelectorAll('.fighter');
+            fighters.forEach(fighter => {
+                const nameInput = fighter.querySelector('.fighter-name-input');
+                const clearBtn = fighter.querySelector('button[style*="min-width"]');
+                const enterBtn = fighter.querySelector('.enter-btn');
+                const elimBtn = fighter.querySelector('.elim-btn');
+                
+                if (nameInput) nameInput.disabled = true;
+                if (clearBtn) clearBtn.disabled = true;
+                if (enterBtn) enterBtn.disabled = true;
+                if (elimBtn) elimBtn.disabled = true;
+            });
+        }
+
+        // initialize
+        buildRoyalRosterDatalist('all');
+        createRows(10);
+        refreshDisplayBox();
+        colSelect.addEventListener('change', ()=>{
+            const n = Number(colSelect.value);
+            createRows(n);
+        });
+        genderFilter.addEventListener('change', ()=>{ updateRoyalRosterDatalist(); });
+
+        function finalizeRoyalRumbleEvent() {
+            const fighters = document.querySelectorAll('.fighter');
+            const participants = [];
+            
+            fighters.forEach(fighter => {
+                const nameInput = fighter.querySelector('.fighter-name-input');
+                const enteredBox = fighter.querySelector('.time-enter');
+                const elimBox = fighter.querySelector('.time-elim');
+                
+                if (nameInput.value.trim()) {
+                    participants.push({
+                        name: nameInput.value.trim(),
+                        enteredAt: enteredBox.textContent !== '00:00:00.0' ? enteredBox.textContent : null,
+                        eliminatedAt: elimBox.textContent !== '00:00:00.0' ? elimBox.textContent : null
+                    });
+                }
+            });
+
+            if (participants.length === 0) {
+                alert('No fighters to finalize. Add at least one fighter.');
+                return;
+            }
+
+            const eventHistoryCalendar = JSON.parse(localStorage.getItem("wwe_event_history")) || [];
+            const eventDate = new Date();
+            eventHistoryCalendar.push({
+                id: "royal-rumble-" + Date.now(),
+                name: "Royal Rumble",
+                showTitle: "Royal Rumble",
+                type: 'royal-rumble',
+                date: eventDate.toLocaleString(),
+                completedAt: eventDate.toISOString(),
+                totalTime: formatTime(globalElapsed),
+                participants: participants,
+                matches: []
+            });
+
+            localStorage.setItem("wwe_event_history", JSON.stringify(eventHistoryCalendar));
+            
+            alert('Royal Rumble event finalized and saved to Event History!');
+            
+            // Reset the event
+            globalStart = null;
+            globalElapsed = 0;
+            if (globalTimer) clearInterval(globalTimer);
+            globalTimer = null;
+            refreshDisplayBox();
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            document.getElementById('finalizeBtn').disabled = true;
+            
+            createRows(10);
+            colSelect.value = '10';
+            
+            // Re-enable all fighter boxes for new event
+            enableAllFighterBoxes();
+        }
+
+        function clearRoyalRumbleEvent() {
+            if (confirm('Clear the timer and reset all times? Fighters will remain.')) {
+                globalStart = null;
+                globalElapsed = 0;
+                if (globalTimer) clearInterval(globalTimer);
+                globalTimer = null;
+                refreshDisplayBox();
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                document.getElementById('finalizeBtn').disabled = true;
+                
+                // Reset all fighter timers but keep fighter names
+                const fighters = document.querySelectorAll('.fighter');
+                fighters.forEach(fighter => {
+                    if (fighter._state) {
+                        fighter._state.enteredAt = null;
+                        fighter._state.eliminatedAt = null;
+                        if (fighter._state.runningInterval) {
+                            clearInterval(fighter._state.runningInterval);
+                            fighter._state.runningInterval = null;
+                        }
+                    }
+                    
+                    const enterBtn = fighter.querySelector('.enter-btn');
+                    const elimBtn = fighter.querySelector('.elim-btn');
+                    const enterBox = fighter.querySelector('.time-enter');
+                    const elimBox = fighter.querySelector('.time-elim');
+                    const row = fighter.closest('.row');
+                    
+                    if (enterBtn) enterBtn.disabled = false;
+                    if (elimBtn) elimBtn.disabled = true;
+                    if (enterBox) enterBox.textContent = '00:00:00.0';
+                    if (elimBox) elimBox.textContent = '00:00:00.0';
+                    if (row) {
+                        row.classList.remove('winner');
+                        row.classList.remove('eliminated');
+                    }
+                });
+            }
+        }
+
+        function enableAllFighterBoxes() {
+            const fighters = document.querySelectorAll('.fighter');
+            fighters.forEach(fighter => {
+                const nameInput = fighter.querySelector('.fighter-name-input');
+                const clearBtn = fighter.querySelector('button[style*="min-width"]');
+                const enterBtn = fighter.querySelector('.enter-btn');
+                const elimBtn = fighter.querySelector('.elim-btn');
+                const row = fighter.closest('.row');
+                const avatar = fighter.querySelector('.avatar');
+                const badge = avatar?.querySelector('.win-badge');
+                
+                if (nameInput) nameInput.disabled = false;
+                if (clearBtn) clearBtn.disabled = false;
+                if (enterBtn) enterBtn.disabled = false;
+                
+                // Remove winner and eliminated styling
+                if (row) {
+                    row.classList.remove('winner');
+                    row.classList.remove('eliminated');
+                }
+                if (avatar) {
+                    avatar.classList.remove('winner');
+                }
+                if (badge) badge.remove();
+            });
+        }
+
+        // keep globalElapsed updated when running
+        setInterval(()=>{
+            if (globalStart && !globalTimer) {
+                // timer was stopped; keep display current
+                refreshDisplayBox();
+            }
+        }, 500);
+    </script>
+</body>
+</html>

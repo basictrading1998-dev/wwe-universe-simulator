@@ -1606,6 +1606,30 @@ window.toggleBulkImporter = function() {
     wrapper.style.display = wrapper.style.display === 'none' ? 'block' : 'none';
 };
 
+window.clearAllFighterRecords = function() {
+    if (!fighters || fighters.length === 0) return alert('There are no fighters to clear.');
+    const confirmed = confirm('This will reset every fighter\'s match record, win/loss totals, method breakdowns, title-fight count, and fight history. It will not remove any fighters from the roster. Continue?');
+    if (!confirmed) return;
+
+    fighters.forEach(fighter => {
+        fighter.wins = 0;
+        fighter.losses = 0;
+        fighter.defenses = 0;
+        fighter.title_fights = 0;
+        fighter.win_pinfall = 0;
+        fighter.win_ko = 0;
+        fighter.win_submission = 0;
+        fighter.compiled_history_deck = [];
+        fighter.history_deck = [];
+        fighter.history = [];
+    });
+
+    saveFighters(fighters);
+    refreshFighterNameDatalist();
+    renderRosterGrid();
+    alert('All fighter records have been cleared.');
+};
+
 window.importBulkSuperstars = async function() {
     await loadAndHydrateFighters();
     const textarea = document.getElementById('bulkNamesInput');
