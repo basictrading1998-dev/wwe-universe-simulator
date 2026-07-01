@@ -434,6 +434,7 @@
             }
 
             activeBackgroundVideos = loadedVideos;
+            console.debug('Restored background videos from storage', activeBackgroundVideos.map(v=>v.id));
             saveStoredBackgroundList(activeBackgroundVideos.map(video => ({ id: video.id, name: video.name })));
             refreshBackgroundVideoList();
             if (activeBackgroundVideos.length) startBackgroundVideoLoop();
