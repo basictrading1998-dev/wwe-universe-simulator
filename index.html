@@ -29,8 +29,27 @@
 .search-results-floating-panel { position: absolute; top: 100%; left: 0; width: 100%; max-height: 180px; overflow-y: auto; background: white; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 9999; }
 .search-result-item-row { padding: 8px 12px; cursor: pointer; font-size: 0.8rem; color: #1e293b; font-weight: bold; text-align: left; }
 .search-result-item-row:hover { background: #f0f9ff; color: #0284c7; }
-.search-result-item-row.is-already-booked { background: #f1f5f9; color: #94a3b8 !important; cursor: not-allowed; text-decoration: line-through; }
-
+.search-result-item-row.is-already-booked { background: #f1f5f9; color: #94a3b8 !important; cursor: not-allowed; text-decoration: line-through; }#backgroundSettingsButton { background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
+#backgroundSettingsButton:hover { background: rgba(255,255,255,0.28); }
+#backgroundSettingsModal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(2, 6, 23, 0.82); backdrop-filter: blur(8px); z-index: 2000; }
+#backgroundSettingsPanel { width: min(640px, 100%); background: linear-gradient(135deg, #071426, #111827 55%, #0f172a); border: 1px solid rgba(125, 211, 252, 0.35); border-radius: 18px; box-shadow: 0 20px 55px rgba(2, 6, 23, 0.45); padding: 22px; color: white; }
+#backgroundSettingsPanel h3 { margin: 0 0 10px 0; color: #f8fafc; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.08em; }
+#backgroundSettingsPanel p { margin: 0 0 16px 0; color: #cbd5e1; font-size: 0.9rem; }
+#backgroundVideoDropzone { border: 1px dashed rgba(248, 113, 113, 0.7); border-radius: 12px; padding: 16px; background: rgba(15, 23, 42, 0.7); cursor: pointer; transition: border-color 0.2s ease, transform 0.2s ease; display: block; }
+#backgroundVideoDropzone.drag-over { border-color: #38bdf8; transform: translateY(-1px); }
+#backgroundVideoDropzone input { display: none; }
+#backgroundVideoDropzone span { display: block; font-weight: 700; color: #e2e8f0; text-align: center; }
+#backgroundVideoList { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; padding-right: 4px; }
+.background-video-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(36, 99, 235, 0.25); border-radius: 10px; padding: 8px 10px; }
+.background-video-row span { font-size: 0.82rem; font-weight: 600; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.background-video-row button { background: #dc2626; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; }
+.background-video-row button:hover { background: #b91c1c; }
+#backgroundSettingsFooter { display: flex; justify-content: flex-end; margin-top: 16px; }
+#backgroundSettingsFooter button { background: #0284c7; color: white; border: none; border-radius: 8px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
+#backgroundSettingsFooter button:hover { background: #0369a1; }
+#backgroundVideoLayer { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; opacity: 1; pointer-events: none; filter: saturate(1.1) contrast(1.05) brightness(1.1); }
+body { position: relative; }
+body::before { content: ''; position: fixed; inset: 0; background: linear-gradient(135deg, rgba(2,6,23,0.35), rgba(15,23,42,0.28)); z-index: -1; pointer-events: none; }
 @media (max-width: 768px) {
     body { padding-bottom: 80px; }
     nav { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 16px; }
@@ -68,6 +87,7 @@
 
         <div style="flex: 0 0 200px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
             <div id="betting-money-display" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.95rem; text-align: right;">$1,000</div>
+            <button type="button" id="backgroundSettingsButton" onclick="openBackgroundSettings()" style="background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Background Settings</button>
             <button onclick="resetBettingMoney()" style="background:#ffffff33; color:white; border:1px solid rgba(255,255,255,0.35); padding:6px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:700;">Reset</button>
         </div>
     </nav>
@@ -117,7 +137,322 @@
         </section>
     </main>
 
+    <div id="backgroundSettingsModal" role="dialog" aria-modal="true" aria-labelledby="backgroundSettingsTitle">
+        <div id="backgroundSettingsPanel">
+            <h3 id="backgroundSettingsTitle">Live Background Manager</h3>
+            <p>Load unlimited MP4 background videos and let them shuffle through the page background.</p>
+            <label id="backgroundVideoDropzone" for="backgroundVideoInput">
+                <input id="backgroundVideoInput" type="file" accept="video/mp4" multiple>
+                <span>Upload Background Videos (Unlimited MP4s)</span>
+            </label>
+            <div id="backgroundAudioControls" style="display:flex; align-items:center; gap:12px; margin-top:16px; flex-wrap: wrap;">
+                <label style="color:#cbd5e1; font-size:0.9rem; font-weight:700; display:flex; align-items:center; gap:10px;">
+                    Volume
+                    <input id="backgroundVolumeSlider" type="range" min="0" max="100" step="1" value="65" style="width:160px;">
+                </label>
+                <button id="backgroundMuteButton" type="button" onclick="toggleBackgroundVideoMute()" style="background:#0284c7; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:700; cursor:pointer;">Mute</button>
+                <span id="backgroundVolumeLabel" style="color:#cbd5e1; font-size:0.85rem;">65%</span>
+            </div>
+            <div id="backgroundVideoList" aria-live="polite"></div>
+            <div id="backgroundSettingsFooter">
+                <button type="button" onclick="closeBackgroundSettings()">Close Settings</button>
+            </div>
+        </div>
+    </div>
+
     <script src="auth.js"></script>
     <script src="cards.js"></script>
+    <script>
+        let activeBackgroundVideos = [];
+        let activeBackgroundCurrentIndex = -1;
+        let activeBackgroundVideoElement = null;
+        const BACKGROUND_VIDEO_STORAGE_KEY = 'wwe_background_videos';
+        const BACKGROUND_VIDEO_DB_NAME = 'wwe_background_videos_db';
+        const BACKGROUND_VIDEO_DB_STORE = 'videos';
+
+        function openBackgroundVideoDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(BACKGROUND_VIDEO_DB_NAME, 1);
+                request.onupgradeneeded = event => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(BACKGROUND_VIDEO_DB_STORE)) {
+                        db.createObjectStore(BACKGROUND_VIDEO_DB_STORE);
+                    }
+                };
+                request.onsuccess = event => resolve(event.target.result);
+                request.onerror = event => reject(event.target.error || new Error('IndexedDB open failed'));
+            });
+        }
+
+        function saveBackgroundVideoBlob(id, file) {
+            return openBackgroundVideoDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(BACKGROUND_VIDEO_DB_STORE, 'readwrite');
+                const store = tx.objectStore(BACKGROUND_VIDEO_DB_STORE);
+                const request = store.put(file, id);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error || new Error('Save failed'));
+            }));
+        }
+
+        function deleteBackgroundVideoBlob(id) {
+            return openBackgroundVideoDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(BACKGROUND_VIDEO_DB_STORE, 'readwrite');
+                const store = tx.objectStore(BACKGROUND_VIDEO_DB_STORE);
+                const request = store.delete(id);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error || new Error('Delete failed'));
+            }));
+        }
+
+        function loadBackgroundVideoBlob(id) {
+            return openBackgroundVideoDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(BACKGROUND_VIDEO_DB_STORE, 'readonly');
+                const store = tx.objectStore(BACKGROUND_VIDEO_DB_STORE);
+                const request = store.get(id);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error || new Error('Load failed'));
+            }));
+        }
+
+        function loadStoredBackgroundList() {
+            return JSON.parse(localStorage.getItem(BACKGROUND_VIDEO_STORAGE_KEY) || '[]');
+        }
+
+        function saveStoredBackgroundList(list) {
+            localStorage.setItem(BACKGROUND_VIDEO_STORAGE_KEY, JSON.stringify(list));
+        }
+
+        function loadBackgroundAudioSettings() {
+            return JSON.parse(localStorage.getItem('wwe_background_audio') || JSON.stringify({ muted: false, volume: 0.65 }));
+        }
+
+        function saveBackgroundAudioSettings(settings) {
+            localStorage.setItem('wwe_background_audio', JSON.stringify(settings));
+        }
+
+        function updateBackgroundAudioUI() {
+            const volumeLabel = document.getElementById('backgroundVolumeLabel');
+            const volumeSlider = document.getElementById('backgroundVolumeSlider');
+            const muteButton = document.getElementById('backgroundMuteButton');
+            const video = ensureBackgroundVideoElement();
+            if (!volumeSlider || !volumeLabel || !muteButton || !video) return;
+            volumeSlider.value = Math.round(video.volume * 100);
+            volumeLabel.textContent = video.muted ? 'Muted' : `${Math.round(video.volume * 100)}%`;
+            muteButton.textContent = video.muted ? 'Unmute' : 'Mute';
+        }
+
+        function setBackgroundVideoVolume(value) {
+            const video = ensureBackgroundVideoElement();
+            video.volume = value;
+            video.muted = false;
+            saveBackgroundAudioSettings({ muted: false, volume: video.volume });
+            updateBackgroundAudioUI();
+        }
+
+        function toggleBackgroundVideoMute() {
+            const video = ensureBackgroundVideoElement();
+            video.muted = !video.muted;
+            saveBackgroundAudioSettings({ muted: video.muted, volume: video.volume });
+            updateBackgroundAudioUI();
+        }
+
+        async function restoreBackgroundVideosFromStorage() {
+            const storedList = loadStoredBackgroundList();
+            const loadedVideos = [];
+
+            for (const item of storedList) {
+                try {
+                    const file = await loadBackgroundVideoBlob(item.id);
+                    if (file) {
+                        loadedVideos.push({ id: item.id, name: item.name, url: URL.createObjectURL(file) });
+                    }
+                } catch (error) {
+                    console.warn('Failed to restore background video', item.id, error);
+                }
+            }
+
+            activeBackgroundVideos = loadedVideos;
+            saveStoredBackgroundList(activeBackgroundVideos.map(video => ({ id: video.id, name: video.name })));
+            refreshBackgroundVideoList();
+            if (activeBackgroundVideos.length) startBackgroundVideoLoop();
+        }
+
+        function ensureBackgroundVideoElement() {
+            if (!activeBackgroundVideoElement) {
+                activeBackgroundVideoElement = document.getElementById('backgroundVideoLayer');
+                if (!activeBackgroundVideoElement) {
+                    activeBackgroundVideoElement = document.createElement('video');
+                    activeBackgroundVideoElement.id = 'backgroundVideoLayer';
+                    activeBackgroundVideoElement.autoplay = true;
+                    activeBackgroundVideoElement.muted = false;
+                    activeBackgroundVideoElement.volume = 0.65;
+                    activeBackgroundVideoElement.playsInline = true;
+                    activeBackgroundVideoElement.preload = 'auto';
+                    activeBackgroundVideoElement.style.cssText = 'position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:-2; opacity:1; pointer-events:none; filter:saturate(1.1) contrast(1.05) brightness(1);';
+                    document.body.appendChild(activeBackgroundVideoElement);
+                }
+            }
+            return activeBackgroundVideoElement;
+        }
+
+        function refreshBackgroundVideoList() {
+            const list = document.getElementById('backgroundVideoList');
+            if (!list) return;
+            if (!activeBackgroundVideos.length) {
+                list.innerHTML = '<div class="background-video-row"><span>No background videos uploaded yet.</span></div>';
+                return;
+            }
+            list.innerHTML = activeBackgroundVideos.map((video, index) => `
+                <div class="background-video-row">
+                    <span>${video.name}</span>
+                    <button type="button" onclick="deleteBackgroundVideo(${index})">Delete</button>
+                </div>
+            `).join('');
+        }
+
+        function pickNextBackgroundVideoIndex() {
+            if (!activeBackgroundVideos.length) return -1;
+            if (activeBackgroundVideos.length === 1) return 0;
+            let nextIndex = Math.floor(Math.random() * activeBackgroundVideos.length);
+            while (nextIndex === activeBackgroundCurrentIndex) {
+                nextIndex = Math.floor(Math.random() * activeBackgroundVideos.length);
+            }
+            return nextIndex;
+        }
+
+        function playBackgroundVideo(index) {
+            const video = ensureBackgroundVideoElement();
+            if (!activeBackgroundVideos[index]) return;
+            activeBackgroundCurrentIndex = index;
+            video.src = activeBackgroundVideos[index].url;
+            video.load();
+            video.play().catch(() => {});
+        }
+
+        function startBackgroundVideoLoop() {
+            const video = ensureBackgroundVideoElement();
+            if (!activeBackgroundVideos.length) return;
+            video.onended = () => {
+                const nextIndex = pickNextBackgroundVideoIndex();
+                if (nextIndex !== -1) playBackgroundVideo(nextIndex);
+            };
+            const startIndex = activeBackgroundCurrentIndex >= 0 ? activeBackgroundCurrentIndex : pickNextBackgroundVideoIndex();
+            if (startIndex !== -1) playBackgroundVideo(startIndex);
+        }
+
+        function stopBackgroundVideoLoop() {
+            const video = ensureBackgroundVideoElement();
+            if (!video) return;
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            video.onended = null;
+        }
+
+        function addBackgroundVideoFiles(files) {
+            const videoFiles = Array.from(files || []).filter(file => file.type.includes('video/mp4') || /\.mp4$/i.test(file.name));
+            if (!videoFiles.length) return;
+
+            videoFiles.forEach(async (file) => {
+                const id = `bgvideo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                const url = URL.createObjectURL(file);
+
+                try {
+                    await saveBackgroundVideoBlob(id, file);
+                    activeBackgroundVideos.push({ id, name: file.name, url });
+                    saveStoredBackgroundList(activeBackgroundVideos.map(video => ({ id: video.id, name: video.name })));
+                    refreshBackgroundVideoList();
+                    if (activeBackgroundVideos.length) startBackgroundVideoLoop();
+                } catch (error) {
+                    console.warn('Unable to save background video:', file.name, error);
+                    URL.revokeObjectURL(url);
+                }
+            });
+        }
+
+        function deleteBackgroundVideo(index) {
+            const video = activeBackgroundVideos[index];
+            if (video?.url) URL.revokeObjectURL(video.url);
+            if (video?.id) {
+                deleteBackgroundVideoBlob(video.id).catch(() => {});
+            }
+
+            activeBackgroundVideos.splice(index, 1);
+            saveStoredBackgroundList(activeBackgroundVideos.map(video => ({ id: video.id, name: video.name })));
+            refreshBackgroundVideoList();
+
+            if (!activeBackgroundVideos.length) {
+                stopBackgroundVideoLoop();
+                activeBackgroundCurrentIndex = -1;
+                return;
+            }
+            if (index <= activeBackgroundCurrentIndex || activeBackgroundCurrentIndex === -1) {
+                activeBackgroundCurrentIndex = Math.max(activeBackgroundCurrentIndex - 1, 0);
+            }
+            startBackgroundVideoLoop();
+        }
+
+        function openBackgroundSettings() {
+            const modal = document.getElementById('backgroundSettingsModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeBackgroundSettings() {
+            const modal = document.getElementById('backgroundSettingsModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const modal = document.getElementById('backgroundSettingsModal');
+            const input = document.getElementById('backgroundVideoInput');
+            const dropzone = document.getElementById('backgroundVideoDropzone');
+            const volumeSlider = document.getElementById('backgroundVolumeSlider');
+            const muteButton = document.getElementById('backgroundMuteButton');
+
+            ensureBackgroundVideoElement();
+            const audioSettings = loadBackgroundAudioSettings();
+            activeBackgroundVideoElement.volume = audioSettings.volume ?? 0.65;
+            activeBackgroundVideoElement.muted = audioSettings.muted ?? false;
+            updateBackgroundAudioUI();
+
+            restoreBackgroundVideosFromStorage();
+            if (modal) {
+                modal.addEventListener('click', (event) => {
+                    if (event.target === modal) closeBackgroundSettings();
+                });
+            }
+            if (input) {
+                input.addEventListener('change', (event) => {
+                    addBackgroundVideoFiles(event.target.files);
+                    event.target.value = '';
+                });
+            }
+            if (volumeSlider) {
+                volumeSlider.addEventListener('input', (event) => {
+                    setBackgroundVideoVolume(Number(event.target.value) / 100);
+                });
+            }
+            if (muteButton) {
+                muteButton.addEventListener('click', toggleBackgroundVideoMute);
+            }
+            if (dropzone) {
+                ['dragenter', 'dragover'].forEach(type => {
+                    dropzone.addEventListener(type, (event) => {
+                        event.preventDefault();
+                        dropzone.classList.add('drag-over');
+                    });
+                });
+                ['dragleave', 'drop'].forEach(type => {
+                    dropzone.addEventListener(type, (event) => {
+                        event.preventDefault();
+                        dropzone.classList.remove('drag-over');
+                    });
+                });
+                dropzone.addEventListener('drop', (event) => {
+                    addBackgroundVideoFiles(event.dataTransfer?.files || []);
+                });
+            }
+        });
+    </script>
 </body>
 </html>
