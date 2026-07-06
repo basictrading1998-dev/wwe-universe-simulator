@@ -946,7 +946,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (badge) badge.style.display = 'none';
                         if (label) label.style.display = 'none';
 
-                        const matchRow = e.target.closest('.match-row');
                         if (matchRow) {
                             resetMatchRowRematchState(matchRow.id);
                         }
@@ -1579,6 +1578,7 @@ function clearMatchRowTitleGlow(matchRow) {
 }
 
 function refreshTitleFightState(matchRowId) {
+    const matchRow = document.getElementById(matchRowId);
     const titleCheckbox = document.getElementById(`${matchRowId}-title-check`);
     const titleInput = document.getElementById(`${matchRowId}-title-name-input`);
     const slot1Input = document.getElementById(`${matchRowId}-slot1`)?.querySelector('.fighter-search-input');
