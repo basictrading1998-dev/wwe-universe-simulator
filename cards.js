@@ -954,13 +954,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 refreshTitleFightState(id);
-                if (hasEmptyFighter) {
+                const titleCheckbox = document.getElementById(`${id}-title-check`);
+                if (hasEmptyFighter && (!titleCheckbox || !titleCheckbox.checked)) {
                     matchRow.style.border = '1px solid #bae6fd';
                     matchRow.style.background = '#ffffff';
                     if (id.includes('mainEventContainer') || id.includes('coMainContainer')) {
                         matchRow.style.border = '1px solid #fca5a5';
                         matchRow.style.background = 'linear-gradient(to right, #ffffff, #fff5f5, #ffffff)';
                     }
+                } else if (titleCheckbox && titleCheckbox.checked) {
+                    applyMatchRowTitleGlow(matchRow);
                 } else {
                     const accepted = getMatchRowAcceptedRematch(id);
                     const currentF1Id = slot1Input?.getAttribute('data-fighter-id') || '';
