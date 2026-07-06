@@ -1557,6 +1557,24 @@ function clearCardFighterSlot(matchRowId, slotType) {
     saveCurrentCardDraft();
 }
 
+function applyMatchRowTitleGlow(matchRow) {
+    if (!matchRow) return;
+    matchRow.style.background = 'linear-gradient(to right, #fffaf0, #fff5d6, #fef3c7)';
+    matchRow.style.borderColor = '#fbbf24';
+}
+
+function clearMatchRowTitleGlow(matchRow) {
+    if (!matchRow) return;
+    if (matchRow.dataset.isMain === 'true') {
+        matchRow.style.background = 'linear-gradient(to right, #fff, #fff5f5, #fff)';
+        matchRow.style.borderColor = '#fca5a5';
+    } else {
+        matchRow.style.background = '#fff';
+        matchRow.style.borderColor = '#bae6fd';
+    }
+    matchRow.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+}
+
 function refreshTitleFightState(matchRowId) {
     const titleCheckbox = document.getElementById(`${matchRowId}-title-check`);
     const titleInput = document.getElementById(`${matchRowId}-title-name-input`);
@@ -1590,8 +1608,15 @@ function refreshTitleFightState(matchRowId) {
                     titleInput.value = '';
                     titleInput.innerHTML = '';
                 }
+                clearMatchRowTitleGlow(matchRow);
             }
         }
+    }
+
+    if (titleCheckbox && titleCheckbox.checked) {
+        applyMatchRowTitleGlow(matchRow);
+    } else {
+        clearMatchRowTitleGlow(matchRow);
     }
 }
 
