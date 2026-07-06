@@ -110,8 +110,9 @@
             <a href="lineage.html" class="nav-btn active">Championship Lineage</a>
             <a href="royal-rumble.html" class="nav-btn">Royal Rumble</a>
         </div>
-        <div style="flex: 0 0 320px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+        <div style="flex: 0 0 420px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
             <button type="button" id="backgroundSettingsButton" onclick="openBackgroundSettings()" style="background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Background Settings</button>
+            <button type="button" id="backgroundToggleButton" onclick="toggleBackgroundVideoState()" style="background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Background: On</button>
         </div>
     </nav>
 
@@ -493,6 +494,7 @@
         }
 
         function startBackgroundVideoLoop() {
+            if (!backgroundVideosEnabled) return;
             const video = ensureBackgroundVideoElement();
             if (!activeBackgroundVideos.length) return;
             video.onended = () => {
@@ -510,6 +512,41 @@
             video.removeAttribute('src');
             video.load();
             video.onended = null;
+        }
+
+        let backgroundVideosEnabled = true;
+        const BACKGROUND_VIDEO_ENABLED_KEY = 'wwe_background_enabled';
+
+        function loadBackgroundEnabledSetting() {
+            return localStorage.getItem(BACKGROUND_VIDEO_ENABLED_KEY) !== '0';
+        }
+
+        function saveBackgroundEnabledSetting(value) {
+            localStorage.setItem(BACKGROUND_VIDEO_ENABLED_KEY, value ? '1' : '0');
+        }
+
+        function updateBackgroundEnabledUI() {
+            const btn = document.getElementById('backgroundToggleButton');
+            if (!btn) return;
+            btn.textContent = backgroundVideosEnabled ? 'Background: On' : 'Background: Off';
+            btn.style.background = backgroundVideosEnabled ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)';
+            btn.style.opacity = backgroundVideosEnabled ? '1' : '0.8';
+            btn.title = backgroundVideosEnabled ? 'Pause background videos' : 'Resume background videos';
+        }
+
+        function toggleBackgroundVideoState() {
+            backgroundVideosEnabled = !backgroundVideosEnabled;
+            saveBackgroundEnabledSetting(backgroundVideosEnabled);
+            applyBackgroundVideoEnabledState();
+        }
+
+        function applyBackgroundVideoEnabledState() {
+            if (backgroundVideosEnabled) {
+                if (activeBackgroundVideos.length) startBackgroundVideoLoop();
+            } else {
+                stopBackgroundVideoLoop();
+            }
+            updateBackgroundEnabledUI();
         }
 
         function addBackgroundVideoFiles(files) {
@@ -578,6 +615,8 @@
             activeBackgroundVideoElement.muted = audioSettings.muted ?? false;
             updateBackgroundAudioUI();
 
+            backgroundVideosEnabled = loadBackgroundEnabledSetting();
+            updateBackgroundEnabledUI();
             restoreBackgroundVideosFromStorage();
             if (modal) {
                 modal.addEventListener('click', (event) => {

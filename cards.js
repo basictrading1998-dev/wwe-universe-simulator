@@ -1959,7 +1959,11 @@ function checkDuplicateOnCard(matchRowId, changedSlot) {
 }
 
 window.toggleRematchCounter = function(id, cb) {
-    const el = document.getElementById(`${id}-rematch-count`); if (el) el.style.display = cb.checked ? "inline-block" : "none";
+    const el = document.getElementById(`${id}-rematch-count`);
+    if (el) {
+        el.style.display = cb.checked ? "inline-block" : "none";
+    }
+    saveCurrentCardDraft();
 };
 
 window.toggleTitleFight = function(matchRowId, checkbox) {
@@ -1994,6 +1998,7 @@ window.toggleTitleFight = function(matchRowId, checkbox) {
     if (!checkbox.checked) {
         if (titleInput) { titleInput.style.display = 'none'; titleInput.value = ''; }
         clearTitleGlow();
+        saveCurrentCardDraft();
         return;
     }
 
@@ -2018,6 +2023,7 @@ window.toggleTitleFight = function(matchRowId, checkbox) {
         titleInput.focus();
     }
     applyTitleGlow();
+    saveCurrentCardDraft();
     // Note: Manual finalize button removed — titles will be applied automatically when logging results.
 };
 
@@ -3673,6 +3679,10 @@ function saveCurrentCardDraft() {
         const s2 = document.getElementById(`${id}-slot2`).querySelector('.fighter-search-input');
         const gender = document.getElementById(`${id}-slot1`)?.getAttribute('data-gender') || 'male';
         const acceptedRematch = getMatchRowAcceptedRematch(id);
+        const titleCheckbox = document.getElementById(`${id}-title-check`);
+        const titleInput = document.getElementById(`${id}-title-name-input`);
+        const rematchCheckbox = row.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]');
+        const rematchCountEl = document.getElementById(`${id}-rematch-count`);
         
         draftData[id] = {
             f1Name: s1 ? s1.value : '',
@@ -3680,10 +3690,13 @@ function saveCurrentCardDraft() {
             f2Name: s2 ? s2.value : '',
             f2Id: s2 ? s2.getAttribute('data-fighter-id') : '',
             gender: gender,
+            titleChecked: titleCheckbox ? titleCheckbox.checked : false,
+            titleSelected: titleInput ? titleInput.value : '',
+            rematchChecked: rematchCheckbox ? rematchCheckbox.checked : false,
+            rematchCount: rematchCountEl ? Number(rematchCountEl.value) : 1,
             rematchAccepted: acceptedRematch ? true : false,
             rematchF1Id: acceptedRematch ? acceptedRematch.fighter1Id : '',
-            rematchF2Id: acceptedRematch ? acceptedRematch.fighter2Id : '',
-            rematchCount: acceptedRematch ? acceptedRematch.count : 1
+            rematchF2Id: acceptedRematch ? acceptedRematch.fighter2Id : ''
         };
     });
     localStorage.setItem(getCurrentDraftStorageKey(), JSON.stringify(draftData));
@@ -3772,6 +3785,39 @@ function restoreCurrentCardDraft() {
             const inferred = maybeF1?.gender || maybeF2?.gender;
             if (inferred) setMatchRowSelectedGender(id, inferred);
         }
+
+        const titleCheckbox = document.getElementById(`${id}-title-check`);
+        const titleInput = document.getElementById(`${id}-title-name-input`);
+        const rematchCheckbox = row.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]');
+        const rematchCount = document.getElementById(`${id}-rematch-count`);
+        const currentF1Id = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') || '';
+        const currentF2Id = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') || '';
+
+        if (titleCheckbox) {
+            titleCheckbox.checked = !!d.titleChecked;
+        }
+        if (titleInput) {
+            if (titleCheckbox && titleCheckbox.checked) {
+                titleInput.style.display = 'inline-block';
+                populateTitleDropdown(id);
+                titleInput.value = d.titleSelected || '';
+            } else {
+                titleInput.style.display = 'none';
+                titleInput.value = '';
+            }
+        }
+
+        if (rematchCheckbox) {
+            rematchCheckbox.checked = !!d.rematchChecked;
+        }
+        if (rematchCount) {
+            rematchCount.value = d.rematchCount || 1;
+            rematchCount.style.display = rematchCheckbox && rematchCheckbox.checked ? 'inline-block' : 'none';
+        }
+        if (d.rematchAccepted && d.rematchF1Id && d.rematchF2Id && areMatchRowRematchPairsEqual(currentF1Id, currentF2Id, d.rematchF1Id, d.rematchF2Id)) {
+            setMatchRowRematchAccepted(id, d.rematchF1Id, d.rematchF2Id, d.rematchCount || 1);
+        }
+
         if (d.f1Name || d.f2Name) {
             const winSelect = document.getElementById(`${id}-winner-select`);
             if (winSelect) {

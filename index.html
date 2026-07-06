@@ -88,6 +88,7 @@ body::before { content: ''; position: fixed; inset: 0; background: linear-gradie
         <div style="flex: 0 0 200px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
             <div id="betting-money-display" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.95rem; text-align: right;">$1,000</div>
             <button type="button" id="backgroundSettingsButton" onclick="openBackgroundSettings()" style="background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Background Settings</button>
+            <button type="button" id="backgroundToggleButton" onclick="toggleBackgroundVideoState()" style="background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Background: On</button>
             <button onclick="resetBettingMoney()" style="background:#ffffff33; color:white; border:1px solid rgba(255,255,255,0.35); padding:6px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:700;">Reset</button>
         </div>
     </nav>
@@ -278,6 +279,41 @@ body::before { content: ''; position: fixed; inset: 0; background: linear-gradie
             if (activeBackgroundVideos.length) startBackgroundVideoLoop();
         }
 
+        let backgroundVideosEnabled = true;
+        const BACKGROUND_VIDEO_ENABLED_KEY = 'wwe_background_enabled';
+
+        function loadBackgroundEnabledSetting() {
+            return localStorage.getItem(BACKGROUND_VIDEO_ENABLED_KEY) !== '0';
+        }
+
+        function saveBackgroundEnabledSetting(value) {
+            localStorage.setItem(BACKGROUND_VIDEO_ENABLED_KEY, value ? '1' : '0');
+        }
+
+        function updateBackgroundEnabledUI() {
+            const btn = document.getElementById('backgroundToggleButton');
+            if (!btn) return;
+            btn.textContent = backgroundVideosEnabled ? 'Background: On' : 'Background: Off';
+            btn.style.background = backgroundVideosEnabled ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)';
+            btn.style.opacity = backgroundVideosEnabled ? '1' : '0.8';
+            btn.title = backgroundVideosEnabled ? 'Pause background videos' : 'Resume background videos';
+        }
+
+        function toggleBackgroundVideoState() {
+            backgroundVideosEnabled = !backgroundVideosEnabled;
+            saveBackgroundEnabledSetting(backgroundVideosEnabled);
+            applyBackgroundVideoEnabledState();
+        }
+
+        function applyBackgroundVideoEnabledState() {
+            if (backgroundVideosEnabled) {
+                if (activeBackgroundVideos.length) startBackgroundVideoLoop();
+            } else {
+                stopBackgroundVideoLoop();
+            }
+            updateBackgroundEnabledUI();
+        }
+
         function ensureBackgroundVideoElement() {
             if (!activeBackgroundVideoElement) {
                 activeBackgroundVideoElement = document.getElementById('backgroundVideoLayer');
@@ -331,6 +367,7 @@ body::before { content: ''; position: fixed; inset: 0; background: linear-gradie
         }
 
         function startBackgroundVideoLoop() {
+            if (!backgroundVideosEnabled) return;
             const video = ensureBackgroundVideoElement();
             if (!activeBackgroundVideos.length) return;
             video.onended = () => {
@@ -417,7 +454,9 @@ body::before { content: ''; position: fixed; inset: 0; background: linear-gradie
             const audioSettings = loadBackgroundAudioSettings();
             activeBackgroundVideoElement.volume = audioSettings.volume ?? 0.65;
             activeBackgroundVideoElement.muted = audioSettings.muted ?? false;
+            backgroundVideosEnabled = loadBackgroundEnabledSetting();
             updateBackgroundAudioUI();
+            updateBackgroundEnabledUI();
 
             restoreBackgroundVideosFromStorage();
             if (modal) {
