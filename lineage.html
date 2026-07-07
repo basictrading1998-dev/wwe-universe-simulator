@@ -108,6 +108,7 @@
             <a href="history.html" class="nav-btn">Event History</a>
             <a href="fighter-history.html" class="nav-btn">Fight History Log</a>
             <a href="lineage.html" class="nav-btn active">Championship Lineage</a>
+            <a href="charts.html" class="nav-btn">Roster Analytics</a>
             <a href="royal-rumble.html" class="nav-btn">Royal Rumble</a>
         </div>
         <div style="flex: 0 0 420px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
@@ -131,6 +132,7 @@
                 <option value="female">Women's Title</option>
             </select>
             <button onclick="createNewChampionship()">Create Title</button>
+            <button onclick="syncWWE2K24Titles()" title="Add WWE 2K24 standard titles (won't duplicate)">Sync WWE 2K24 Titles</button>
         </div>
     </div>
 
@@ -152,9 +154,21 @@
         document.addEventListener('DOMContentLoaded', () => {
             fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
             championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
-            championships.sort((a, b) => a.name.localeCompare(b.name));
+            sortChampionships(championships);
             renderHorizontalLineageMatrix();
         });
+
+        function sortChampionships(list) {
+            const target = list || championships || [];
+            // Group by gender: male titles first, then female; within each group sort alphabetically
+            target.sort((a, b) => {
+                const ga = (a.gender === 'female') ? 1 : 0;
+                const gb = (b.gender === 'female') ? 1 : 0;
+                if (ga !== gb) return ga - gb; // male(0) before female(1)
+                return String(a.name || '').localeCompare(String(b.name || ''));
+            });
+            return target;
+        }
 
         function normalizeTitleName(name) {
             return String(name || '').trim().toLowerCase();
@@ -271,12 +285,68 @@
                 defenses: 0
             };
             championships.push(newTitle);
-            championships.sort((a, b) => a.name.localeCompare(b.name));
+            sortChampionships(championships);
             localStorage.setItem('wwe_titles', JSON.stringify(championships));
             renderHorizontalLineageMatrix();
             if (nameInput) nameInput.value = '';
             if (genderSelect) genderSelect.value = 'male';
             alert(`Created new championship: ${titleName} (${gender === 'female' ? "Women's" : "Men's"} Title)`);
+        };
+
+        // Add a safe sync function to merge WWE 2K24 standard titles into the lineage
+        window.syncWWE2K24Titles = function() {
+            const wwe2k24Titles = [
+                { name: "WWE Championship", gender: 'male' },
+                { name: "WWE Universal Championship", gender: 'male' },
+                { name: "WWE Intercontinental Championship", gender: 'male' },
+                { name: "WWE United States Championship", gender: 'male' },
+                { name: "Undisputed WWE Tag Team Championship", gender: 'male' },
+                { name: "WWE Women's World Championship", gender: 'female' },
+                { name: "WWE Women's Championship", gender: 'female' },
+                { name: "WWE Women's Tag Team Championship", gender: 'female' },
+                { name: "NXT Championship", gender: 'male' },
+                { name: "NXT North American Championship", gender: 'male' },
+                { name: "NXT Tag Team Championship", gender: 'male' },
+                { name: "NXT Women's Championship", gender: 'female' },
+                { name: "NXT Women's Tag Team Championship", gender: 'female' },
+                { name: "WWE 24/7 Championship", gender: 'male' },
+                { name: "WWE Cruiserweight Championship", gender: 'male' },
+                { name: "NXT UK Championship", gender: 'male' }
+            ];
+
+            championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+
+            // Normalize helper
+            const normalize = (s) => String(s || '').trim().toLowerCase();
+
+            const existingNames = new Set(championships.map(c => normalize(c.name)));
+
+            const toAdd = wwe2k24Titles.filter(t => !existingNames.has(normalize(t.name)));
+            if (toAdd.length === 0) return alert('All WWE 2K24 titles are already present or similar titles exist.');
+
+            const preview = toAdd.map(t => `• ${t.name} (${t.gender === 'female' ? "Women's" : "Men's"})`).join('\n');
+            if (!confirm(`The following titles will be added to your Championship Lineage (will not remove or modify existing titles):\n\n${preview}\n\nProceed?`)) return;
+
+            let added = 0;
+            toAdd.forEach(t => {
+                const newTitle = {
+                    id: 'title-' + Date.now() + Math.random().toString(36).substr(2,5),
+                    name: t.name,
+                    gender: t.gender,
+                    championId: '',
+                    history: [],
+                    defenses: 0
+                };
+                championships.push(newTitle);
+                added++;
+            });
+
+            if (added > 0) {
+                sortChampionships(championships);
+                localStorage.setItem('wwe_titles', JSON.stringify(championships));
+                renderHorizontalLineageMatrix();
+                alert(`Added ${added} new championship${added === 1 ? '' : 's'} to your lineage.`);
+            }
         };
 
         window.deleteChampionship = function(id) {

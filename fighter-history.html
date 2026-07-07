@@ -75,6 +75,7 @@
             <a href="history.html" class="nav-btn">Event History</a>
             <a href="fighter-history.html" class="nav-btn active">Fight History Log</a>
             <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="charts.html" class="nav-btn">Roster Analytics</a>
             <a href="royal-rumble.html" class="nav-btn">Royal Rumble</a>
         </div>
         <div style="flex: 0 0 420px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
@@ -84,7 +85,7 @@
     </nav>
 
     <div class="subheader-controls">
-        <input type="text" id="historyFilterBox" placeholder="Filter by fighter name..." class="search-box" onkeyup="liveFilterHistoryRows()">
+        <input type="text" id="historyFilterBox" list="fighterNamesList" placeholder="Filter by fighter name..." class="search-box" onkeyup="liveFilterHistoryRows()">
         <div class="count-badge" id="historyTotalCount">0 fighters</div>
     </div>
 
@@ -187,13 +188,66 @@
             historyFighters = fighters.map(f => ({ ...f }));
             buildHistoryDatalist();
             updateHistoryCompareDatalists();
+            // Restore saved compare and search values
+            const savedA = localStorage.getItem('wwe_history_compare_fighter_a') || '';
+            const savedB = localStorage.getItem('wwe_history_compare_fighter_b') || '';
+            const savedSearch = localStorage.getItem('wwe_history_search_query') || '';
+            if (savedA) document.getElementById('compareHistoryFighterA').value = savedA;
+            if (savedB) document.getElementById('compareHistoryFighterB').value = savedB;
+            if (savedA) updateComparePortrait('A');
+            if (savedB) updateComparePortrait('B');
+            if (savedSearch) document.getElementById('historyFilterBox').value = savedSearch;
             try {
                 await hydratePortraitsForHistory();
             } catch (err) {
                 // ignore hydration errors and continue rendering
             }
             renderWidescreenHistoryMatrix();
+            // Apply saved compare (compare takes precedence over search)
+            if (savedA && savedB) applySavedHistoryCompareFilter();
+            else if (savedSearch) liveFilterHistoryRows();
+
+            // Attach listeners to persist inputs and auto-apply on datalist selection
+            try {
+                const aEl = document.getElementById('compareHistoryFighterA');
+                const bEl = document.getElementById('compareHistoryFighterB');
+                if (aEl) {
+                    aEl.addEventListener('input', () => { try { const v = aEl.value.trim(); if (v) localStorage.setItem('wwe_history_compare_fighter_a', v); } catch (e) {} });
+                    aEl.addEventListener('change', () => { tryAutoCompareHistory(); updateComparePortrait('A'); });
+                }
+                if (bEl) {
+                    bEl.addEventListener('input', () => { try { const v = bEl.value.trim(); if (v) localStorage.setItem('wwe_history_compare_fighter_b', v); } catch (e) {} });
+                    bEl.addEventListener('change', () => { tryAutoCompareHistory(); updateComparePortrait('B'); });
+                }
+            } catch (e) {}
         });
+
+        // Re-apply compare/filter state when the page becomes visible again (back/forward, tab switch)
+        window.addEventListener('pageshow', () => {
+            try {
+                // Reload fighters from storage then rebuild datalists and reapply compare/search
+                fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || JSON.parse(localStorage.getItem('fighters')) || [];
+                fighters.sort((a, b) => a.name.localeCompare(b.name));
+                historyFighters = fighters.map(f => ({ ...f }));
+                buildHistoryDatalist();
+                updateHistoryCompareDatalists();
+                const savedA = localStorage.getItem('wwe_history_compare_fighter_a') || '';
+                const savedB = localStorage.getItem('wwe_history_compare_fighter_b') || '';
+                const savedSearch = localStorage.getItem('wwe_history_search_query') || '';
+                if (savedA) document.getElementById('compareHistoryFighterA').value = savedA;
+                if (savedB) document.getElementById('compareHistoryFighterB').value = savedB;
+                if (savedA) updateComparePortrait('A');
+                if (savedB) updateComparePortrait('B');
+                // Re-render history matrix then apply saved compare or search
+                renderWidescreenHistoryMatrix();
+                if (savedA && savedB) applySavedHistoryCompareFilter();
+                else if (savedSearch) liveFilterHistoryRows();
+            } catch (e) {}
+        });
+
+        // Also restore on visibility/focus
+        window.addEventListener('visibilitychange', () => { if (!document.hidden) rehydrateHistoryCompareInputs(60); });
+        window.addEventListener('focus', () => rehydrateHistoryCompareInputs(30));
 
         function renderWidescreenHistoryMatrix() {
             const container = document.getElementById('historyMasterLogContainer');
@@ -263,7 +317,10 @@
         }
 
         window.liveFilterHistoryRows = function() {
-            const query = document.getElementById('historyFilterBox').value.toLowerCase();
+            const queryEl = document.getElementById('historyFilterBox');
+            const query = (queryEl?.value || '').toLowerCase();
+            // persist search query so it survives navigation
+            try { localStorage.setItem('wwe_history_search_query', queryEl?.value || ''); } catch (e) {}
             document.querySelectorAll('#historyMasterLogContainer .fighter-history-row').forEach(row => {
                 const nameText = row.querySelector('.fighter-name').textContent.toLowerCase();
                 row.style.display = nameText.includes(query) ? 'grid' : 'none';
@@ -285,11 +342,15 @@
                     data.appendChild(option);
                 }
             });
+            // Also pre-create compare datalists so the dropdowns are fast
+            updateHistoryCompareDatalists();
         }
 
         function updateHistoryCompareDatalists() {
-            const selectedA = document.getElementById('compareHistoryFighterA')?.value.trim().toLowerCase();
-            const selectedB = document.getElementById('compareHistoryFighterB')?.value.trim().toLowerCase();
+            const elA = document.getElementById('compareHistoryFighterA');
+            const elB = document.getElementById('compareHistoryFighterB');
+            const selectedA = elA && elA.value ? elA.value.trim().toLowerCase() : '';
+            const selectedB = elB && elB.value ? elB.value.trim().toLowerCase() : '';
             let listA = document.getElementById('compareHistoryNamesA');
             let listB = document.getElementById('compareHistoryNamesB');
             if (!listA) {
@@ -317,6 +378,46 @@
                 optionB.value = name;
                 listB.appendChild(optionB);
             });
+
+            // Save current compare inputs only if non-empty so we don't inadvertently clear saved values
+            try {
+                if (elA && elA.value.trim()) localStorage.setItem('wwe_history_compare_fighter_a', elA.value.trim());
+                if (elB && elB.value.trim()) localStorage.setItem('wwe_history_compare_fighter_b', elB.value.trim());
+            } catch (e) {}
+
+            // Try to auto-apply compare if both inputs match known fighters
+            tryAutoCompareHistory();
+
+            // If filter input is present, attach the global datalist so typing shows suggestions
+            try {
+                const filter = document.getElementById('historyFilterBox');
+                if (filter) filter.setAttribute('list', 'fighterNamesList');
+            } catch (e) {}
+        }
+
+        function applySavedHistoryCompareFilter() {
+            const savedA = localStorage.getItem('wwe_history_compare_fighter_a') || '';
+            const savedB = localStorage.getItem('wwe_history_compare_fighter_b') || '';
+            if (!savedA || !savedB) return;
+            const fighterA = historyFighters.find(f => f.name.toLowerCase() === savedA.toLowerCase());
+            const fighterB = historyFighters.find(f => f.name.toLowerCase() === savedB.toLowerCase());
+            if (fighterA && fighterB) {
+                filterHistoryByComparison([fighterA.name, fighterB.name]);
+            }
+        }
+
+        function rehydrateHistoryCompareInputs(delay = 50) {
+            setTimeout(() => {
+                try {
+                    const a = localStorage.getItem('wwe_history_compare_fighter_a') || '';
+                    const b = localStorage.getItem('wwe_history_compare_fighter_b') || '';
+                    const elA = document.getElementById('compareHistoryFighterA');
+                    const elB = document.getElementById('compareHistoryFighterB');
+                    if (elA && a) elA.value = a;
+                    if (elB && b) elB.value = b;
+                    if (a && b) applySavedHistoryCompareFilter();
+                } catch (e) {}
+            }, delay);
         }
 
         function updateComparePortrait(slot) {
@@ -334,6 +435,23 @@
                 portraitEl.textContent = fighter.name.charAt(0);
             } else {
                 portraitEl.textContent = '👤';
+            }
+        }
+
+        function tryAutoCompareHistory() {
+            const aEl = document.getElementById('compareHistoryFighterA');
+            const bEl = document.getElementById('compareHistoryFighterB');
+            if (!aEl || !bEl) return;
+            const nameA = aEl.value.trim();
+            const nameB = bEl.value.trim();
+            if (!nameA || !nameB) return;
+            if (nameA.toLowerCase() === nameB.toLowerCase()) return;
+            const fighterA = historyFighters.find(f => f.name.toLowerCase() === nameA.toLowerCase());
+            const fighterB = historyFighters.find(f => f.name.toLowerCase() === nameB.toLowerCase());
+            if (fighterA && fighterB) {
+                localStorage.setItem('wwe_history_compare_fighter_a', fighterA.name);
+                localStorage.setItem('wwe_history_compare_fighter_b', fighterB.name);
+                filterHistoryByComparison([fighterA.name, fighterB.name]);
             }
         }
 
@@ -365,6 +483,9 @@
                 return;
             }
 
+            // Save compare state and apply
+            localStorage.setItem('wwe_history_compare_fighter_a', fighterA.name);
+            localStorage.setItem('wwe_history_compare_fighter_b', fighterB.name);
             filterHistoryByComparison([fighterA.name, fighterB.name]);
         }
 
@@ -378,6 +499,9 @@
             if (portraitA) portraitA.textContent = '👤';
             if (portraitB) portraitB.textContent = '👤';
             updateHistoryCompareDatalists();
+            // Clear persisted compare state
+            localStorage.removeItem('wwe_history_compare_fighter_a');
+            localStorage.removeItem('wwe_history_compare_fighter_b');
             filterHistoryByComparison([]);
         }
 

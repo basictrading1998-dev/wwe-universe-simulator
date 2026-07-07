@@ -1,4 +1,4 @@
-let fighters = [];
+﻿let fighters = [];
 
 const femaleFighterTemplates = [
     { name: 'Abigail', division: 'Cruiser Weight' },
@@ -979,6 +979,21 @@ async function loadAndHydrateFighters() {
     return fighters;
 }
 
+// Ensure fighters are loaded, with a small retry loop for bfcache/timing issues
+async function ensureFightersLoaded(maxAttempts = 4, delayMs = 120) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        await loadAndHydrateFighters();
+        if (Array.isArray(fighters) && fighters.length > 0) {
+            console.debug(`ensureFightersLoaded: success on attempt ${attempt}, count=${fighters.length}`);
+            return fighters;
+        }
+        console.debug(`ensureFightersLoaded: attempt ${attempt} found 0 fighters, retrying after ${delayMs}ms`);
+        await new Promise(r => setTimeout(r, delayMs));
+    }
+    console.debug('ensureFightersLoaded: attempts exhausted, fighters count=', fighters.length);
+    return fighters;
+}
+
 function saveFighters(list = fighters) {
     const normalized = (list || []).map(normalizeFighterRecord).filter(Boolean);
     assignAutoDivision(normalized);
@@ -1147,12 +1162,90 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('Photo DB migration/hydration failed', err);
     }
     ensureFemaleRosterEntries();
+    ensureFighterHistoryButtonStyles();
     refreshFighterNameDatalist();
     renderRosterGrid();
     setupSidebarFormEngine();
     setupLiveSearchEngine();
     window.addEventListener('beforeunload', () => saveFighters(fighters));
 });
+
+// Inject CSS for the fighter history button if not already present
+function ensureFighterHistoryButtonStyles() {
+    if (document.getElementById('fighter-history-button-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'fighter-history-button-styles';
+    style.textContent = `
+        .fighter-history-btn,
+        .fighter-analytics-btn {
+            position: absolute;
+            top: 8px;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(2,6,23,0.08);
+            color: #0f172a;
+            line-height: 1;
+            padding: 0;
+            z-index: 5;
+        }
+        .fighter-history-btn { right: 8px; }
+        .fighter-analytics-btn { right: 52px; }
+        .fighter-history-btn:hover,
+        .fighter-analytics-btn:hover { transform: translateY(-1px); box-shadow: 0 6px 14px rgba(2,6,23,0.12); }
+        .fighter-history-btn:focus,
+        .fighter-analytics-btn:focus { outline: 2px solid rgba(59,130,246,0.25); outline-offset: 2px; }
+    `;
+    document.head.appendChild(style);
+}
+
+window.openFighterHistory = function(fighterName) {
+    try {
+        if (fighterName) localStorage.setItem('wwe_history_search_query', String(fighterName));
+    } catch (e) {}
+    window.location.href = 'fighter-history.html';
+};
+
+window.openFighterAnalytics = function(fighterName) {
+    try {
+        if (fighterName) localStorage.setItem('wwe_analytics_focus_fighter', String(fighterName));
+    } catch (e) {}
+    window.location.href = 'charts.html';
+};
+
+// Re-apply compare/filter state when the page becomes visible again (back/forward, tab switch)
+window.addEventListener('pageshow', () => {
+    // When returning to the page, reload roster from storage then render and restore inputs
+    (async () => {
+        try {
+            console.debug('pageshow: loading fighters from storage, keys:', {
+                fightersKey: localStorage.getItem('wwe_fighters') ? 'present' : 'missing',
+                compareA: localStorage.getItem('wwe_roster_compare_fighter_a') || null,
+                compareB: localStorage.getItem('wwe_roster_compare_fighter_b') || null
+            });
+            await ensureFightersLoaded();
+            console.debug('pageshow: fighters loaded (post-ensure), count=', fighters.length);
+            renderRosterGrid();
+            rehydrateRosterCompareInputs(40);
+        } catch (e) {
+            // fallback: try render with current in-memory fighters
+            try { renderRosterGrid(); rehydrateRosterCompareInputs(40); } catch (_) {}
+        }
+    })();
+});
+
+// Also listen for visibility/focus in case the browser keeps the page alive
+window.addEventListener('visibilitychange', () => {
+    if (!document.hidden) rehydrateRosterCompareInputs(60);
+});
+window.addEventListener('focus', () => rehydrateRosterCompareInputs(30));
 
 function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
@@ -1215,6 +1308,8 @@ function renderRosterGrid() {
 
         card.innerHTML = `
             <div onclick="uploadFighterPhoto('${f.id}')" style="width: 44px; height: 44px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
+            <button class="fighter-history-btn" onclick='openFighterHistory(${JSON.stringify(f.name)})' title="View history" aria-label="View history">📊</button>
+            <button class="fighter-analytics-btn" onclick='openFighterAnalytics(${JSON.stringify(f.name)})' title="Open analytics" aria-label="Open analytics">📈</button>
             <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a;">${f.name}</h4>
             <span style="font-size: 0.65rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 2px;">${f.division} • ${f.gender}</span>
             
@@ -1246,6 +1341,9 @@ function renderRosterGrid() {
         grid.appendChild(card);
     });
 
+    // Re-apply any saved roster comparison filter after cards are recreated
+    applySavedCompareFilter();
+
     // If a fighter was selected from another page (lineage), scroll and highlight
     const sel = localStorage.getItem('wwe_selected_fighter');
     if (sel) {
@@ -1260,6 +1358,16 @@ function renderRosterGrid() {
             }, 200);
         }
         localStorage.removeItem('wwe_selected_fighter');
+    }
+
+    // Re-apply any saved search filter after rendering the grid
+    const savedSearch = localStorage.getItem('wwe_roster_search_query');
+    if (savedSearch) {
+        setTimeout(() => {
+            const hasCompare = (localStorage.getItem('wwe_roster_compare_fighter_a') || '') || (localStorage.getItem('wwe_roster_compare_fighter_b') || '');
+            if (!hasCompare) filterRosterCards();
+            else applySavedCompareFilter();
+        }, 50);
     }
 }
 
@@ -1322,6 +1430,8 @@ function renderRosterGridWithoutReload() {
 
         card.innerHTML = `
             <div onclick="uploadFighterPhoto('${f.id}')" style="width: 44px; height: 44px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
+            <button class="fighter-history-btn" onclick='openFighterHistory(${JSON.stringify(f.name)})' title="View history" aria-label="View history">📊</button>
+            <button class="fighter-analytics-btn" onclick='openFighterAnalytics(${JSON.stringify(f.name)})' title="Open analytics" aria-label="Open analytics">📈</button>
             <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a;">${f.name}</h4>
             <span style="font-size: 0.65rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 2px;">${f.division} • ${f.gender}</span>
             
@@ -1353,6 +1463,9 @@ function renderRosterGridWithoutReload() {
         grid.appendChild(card);
     });
 
+    // Re-apply any saved roster comparison filter after cards are recreated
+    applySavedCompareFilter();
+
     // If a fighter was selected from another page (lineage), scroll and highlight
     const sel = localStorage.getItem('wwe_selected_fighter');
     if (sel) {
@@ -1367,6 +1480,16 @@ function renderRosterGridWithoutReload() {
             }, 200);
         }
         localStorage.removeItem('wwe_selected_fighter');
+    }
+
+    // Re-apply any saved search filter after rendering the grid
+    const savedSearch = localStorage.getItem('wwe_roster_search_query');
+    if (savedSearch) {
+        setTimeout(() => {
+            const hasCompare = (localStorage.getItem('wwe_roster_compare_fighter_a') || '') || (localStorage.getItem('wwe_roster_compare_fighter_b') || '');
+            if (!hasCompare) filterRosterCards();
+            else applySavedCompareFilter();
+        }, 50);
     }
 }
 
@@ -1405,6 +1528,7 @@ function buildMasterRankingsPanel() {
         <button onclick="sortRosterByMetric('alphabetical')" style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #475569; cursor: pointer;">🔤 A-Z</button>
         <button onclick="sortRosterByMetric('wins')" style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #16a34a; cursor: pointer;">👑 Most Wins</button>
         <button onclick="sortRosterByMetric('losses')" style="background: #fff5f5; border: 1px solid #fecaca; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #dc2626; cursor: pointer;">📉 Most Losses</button>
+        <button onclick="sortRosterByMetric('fights')" style="background: #fef3c7; border: 1px solid #fde68a; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #b45309; cursor: pointer;">🥊 Most Fights</button>
         <button onclick="sortRosterByMetric('win_pinfall')" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">📌 Pinfall Leaders</button>
         <button onclick="sortRosterByMetric('win_ko')" style="background: #fff7ed; border: 1px solid #ffedd5; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #ea580c; cursor: pointer;">💥 KO Masters</button>
         <button onclick="sortRosterByMetric('win_submission')" style="background: #fbf7ff; border: 1px solid #f3e8ff; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #7c3aed; cursor: pointer;">🥋 Submission Experts</button>
@@ -1424,6 +1548,10 @@ function buildRosterComparePanel() {
     const gridElement = document.getElementById('rosterGrid');
     if (!gridElement || !gridElement.parentNode) return;
 
+    // Restore saved compare values from localStorage
+    const savedFighterA = localStorage.getItem('wwe_roster_compare_fighter_a') || '';
+    const savedFighterB = localStorage.getItem('wwe_roster_compare_fighter_b') || '';
+
     const comparePanel = document.createElement('div');
     comparePanel.id = 'rosterComparePanel';
     comparePanel.style.cssText = 'background: white; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);';
@@ -1431,11 +1559,11 @@ function buildRosterComparePanel() {
         <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end;">
             <div style="flex: 1 1 220px; min-width: 220px;">
                 <label style="display: block; margin-bottom: 6px; font-size: 0.75rem; font-weight: 700; color: #0c4a6e; text-transform: uppercase;">Fighter A</label>
-                <input id="compareFighterA" list="compareNamesA" oninput="updateRosterCompareDatalists()" placeholder="Type fighter name" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem;">
+                <input id="compareFighterA" list="compareNamesA" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterA}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem;">
             </div>
             <div style="flex: 1 1 220px; min-width: 220px;">
                 <label style="display: block; margin-bottom: 6px; font-size: 0.75rem; font-weight: 700; color: #0c4a6e; text-transform: uppercase;">Fighter B</label>
-                <input id="compareFighterB" list="compareNamesB" oninput="updateRosterCompareDatalists()" placeholder="Type fighter name" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem;">
+                <input id="compareFighterB" list="compareNamesB" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterB}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem;">
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                 <button onclick="compareRosterFighters()" style="background: #0284c7; color: white; border: none; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer;">Compare</button>
@@ -1446,11 +1574,50 @@ function buildRosterComparePanel() {
 
     gridElement.parentNode.insertBefore(comparePanel, gridElement);
     updateRosterCompareDatalists();
+
+    // If there were saved fighters and the roster is available, apply the comparison quietly.
+    // Avoid calling `compareRosterFighters()` here because it can show alerts when the
+    // roster isn't fully loaded (causing the modal you saw). Defer to `applySavedCompareFilter`
+    // which silently applies the filter when both fighters exist. If the roster isn't ready,
+    // rehydrateRosterCompareInputs() will handle applying once data is available.
+    if (savedFighterA && savedFighterB && Array.isArray(fighters) && fighters.length > 0) {
+        applySavedCompareFilter();
+    }
+    // Attach persistent listeners so values are saved and datalist selections auto-apply
+    try {
+        const aEl = document.getElementById('compareFighterA');
+        const bEl = document.getElementById('compareFighterB');
+        if (aEl) {
+            aEl.addEventListener('input', () => {
+                try { const v = aEl.value.trim(); if (v) localStorage.setItem('wwe_roster_compare_fighter_a', v); } catch (e) {}
+            });
+            aEl.addEventListener('change', () => {
+                tryAutoCompare();
+            });
+        }
+        if (bEl) {
+            bEl.addEventListener('input', () => {
+                try { const v = bEl.value.trim(); if (v) localStorage.setItem('wwe_roster_compare_fighter_b', v); } catch (e) {}
+            });
+            bEl.addEventListener('change', () => {
+                tryAutoCompare();
+            });
+        }
+    } catch (e) {}
 }
 
 function updateRosterCompareDatalists() {
-    const selectedA = document.getElementById('compareFighterA')?.value.trim().toLowerCase();
-    const selectedB = document.getElementById('compareFighterB')?.value.trim().toLowerCase();
+    const elA = document.getElementById('compareFighterA');
+    const elB = document.getElementById('compareFighterB');
+    const selectedA = elA && elA.value ? elA.value.trim().toLowerCase() : '';
+    const selectedB = elB && elB.value ? elB.value.trim().toLowerCase() : '';
+
+    // Save compare inputs to localStorage only when inputs have a non-empty value
+    try {
+        if (elA && selectedA) localStorage.setItem('wwe_roster_compare_fighter_a', elA.value.trim());
+        if (elB && selectedB) localStorage.setItem('wwe_roster_compare_fighter_b', elB.value.trim());
+    } catch (e) {}
+    
     let listA = document.getElementById('compareNamesA');
     let listB = document.getElementById('compareNamesB');
     if (!listA) {
@@ -1478,6 +1645,20 @@ function updateRosterCompareDatalists() {
         optionB.value = name;
         listB.appendChild(optionB);
     });
+}
+
+function rehydrateRosterCompareInputs(delay = 50) {
+    setTimeout(() => {
+        try {
+            const a = localStorage.getItem('wwe_roster_compare_fighter_a') || '';
+            const b = localStorage.getItem('wwe_roster_compare_fighter_b') || '';
+            const elA = document.getElementById('compareFighterA');
+            const elB = document.getElementById('compareFighterB');
+            if (elA && a) elA.value = a;
+            if (elB && b) elB.value = b;
+            if ((a && b) && (elA || elB)) applySavedCompareFilter();
+        } catch (e) {}
+    }, delay);
 }
 
 function filterRosterByComparison(selectedNames = []) {
@@ -1508,7 +1689,41 @@ function compareRosterFighters() {
         return;
     }
 
+    // Save the comparison state to localStorage
+    localStorage.setItem('wwe_roster_compare_fighter_a', nameA);
+    localStorage.setItem('wwe_roster_compare_fighter_b', nameB);
+
     filterRosterByComparison([fighterA.name, fighterB.name]);
+}
+
+// Try to auto-apply a comparison while the user types (no alerts)
+function tryAutoCompare() {
+    const inputA = document.getElementById('compareFighterA');
+    const inputB = document.getElementById('compareFighterB');
+    if (!inputA || !inputB) return;
+    const nameA = inputA.value.trim();
+    const nameB = inputB.value.trim();
+    if (!nameA || !nameB) return;
+    if (nameA.toLowerCase() === nameB.toLowerCase()) return;
+    const fighterA = fighters.find(f => f.name.toLowerCase() === nameA.toLowerCase());
+    const fighterB = fighters.find(f => f.name.toLowerCase() === nameB.toLowerCase());
+    if (fighterA && fighterB) {
+        // Save exact input values and apply the filter without user alerts
+        localStorage.setItem('wwe_roster_compare_fighter_a', fighterA.name);
+        localStorage.setItem('wwe_roster_compare_fighter_b', fighterB.name);
+        filterRosterByComparison([fighterA.name, fighterB.name]);
+    }
+}
+
+function applySavedCompareFilter() {
+    const savedA = localStorage.getItem('wwe_roster_compare_fighter_a') || '';
+    const savedB = localStorage.getItem('wwe_roster_compare_fighter_b') || '';
+    if (!savedA || !savedB) return;
+    const fighterA = fighters.find(f => f.name.toLowerCase() === savedA.toLowerCase());
+    const fighterB = fighters.find(f => f.name.toLowerCase() === savedB.toLowerCase());
+    if (fighterA && fighterB) {
+        filterRosterByComparison([fighterA.name, fighterB.name]);
+    }
 }
 
 function clearRosterCompare() {
@@ -1516,6 +1731,11 @@ function clearRosterCompare() {
     const inputB = document.getElementById('compareFighterB');
     if (inputA) inputA.value = '';
     if (inputB) inputB.value = '';
+    
+    // Clear compare state from localStorage
+    localStorage.removeItem('wwe_roster_compare_fighter_a');
+    localStorage.removeItem('wwe_roster_compare_fighter_b');
+    
     updateRosterCompareDatalists();
     filterRosterByComparison([]);
 }
@@ -1586,11 +1806,23 @@ function setupLiveSearchEngine() {
     if (!searchBar) return;
 
     searchBar.id = 'rosterSearchInput';
+    
+    // Restore search query from localStorage
+    const savedSearch = localStorage.getItem('wwe_roster_search_query') || '';
+    if (savedSearch) {
+        searchBar.value = savedSearch;
+        filterRosterCards();
+    }
+    
     searchBar.onkeyup = filterRosterCards;
 }
 
 window.filterRosterCards = function() {
     const query = document.getElementById('rosterSearchInput')?.value.toLowerCase() || '';
+    
+    // Save search query to localStorage
+    localStorage.setItem('wwe_roster_search_query', query.toLowerCase());
+    
     document.querySelectorAll('#rosterGrid > div').forEach(card => {
         const nameEl = card.querySelector('.fighter-name-target');
         if (nameEl) {
@@ -1903,6 +2135,12 @@ window.sortRosterByMetric = function(metricType) {
             const beltsA = championships.filter(c => c.championId === a.id).length;
             const beltsB = championships.filter(c => c.championId === b.id).length;
             return beltsB - beltsA || b.wins - a.wins;
+        });
+    } else if (metricType === 'fights') {
+        fighters.sort((a, b) => {
+            const fightsA = (Number(a.wins) || 0) + (Number(a.losses) || 0);
+            const fightsB = (Number(b.wins) || 0) + (Number(b.losses) || 0);
+            return fightsB - fightsA || b.wins - a.wins;
         });
     } else {
         fighters.sort((a, b) => (b[metricType] || 0) - (a[metricType] || 0));
@@ -2258,4 +2496,5 @@ window.deleteFighterPhoto = async function(fighterId, isRoster) {
         renderRosterGrid();
     }
 };
+
 
