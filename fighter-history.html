@@ -166,13 +166,26 @@
             }
         }
 
+        function normalizeHistoryFighterRecord(fighter) {
+            if (!fighter || typeof fighter !== 'object') return { ...fighter };
+            const normalized = { ...fighter };
+            if (!normalized.photo_key && normalized.photoKey) {
+                normalized.photo_key = normalized.photoKey;
+            }
+            if (!normalized.photo && normalized.photoData) {
+                normalized.photo = normalized.photoData;
+            }
+            return normalized;
+        }
+
         async function hydratePortraitsForHistory() {
             if (!Array.isArray(historyFighters) || historyFighters.length === 0) return;
-            const candidates = historyFighters.filter(f => !f.photo && f.photo_key);
+            const candidates = historyFighters.filter(f => !f.photo && (f.photo_key || f.photoKey));
             if (candidates.length === 0) return;
             await Promise.all(candidates.map(async f => {
                 try {
-                    const photo = await loadFighterPhotoFromIDB(f.photo_key);
+                    const key = f.photo_key || f.photoKey;
+                    const photo = await loadFighterPhotoFromIDB(key);
                     if (photo) f.photo = photo; // only mutates the historyFighters copy
                 } catch (err) {
                     // ignore per-fighter failures
@@ -185,7 +198,7 @@
             fighters.sort((a, b) => a.name.localeCompare(b.name));
             // create an in-memory shallow copy for rendering/hydration so we don't alter the
             // master roster data in localStorage
-            historyFighters = fighters.map(f => ({ ...f }));
+            historyFighters = fighters.map(f => normalizeHistoryFighterRecord(f));
             buildHistoryDatalist();
             updateHistoryCompareDatalists();
             // Restore saved compare and search values

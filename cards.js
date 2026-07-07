@@ -1024,11 +1024,7 @@ function buildShowSchedulerHeader() {
         <div style="display:flex; align-items:center; gap:8px; flex:1 1 280px; min-width:220px; flex-wrap:wrap; justify-content:flex-end;">
             
             <input type="text" id="eventNameInput" placeholder="Name" value="${activeShowId ? (futureShows.find(s => s.id === activeShowId)?.name || '') : ''}" style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:600; outline:none; min-width:140px; max-width:200px; width:100%; background:white; color:#1e293b;">
-            <div id="fighterScheduleSearchCard" style="position:relative; display:flex; flex-direction:column; gap:4px; min-width:240px; max-width:320px; width:100%;">
-                <input type="text" id="fighterScheduleSearchInput" placeholder="Search fighter schedule..." autocomplete="off" style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:600; outline:none; background:white; color:#1e293b;">
-                <div id="fighterScheduleSearchSuggestions" style="position:absolute; top:100%; left:0; right:0; z-index:20; display:none; max-height:220px; overflow-y:auto; border:1px solid #cbd5e1; border-radius:10px; background:white; box-shadow:0 12px 28px rgba(15,23,42,0.14);"></div>
-                <div id="fighterScheduleSearchResults" style="font-size:0.8rem; line-height:1.4; min-height:24px; color:#475569;"></div>
-            </div>
+            <!-- fighter schedule search removed per user request -->
             <label style="display:inline-flex; align-items:center; gap:8px; padding:6px 8px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-weight:700; color:#475569; white-space:nowrap;">
                 <input id="announcer-toggle" type="checkbox" onchange="saveAnnouncerSetting(this.checked)" ${window.announcerEnabled ? 'checked' : ''}>
                 <span style="font-size:0.8rem;">Announcer</span>
@@ -1058,21 +1054,7 @@ function buildShowSchedulerHeader() {
         mainBox.parentNode.insertBefore(row, mainBox);
     }
 
-    const fighterSearchInput = row.querySelector('#fighterScheduleSearchInput');
-    if (fighterSearchInput) {
-        fighterSearchInput.addEventListener('input', () => handleFighterScheduleSearchInput(fighterSearchInput.value));
-        fighterSearchInput.addEventListener('focus', () => renderFighterScheduleSearchSuggestions(fighterSearchInput.value));
-    }
-
-    if (!window.__fighterScheduleSuggestionHandlerAdded) {
-        window.__fighterScheduleSuggestionHandlerAdded = true;
-        document.addEventListener('click', (event) => {
-            const card = document.getElementById('fighterScheduleSearchCard');
-            if (!card || card.contains(event.target)) return;
-            const suggestions = document.getElementById('fighterScheduleSearchSuggestions');
-            if (suggestions) suggestions.style.display = 'none';
-        });
-    }
+    // fighter schedule search handlers removed
 }
 
 function findUpcomingShowMatchesForFighter(query) {
@@ -1124,75 +1106,9 @@ function findUpcomingShowMatchesForFighter(query) {
     return results;
 }
 
-function updateFighterScheduleSearchResults(query) {
-    const resultEl = document.getElementById('fighterScheduleSearchResults');
-    if (!resultEl) return;
-    const trimmed = String(query || '').trim();
-    if (!trimmed) {
-        resultEl.innerHTML = 'Type a fighter name to find upcoming cards.';
-        return;
-    }
+// fighter schedule search UI removed; related functions omitted
 
-    const results = findUpcomingShowMatchesForFighter(trimmed);
-    if (results.length === 0) {
-        resultEl.innerHTML = `No upcoming cards found for "${trimmed}".`;
-        return;
-    }
-
-    resultEl.innerHTML = results.map(result => {
-        const matchesHtml = result.matches.map(match => `<div style="margin-top:4px;">• <strong>${match.tier}</strong> vs ${match.opponent}</div>`).join('');
-        return `<div style="padding:10px; border:1px solid #cbd5e1; border-radius:10px; background:#f8fafc; margin-bottom:8px;"><strong style="color:#0f172a;">${result.show.name}</strong>${matchesHtml}</div>`;
-    }).join('');
-}
-
-function getFighterScheduleSuggestions(query) {
-    const normalized = String(query || '').trim().toLowerCase();
-    if (!normalized) return [];
-    const list = getFighterList() || [];
-    return list
-        .filter(f => String(f.name || '').toLowerCase().includes(normalized))
-        .sort((a, b) => {
-            const aName = (a.name || '').toLowerCase();
-            const bName = (b.name || '').toLowerCase();
-            if (aName.startsWith(normalized) && !bName.startsWith(normalized)) return -1;
-            if (!aName.startsWith(normalized) && bName.startsWith(normalized)) return 1;
-            return aName.localeCompare(bName);
-        })
-        .slice(0, 8);
-}
-
-function renderFighterScheduleSearchSuggestions(query) {
-    const suggestionsEl = document.getElementById('fighterScheduleSearchSuggestions');
-    if (!suggestionsEl) return;
-
-    const suggestions = getFighterScheduleSuggestions(query);
-    if (suggestions.length === 0) {
-        suggestionsEl.style.display = 'none';
-        suggestionsEl.innerHTML = '';
-        return;
-    }
-
-    suggestionsEl.style.display = 'block';
-    suggestionsEl.innerHTML = suggestions.map(fighter => {
-        const safeName = String(fighter.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        return `<div class="fighter-suggestion-item" data-name="${safeName}" style="padding:10px 12px; cursor:pointer; border-bottom:1px solid #e2e8f0; font-size:0.85rem; color:#0f172a; background:white;">${safeName}</div>`;
-    }).join('');
-
-    const input = document.getElementById('fighterScheduleSearchInput');
-    suggestionsEl.querySelectorAll('.fighter-suggestion-item').forEach(item => {
-        item.addEventListener('click', () => {
-            const selectedName = item.getAttribute('data-name') || '';
-            if (input) input.value = selectedName;
-            suggestionsEl.style.display = 'none';
-            updateFighterScheduleSearchResults(selectedName);
-        });
-    });
-}
-
-function handleFighterScheduleSearchInput(query) {
-    renderFighterScheduleSearchSuggestions(query);
-    updateFighterScheduleSearchResults(query);
-}
+// suggestion helpers removed
 
 function insertCompletedShowNotice() {
     if (!isShowCompleted(activeShowId)) return;
