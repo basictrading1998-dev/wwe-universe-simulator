@@ -752,7 +752,13 @@ function shouldPreferRecoveredPhoto(currentPhoto, recoveredPhoto) {
 }
 
 function buildFallbackPortraitDataUrl(name, gender = 'male') {
-    const safeName = (name || 'Fighter').toString().trim() || 'Fighter';
+    const rawName = (name || 'Fighter').toString();
+    const safeName = rawName
+        .normalize('NFC')
+        .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+        .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+        .replace(/[\u0000-\u001F\u007F]/g, '')
+        .trim() || 'Fighter';
     const initials = safeName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0).toUpperCase()).join('') || 'F';
     const accentA = gender === 'female' ? '#f472b6' : '#60a5fa';
     const accentB = gender === 'female' ? '#7c3aed' : '#1d4ed8';
@@ -771,7 +777,18 @@ function buildFallbackPortraitDataUrl(name, gender = 'male') {
             <text x="100" y="123" text-anchor="middle" font-size="44" font-family="Arial, sans-serif" font-weight="700" fill="${textColor}">${initials}</text>
         </svg>
     `;
-    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+
+    try {
+        return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+    } catch (err) {
+        const safeSvg = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+                <rect width="200" height="200" rx="100" fill="#60a5fa"/>
+                <text x="100" y="123" text-anchor="middle" font-size="44" font-family="Arial, sans-serif" font-weight="700" fill="#ffffff">F</text>
+            </svg>
+        `;
+        return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(safeSvg)}`;
+    }
 }
 
 function ensureMissingPortraits(list = fighters) {
@@ -781,7 +798,12 @@ function ensureMissingPortraits(list = fighters) {
         if (!f || typeof f !== 'object') return;
         const hasPhoto = typeof f.photo === 'string' && f.photo.trim().length > 0;
         if (hasPhoto) return;
-        const portrait = getWWE2K24Portrait(f.name) || buildFallbackPortraitDataUrl(f.name, f.gender || 'male');
+        let portrait = '';
+        try {
+            portrait = getWWE2K24Portrait(f.name) || buildFallbackPortraitDataUrl(f.name, f.gender || 'male');
+        } catch (err) {
+            console.warn('Failed to build fallback portrait for', f.name, err);
+        }
         if (portrait) {
             f.photo = portrait;
             changed = true;
