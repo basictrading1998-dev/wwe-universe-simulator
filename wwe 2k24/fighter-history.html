@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Universe - Fight History Log</title>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; margin: 0; padding-bottom: 32px; }
+        nav { background-color: #1e293b; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; }
+        .logo { color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px; }
+        .nav-links { display: flex; gap: 16px; justify-content: center; flex: 1; }
+        .nav-btn { background: transparent; border: none; color: #94a3b8; padding: 8px 14px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-transform: uppercase; }
+        .nav-btn:hover { color: #f8fafc; background: rgba(255,255,255,0.05); }
+        .nav-btn.active { background: #ef4444; color: white; box-shadow: 0 2px 8px rgba(239,68,68,0.3); }
+        #backgroundSettingsButton { background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
+        #backgroundSettingsButton:hover { background: rgba(255,255,255,0.28); }
+        #backgroundSettingsModal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(2, 6, 23, 0.82); backdrop-filter: blur(8px); z-index: 2000; }
+        #backgroundSettingsPanel { width: min(640px, 100%); background: linear-gradient(135deg, #071426, #111827 55%, #0f172a); border: 1px solid rgba(125, 211, 252, 0.35); border-radius: 18px; box-shadow: 0 20px 55px rgba(2, 6, 23, 0.45); padding: 22px; color: white; }
+        #backgroundSettingsPanel h3 { margin: 0 0 10px 0; color: #f8fafc; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.08em; }
+        #backgroundSettingsPanel p { margin: 0 0 16px 0; color: #cbd5e1; font-size: 0.9rem; }
+        #backgroundVideoDropzone { border: 1px dashed rgba(248, 113, 113, 0.7); border-radius: 12px; padding: 16px; background: rgba(15, 23, 42, 0.7); cursor: pointer; transition: border-color 0.2s ease, transform 0.2s ease; display: block; }
+        #backgroundVideoDropzone.drag-over { border-color: #38bdf8; transform: translateY(-1px); }
+        #backgroundVideoDropzone input { display: none; }
+        #backgroundVideoDropzone span { display: block; font-weight: 700; color: #e2e8f0; text-align: center; }
+        #backgroundVideoList { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; padding-right: 4px; }
+        .background-video-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(36, 99, 235, 0.25); border-radius: 10px; padding: 8px 10px; }
+        .background-video-row span { font-size: 0.82rem; font-weight: 600; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .background-video-row button { background: #dc2626; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; }
+        .background-video-row button:hover { background: #b91c1c; }
+        #backgroundSettingsFooter { display: flex; justify-content: flex-end; margin-top: 16px; }
+        #backgroundSettingsFooter button { background: #0284c7; color: white; border: none; border-radius: 8px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
+        #backgroundSettingsFooter button:hover { background: #0369a1; }
+        #backgroundVideoLayer { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; opacity: 1; pointer-events: none; filter: saturate(1.1) contrast(1.05) brightness(1); }
+        body { position: relative; }
+        body::before { content: ''; position: fixed; inset: 0; background: transparent; z-index: -1; pointer-events: none; }
+        .subheader-controls { max-width: 1400px; margin: 20px auto 0 auto; padding: 0 24px; display: flex; gap: 16px; align-items: center; }
+        .search-box { width: 280px; padding: 8px 12px; border: 1px solid #334155; border-radius: 6px; font-size: 0.8rem; background: #1e293b; color: white; outline: none; }
+        .count-badge { font-size: 0.75rem; font-weight: bold; color: #64748b; text-transform: uppercase; }
+        main { max-width: 1400px; margin: 16px auto; padding: 0 24px; box-sizing: border-box; }
+        .log-table-wrapper { border: 1px solid #334155; border-radius: 8px; overflow: hidden; background: #111827; }
+        .table-header { display: grid; grid-template-columns: 240px 1fr; background: #1e293b; border-bottom: 1px solid #334155; font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; }
+        .fighter-history-row { display: grid; grid-template-columns: 240px minmax(0, 1fr); border-bottom: 1px solid #1e293b; padding: 12px 16px; align-items: center; min-width: 0; }
+        .fighter-history-row:nth-of-type(even) { background: #161e2e; }
+        .fighter-profile-block { display: flex; align-items: center; gap: 12px; }
+        .avatar-circle { width: 36px; height: 36px; background: #1e293b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; overflow: hidden; }
+        .avatar-circle img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .fighter-name { font-size: 0.85rem; font-weight: 800; margin: 0; color: white; }
+        .record-subtext { font-size: 0.68rem; font-weight: 800; color: #64748b; margin-top: 2px; text-transform: uppercase; }
+        .history-slider-deck { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; width: 100%; min-width: 0; flex-wrap: nowrap; }
+        .history-slider-deck::-webkit-scrollbar { height: 4px; }
+        .history-slider-deck::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .history-badge-brick { flex: 0 0 auto; min-width: 140px; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; border-left: 3px solid transparent; background: #1e293b; }
+        .brick-win { background: rgba(22, 163, 74, 0.08); border: 1px solid rgba(22, 163, 74, 0.15); border-left-color: #16a34a; }
+        .brick-loss { background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.15); border-left-color: #dc2626; }
+        .brick-status-lbl { font-size: 0.55rem; font-weight: 900; color: white; display: inline-block; padding: 1px 4px; border-radius: 3px; max-width: max-content; margin-bottom: 2px; }
+        .lbl-w { background: #16a34a; }
+        .lbl-l { background: #dc2626; }
+        .brick-opponent { font-size: 0.78rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .brick-opponent.win { color: #22c55e; }
+        .brick-opponent.loss { color: #ef4444; }
+        .brick-opp-record { font-size: 0.65rem; font-weight: 800; color: #94a3b8; }
+        .brick-opp-record.win { color: #86efac; }
+        .brick-opp-record.loss { color: #fecaca; }
+        .brick-method { font-size: 0.58rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 1px; }
+        .brick-show { font-size: 0.55rem; font-weight: bold; color: #475569; }
+        .empty-history-text { font-size: 0.7rem; color: #475569; font-style: italic; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <nav>
+        <h1 class="logo">WWE Universe</h1>
+        <div class="nav-links">
+            <a href="index.html" class="nav-btn">Fight Cards</a>
+            <a href="fighters.html" class="nav-btn">Master Roster</a>
+            <a href="history.html" class="nav-btn">Event History</a>
+            <a href="fighter-history.html" class="nav-btn active">Fight History Log</a>
+            <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="charts.html" class="nav-btn">Roster Analytics</a>
+            <a href="royal-rumble.html" class="nav-btn">Royal Rumble</a>
+        </div>
+        <div style="flex: 0 0 420px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+            <button type="button" id="backgroundSettingsButton" onclick="openBackgroundSettings()" style="background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Background Settings</button>
+            <button type="button" id="backgroundToggleButton" onclick="toggleBackgroundVideoState()" style="background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Background: On</button>
+        </div>
+    </nav>
+
+    <div class="subheader-controls">
+        <input type="text" id="historyFilterBox" list="fighterNamesList" placeholder="Filter by fighter name..." class="search-box" onkeyup="liveFilterHistoryRows()">
+        <div class="count-badge" id="historyTotalCount">0 fighters</div>
+    </div>
+
+    <div id="historyComparePanel" style="max-width:1400px; margin: 16px auto 0 auto; padding: 0 24px; box-sizing:border-box;">
+        <div style="background:#111827; border:1px solid #334155; border-radius:12px; padding:18px; display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+            <div style="flex:1 1 220px; min-width:220px;">
+                <label style="display:block; margin-bottom:6px; font-size:0.75rem; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fighter A</label>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <input id="compareHistoryFighterA" list="compareHistoryNamesA" oninput="updateHistoryCompareDatalists(); updateComparePortrait('A')" placeholder="Type fighter name" style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.95rem;">
+                    <div id="comparePortraitA" style="width:36px; height:36px; background:#1e293b; border-radius:50%; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">👤</div>
+                </div>
+            </div>
+            <div style="flex:1 1 220px; min-width:220px;">
+                <label style="display:block; margin-bottom:6px; font-size:0.75rem; font-weight:700; color:#94a3b8; text-transform:uppercase;">Fighter B</label>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <input id="compareHistoryFighterB" list="compareHistoryNamesB" oninput="updateHistoryCompareDatalists(); updateComparePortrait('B')" placeholder="Type fighter name" style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.95rem;">
+                    <div id="comparePortraitB" style="width:36px; height:36px; background:#1e293b; border-radius:50%; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0;">👤</div>
+                </div>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                <button onclick="compareHistoryFighters()" style="background:#ef4444; color:white; border:none; border-radius:10px; padding:10px 16px; font-weight:700; cursor:pointer;">Compare</button>
+                <button onclick="clearHistoryCompare()" style="background:transparent; color:#f8fafc; border:1px solid #334155; border-radius:10px; padding:10px 16px; font-weight:700; cursor:pointer;">Clear</button>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <div class="log-table-wrapper">
+            <div class="table-header">
+                <div>Fighter</div>
+                <div>Fight History <span style="color:#475569; font-weight:bold; margin-left:6px; text-transform:lowercase; font-size:0.6rem;">• chronological</span></div>
+            </div>
+            <div id="historyMasterLogContainer"></div>
+        </div>
+    </main>
+
+    <script>
+        // SMART DETECTOR: Parses all possible variations of the local storage keys so nothing gets skipped
+        let fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || JSON.parse(localStorage.getItem('fighters')) || [];
+        // historyFighters is a shallow, in-memory copy used only by this page to avoid mutating
+        // the master `fighters` array stored by the roster. Photos hydrated here will not
+        // be written back to localStorage.
+        let historyFighters = [];
+
+        async function openFighterPhotoDB() {
+            return new Promise((resolve, reject) => {
+                try {
+                    const request = indexedDB.open('wwe_fighter_photos', 1);
+                    request.onupgradeneeded = function(event) {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains('photos')) {
+                            db.createObjectStore('photos');
+                        }
+                    };
+                    request.onsuccess = function(event) { resolve(event.target.result); };
+                    request.onerror = function(event) { reject(event.target.error || new Error('IndexedDB open failed')); };
+                } catch (err) {
+                    reject(err);
+                }
+            });
+        }
+
+        async function loadFighterPhotoFromIDB(key) {
+            if (!key) return null;
+            try {
+                const db = await openFighterPhotoDB();
+                return new Promise((resolve, reject) => {
+                    try {
+                        const tx = db.transaction('photos', 'readonly');
+                        const store = tx.objectStore('photos');
+                        const request = store.get(key);
+                        request.onsuccess = () => resolve(request.result || null);
+                        request.onerror = () => reject(request.error || new Error('Failed to load fighter photo from IndexedDB'));
+                    } catch (err) { resolve(null); }
+                });
+            } catch (err) {
+                return null;
+            }
+        }
+
+        function normalizeHistoryFighterRecord(fighter) {
+            if (!fighter || typeof fighter !== 'object') return { ...fighter };
+            const normalized = { ...fighter };
+            if (!normalized.photo_key && normalized.photoKey) {
+                normalized.photo_key = normalized.photoKey;
+            }
+            if (!normalized.photo && normalized.photoData) {
+                normalized.photo = normalized.photoData;
+            }
+            return normalized;
+        }
+
+        async function hydratePortraitsForHistory() {
+            if (!Array.isArray(historyFighters) || historyFighters.length === 0) return;
+            const candidates = historyFighters.filter(f => !f.photo && (f.photo_key || f.photoKey));
+            if (candidates.length === 0) return;
+            await Promise.all(candidates.map(async f => {
+                try {
+                    const key = f.photo_key || f.photoKey;
+                    const photo = await loadFighterPhotoFromIDB(key);
+                    if (photo) f.photo = photo; // only mutates the historyFighters copy
+                } catch (err) {
+                    // ignore per-fighter failures
+                }
+            }));
+        }
+
+        function scanLocalStorageForPhotos() {
+            if (!Array.isArray(historyFighters) || historyFighters.length === 0) return 0;
+            let restored = 0;
+            const candidates = [];
+
+            const inspectValue = (value) => {
+                if (!value || typeof value !== 'object') return;
+                if (Array.isArray(value)) {
+                    value.forEach(inspectValue);
+                    return;
+                }
+                const hasPhoto = typeof value.photo === 'string' && value.photo.trim().length > 0 && value.photo.startsWith('data:');
+                const hasIdOrName = typeof value.id === 'string' || typeof value.name === 'string';
+                if (hasPhoto && hasIdOrName) candidates.push(value);
+                Object.values(value).forEach(inspectValue);
+            };
+
+            Object.keys(localStorage).forEach(key => {
+                try {
+                    const raw = localStorage.getItem(key);
+                    const parsed = JSON.parse(raw);
+                    inspectValue(parsed);
+                } catch (e) {
+                    // ignore non-json
+                }
+            });
+
+            candidates.forEach(candidate => {
+                if (!candidate.photo || typeof candidate.photo !== 'string') return;
+                const matchById = candidate.id ? historyFighters.find(f => f.id === candidate.id) : null;
+                const matchByName = candidate.name ? historyFighters.find(f => f.name && f.name.toLowerCase() === candidate.name.toLowerCase()) : null;
+                const fighter = matchById || matchByName;
+                if (fighter && !fighter.photo) {
+                    fighter.photo = candidate.photo;
+                    restored++;
+                }
+            });
+
+            return restored;
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || JSON.parse(localStorage.getItem('fighters')) || [];
+            fighters.sort((a, b) => a.name.localeCompare(b.name));
+            // create an in-memory shallow copy for rendering/hydration so we don't alter the
+            // master roster data in localStorage
+            historyFighters = fighters.map(f => normalizeHistoryFighterRecord(f));
+            buildHistoryDatalist();
+            updateHistoryCompareDatalists();
+            // Restore saved compare and search values
+            const savedA = localStorage.getItem('wwe_history_compare_fighter_a') || '';
+            const savedB = localStorage.getItem('wwe_history_compare_fighter_b') || '';
+            const savedSearch = localStorage.getItem('wwe_history_search_query') || '';
+            if (savedA) document.getElementById('compareHistoryFighterA').value = savedA;
+            if (savedB) document.getElementById('compareHistoryFighterB').value = savedB;
+            if (savedA) updateComparePortrait('A');
+            if (savedB) updateComparePortrait('B');
+            if (savedSearch) document.getElementById('historyFilterBox').value = savedSearch;
+            try {
+                await hydratePortraitsForHistory();
+                try { scanLocalStorageForPhotos(); } catch(e) {}
+            } catch (err) {
+                // ignore hydration errors and continue rendering
+            }
+            renderWidescreenHistoryMatrix();
+            // Apply saved compare (compare takes precedence over search)
+            if (savedA && savedB) applySavedHistoryCompareFilter();
+            else if (savedSearch) liveFilterHistoryRows();
+
+            // Attach listeners to persist inputs and auto-apply on datalist selection
+            try {
+                const aEl = document.getElementById('compareHistoryFighterA');
+                const bEl = document.getElementById('compareHistoryFighterB');
+                if (aEl) {
+                    aEl.addEventListener('input', () => { try { const v = aEl.value.trim(); if (v) localStorage.setItem('wwe_history_compare_fighter_a', v); } catch (e) {} });
+                    aEl.addEventListener('change', () => { tryAutoCompareHistory(); updateComparePortrait('A'); });
+                }
+                if (bEl) {
+                    bEl.addEventListener('input', () => { try { const v = bEl.value.trim(); if (v) localStorage.setItem('wwe_history_compare_fighter_b', v); } catch (e) {} });
+                    bEl.addEventListener('change', () => { tryAutoCompareHistory(); updateComparePortrait('B'); });
+                }
+            } catch (e) {}
+        });
+
+        // Re-apply compare/filter state when the page becomes visible again (back/forward, tab switch)
+        window.addEventListener('pageshow', () => {
+            (async () => {
+                try {
+                    fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || JSON.parse(localStorage.getItem('fighters')) || [];
+                    fighters.sort((a, b) => a.name.localeCompare(b.name));
+                    historyFighters = fighters.map(f => normalizeHistoryFighterRecord(f));
+                    buildHistoryDatalist();
+                    updateHistoryCompareDatalists();
+                    const savedA = localStorage.getItem('wwe_history_compare_fighter_a') || '';
+                    const savedB = localStorage.getItem('wwe_history_compare_fighter_b') || '';
+                    const savedSearch = localStorage.getItem('wwe_history_search_query') || '';
+                    if (savedA) document.getElementById('compareHistoryFighterA').value = savedA;
+                    if (savedB) document.getElementById('compareHistoryFighterB').value = savedB;
+                    if (savedA) updateComparePortrait('A');
+                    if (savedB) updateComparePortrait('B');
+                    try { await hydratePortraitsForHistory(); } catch(e) {}
+                    try { scanLocalStorageForPhotos(); } catch(e) {}
+                    renderWidescreenHistoryMatrix();
+                    if (savedA && savedB) applySavedHistoryCompareFilter();
+                    else if (savedSearch) liveFilterHistoryRows();
+                } catch (e) {}
+            })();
+        });
+
+        // Also restore on visibility/focus
+        window.addEventListener('visibilitychange', () => { if (!document.hidden) rehydrateHistoryCompareInputs(60); });
+        window.addEventListener('focus', () => rehydrateHistoryCompareInputs(30));
+
+        function renderWidescreenHistoryMatrix() {
+            const container = document.getElementById('historyMasterLogContainer');
+            const totalBadge = document.getElementById('historyTotalCount');
+            if (!container) return;
+
+            container.innerHTML = '';
+            if (totalBadge) totalBadge.textContent = `${historyFighters.length} Superstars`;
+
+            historyFighters.forEach(f => {
+                const row = document.createElement('div');
+                row.className = 'fighter-history-row';
+
+                let avatarHtml = '<div class="avatar-circle">👤</div>';
+                if (f.photo) {
+                    avatarHtml = `<div class="avatar-circle"><img src="${f.photo}" alt="${f.name}" onerror="this.onerror=null; this.parentNode.innerHTML='👤'"></div>`;
+                }
+
+                let leftProfileHtml = `
+                    <div class="fighter-profile-block">
+                        ${avatarHtml}
+                        <div class="name-wrapper">
+                            <h3 class="fighter-name">${f.name}</h3>
+                            <div class="record-subtext">${f.wins || 0}W ${f.losses || 0}L</div>
+                        </div>
+                    </div>`;
+
+                // Searches through fallback histories to catch old logs safely
+                let historyArray = f.compiled_history_deck || f.history_deck || f.history || [];
+                let rightDeckHtml = '<div class="history-slider-deck">';
+
+                if (historyArray.length === 0) {
+                    rightDeckHtml += `<span class="empty-history-text">No fights yet</span>`;
+                } else {
+                    // Render oldest (index 0) first, newest last — left to right chronological order
+                    for (let i = 0; i < historyArray.length; i++) {
+                        const fight = historyArray[i];
+                        const outcome = (fight.outcome || '').toLowerCase();
+                        const isWin = outcome === 'win';
+                        const classBrick = isWin ? 'brick-win' : 'brick-loss';
+                        const statusLetter = isWin ? 'W' : 'L';
+                        const statusClass = isWin ? 'lbl-w' : 'lbl-l';
+                        const opponentClass = isWin ? 'win' : 'loss';
+                        const recordClass = isWin ? 'win' : 'loss';
+
+                        // CROSS-REFERENCE ENGINE: Pulls the OPPONENT'S live win/loss record directly out of the main roster data
+                        const oppObj = historyFighters.find(item => item.name === fight.opponent);
+                        let oppLiveRecord = oppObj ? `${oppObj.wins || 0}W ${oppObj.losses || 0}L` : "0W 0L";
+
+                        const rematchText = fight.rematchNumber ? `Rematch #${fight.rematchNumber}` : '';
+                        rightDeckHtml += `
+                            <div class="history-badge-brick ${classBrick}">
+                                <div class="brick-status-lbl ${statusClass}">${statusLetter}</div>
+                                <div class="brick-opponent ${opponentClass}" title="${fight.opponent}">${fight.opponent}</div>
+                                <div class="brick-opp-record ${recordClass}">${oppLiveRecord}</div>
+                                <div class="brick-method">${fight.method || 'Result'}</div>
+                                <div class="brick-show">${fight.showName || 'Show'}</div>
+                                ${rematchText ? `<div class="brick-show">${rematchText}</div>` : ''}
+                            </div>`;
+                    }
+                }
+                rightDeckHtml += '</div>';
+
+                row.innerHTML = leftProfileHtml + rightDeckHtml;
+                container.appendChild(row);
+            });
+        }
+
+        window.liveFilterHistoryRows = function() {
+            const queryEl = document.getElementById('historyFilterBox');
+            const query = (queryEl?.value || '').toLowerCase();
+            // persist search query so it survives navigation
+            try { localStorage.setItem('wwe_history_search_query', queryEl?.value || ''); } catch (e) {}
+            document.querySelectorAll('#historyMasterLogContainer .fighter-history-row').forEach(row => {
+                const nameText = row.querySelector('.fighter-name').textContent.toLowerCase();
+                row.style.display = nameText.includes(query) ? 'grid' : 'none';
+            });
+        };
+
+        function buildHistoryDatalist() {
+            let data = document.getElementById('fighterNamesList');
+            if (!data) {
+                data = document.createElement('datalist');
+                data.id = 'fighterNamesList';
+                document.body.appendChild(data);
+            }
+            data.innerHTML = '';
+            historyFighters.forEach(f => {
+                if (f.name) {
+                    const option = document.createElement('option');
+                    option.value = f.name;
+                    data.appendChild(option);
+                }
+            });
+            // Also pre-create compare datalists so the dropdowns are fast
+            updateHistoryCompareDatalists();
+        }
+
+        function updateHistoryCompareDatalists() {
+            const elA = document.getElementById('compareHistoryFighterA');
+            const elB = document.getElementById('compareHistoryFighterB');
+            const selectedA = elA && elA.value ? elA.value.trim().toLowerCase() : '';
+            const selectedB = elB && elB.value ? elB.value.trim().toLowerCase() : '';
+            let listA = document.getElementById('compareHistoryNamesA');
+            let listB = document.getElementById('compareHistoryNamesB');
+            if (!listA) {
+                listA = document.createElement('datalist');
+                listA.id = 'compareHistoryNamesA';
+                document.body.appendChild(listA);
+            }
+            if (!listB) {
+                listB = document.createElement('datalist');
+                listB.id = 'compareHistoryNamesB';
+                document.body.appendChild(listB);
+            }
+            listA.innerHTML = '';
+            listB.innerHTML = '';
+
+            const names = historyFighters.map(f => f.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+            names.forEach(name => {
+                const lower = name.toLowerCase();
+                if (selectedB && lower === selectedB) return;
+                const optionA = document.createElement('option');
+                optionA.value = name;
+                listA.appendChild(optionA);
+                if (selectedA && lower === selectedA) return;
+                const optionB = document.createElement('option');
+                optionB.value = name;
+                listB.appendChild(optionB);
+            });
+
+            // Save current compare inputs only if non-empty so we don't inadvertently clear saved values
+            try {
+                if (elA && elA.value.trim()) localStorage.setItem('wwe_history_compare_fighter_a', elA.value.trim());
+                if (elB && elB.value.trim()) localStorage.setItem('wwe_history_compare_fighter_b', elB.value.trim());
+            } catch (e) {}
+
+            // Try to auto-apply compare if both inputs match known fighters
+            tryAutoCompareHistory();
+
+            // If filter input is present, attach the global datalist so typing shows suggestions
+            try {
+                const filter = document.getElementById('historyFilterBox');
+                if (filter) filter.setAttribute('list', 'fighterNamesList');
+            } catch (e) {}
+        }
+
+        function applySavedHistoryCompareFilter() {
+            const savedA = localStorage.getItem('wwe_history_compare_fighter_a') || '';
+            const savedB = localStorage.getItem('wwe_history_compare_fighter_b') || '';
+            if (!savedA || !savedB) return;
+            const fighterA = historyFighters.find(f => f.name.toLowerCase() === savedA.toLowerCase());
+            const fighterB = historyFighters.find(f => f.name.toLowerCase() === savedB.toLowerCase());
+            if (fighterA && fighterB) {
+                filterHistoryByComparison([fighterA.name, fighterB.name]);
+            }
+        }
+
+        function rehydrateHistoryCompareInputs(delay = 50) {
+            setTimeout(() => {
+                try {
+                    const a = localStorage.getItem('wwe_history_compare_fighter_a') || '';
+                    const b = localStorage.getItem('wwe_history_compare_fighter_b') || '';
+                    const elA = document.getElementById('compareHistoryFighterA');
+                    const elB = document.getElementById('compareHistoryFighterB');
+                    if (elA && a) elA.value = a;
+                    if (elB && b) elB.value = b;
+                    if (a && b) applySavedHistoryCompareFilter();
+                } catch (e) {}
+            }, delay);
+        }
+
+        function updateComparePortrait(slot) {
+            const inputId = slot === 'A' ? 'compareHistoryFighterA' : 'compareHistoryFighterB';
+            const portraitId = slot === 'A' ? 'comparePortraitA' : 'comparePortraitB';
+            const inputEl = document.getElementById(inputId);
+            const portraitEl = document.getElementById(portraitId);
+            
+            const fighterName = inputEl?.value.trim();
+            const fighter = historyFighters.find(f => f.name.toLowerCase() === fighterName.toLowerCase());
+            
+            if (fighter && fighter.photo) {
+                portraitEl.innerHTML = `<img src="${fighter.photo}" style="width:100%; height:100%; object-fit:cover;">`;
+            } else if (fighter) {
+                portraitEl.textContent = fighter.name.charAt(0);
+            } else {
+                portraitEl.textContent = '👤';
+            }
+        }
+
+        function tryAutoCompareHistory() {
+            const aEl = document.getElementById('compareHistoryFighterA');
+            const bEl = document.getElementById('compareHistoryFighterB');
+            if (!aEl || !bEl) return;
+            const nameA = aEl.value.trim();
+            const nameB = bEl.value.trim();
+            if (!nameA || !nameB) return;
+            if (nameA.toLowerCase() === nameB.toLowerCase()) return;
+            const fighterA = historyFighters.find(f => f.name.toLowerCase() === nameA.toLowerCase());
+            const fighterB = historyFighters.find(f => f.name.toLowerCase() === nameB.toLowerCase());
+            if (fighterA && fighterB) {
+                localStorage.setItem('wwe_history_compare_fighter_a', fighterA.name);
+                localStorage.setItem('wwe_history_compare_fighter_b', fighterB.name);
+                filterHistoryByComparison([fighterA.name, fighterB.name]);
+            }
+        }
+
+        function filterHistoryByComparison(selectedNames = []) {
+            document.querySelectorAll('#historyMasterLogContainer .fighter-history-row').forEach(row => {
+                const nameEl = row.querySelector('.fighter-name');
+                if (!nameEl) return;
+                const nameText = nameEl.textContent.trim();
+                row.style.display = selectedNames.length > 0 ? (selectedNames.includes(nameText) ? 'grid' : 'none') : 'grid';
+            });
+        }
+
+        function compareHistoryFighters() {
+            const nameA = document.getElementById('compareHistoryFighterA')?.value.trim();
+            const nameB = document.getElementById('compareHistoryFighterB')?.value.trim();
+            if (!nameA || !nameB) {
+                alert('Enter both fighters to compare.');
+                return;
+            }
+            if (nameA.toLowerCase() === nameB.toLowerCase()) {
+                alert('Please choose two different fighters.');
+                return;
+            }
+
+            const fighterA = historyFighters.find(f => f.name.toLowerCase() === nameA.toLowerCase());
+            const fighterB = historyFighters.find(f => f.name.toLowerCase() === nameB.toLowerCase());
+            if (!fighterA || !fighterB) {
+                alert('One or both fighters were not found in your roster.');
+                return;
+            }
+
+            // Save compare state and apply
+            localStorage.setItem('wwe_history_compare_fighter_a', fighterA.name);
+            localStorage.setItem('wwe_history_compare_fighter_b', fighterB.name);
+            filterHistoryByComparison([fighterA.name, fighterB.name]);
+        }
+
+        function clearHistoryCompare() {
+            const inputA = document.getElementById('compareHistoryFighterA');
+            const inputB = document.getElementById('compareHistoryFighterB');
+            const portraitA = document.getElementById('comparePortraitA');
+            const portraitB = document.getElementById('comparePortraitB');
+            if (inputA) inputA.value = '';
+            if (inputB) inputB.value = '';
+            if (portraitA) portraitA.textContent = '👤';
+            if (portraitB) portraitB.textContent = '👤';
+            updateHistoryCompareDatalists();
+            // Clear persisted compare state
+            localStorage.removeItem('wwe_history_compare_fighter_a');
+            localStorage.removeItem('wwe_history_compare_fighter_b');
+            filterHistoryByComparison([]);
+        }
+
+        function getHistoryCount(fighter) {
+            const history = fighter.compiled_history_deck || fighter.history_deck || fighter.history || [];
+            return Array.isArray(history) ? history.length : 0;
+        }
+
+        function countRecentResults(fighter, outcome) {
+            const history = fighter.compiled_history_deck || fighter.history_deck || fighter.history || [];
+            if (!Array.isArray(history) || history.length === 0) return 0;
+            const recent = history.slice(-5);
+            return recent.filter(f => (f.outcome || '').toLowerCase() === outcome).length;
+        }
+    </script>
+    <div id="backgroundSettingsModal" role="dialog" aria-modal="true" aria-labelledby="backgroundSettingsTitle">
+        <div id="backgroundSettingsPanel">
+            <h3 id="backgroundSettingsTitle">Live Background Manager</h3>
+            <p>Load MP4 background videos and let them shuffle through the page background.</p>
+            <label id="backgroundVideoDropzone" for="backgroundVideoInput">
+                <input id="backgroundVideoInput" type="file" accept="video/mp4" multiple>
+                <span>Upload Background Videos (MP4 only)</span>
+            </label>
+            <div id="backgroundAudioControls" style="display:flex; align-items:center; gap:12px; margin-top:16px; flex-wrap: wrap;">
+                <label style="color:#cbd5e1; font-size:0.9rem; font-weight:700; display:flex; align-items:center; gap:10px;">
+                    Volume
+                    <input id="backgroundVolumeSlider" type="range" min="0" max="100" step="1" value="65" style="width:160px;">
+                </label>
+                <button id="backgroundMuteButton" type="button" onclick="toggleBackgroundVideoMute()" style="background:#0284c7; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:700; cursor:pointer;">Mute</button>
+                <span id="backgroundVolumeLabel" style="color:#cbd5e1; font-size:0.85rem;">65%</span>
+            </div>
+            <div id="backgroundVideoList" aria-live="polite"></div>
+            <div id="backgroundSettingsFooter">
+                <button type="button" onclick="closeBackgroundSettings()">Close Settings</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        let activeBackgroundVideos = [];
+        let activeBackgroundCurrentIndex = -1;
+        let activeBackgroundVideoElement = null;
+        const BACKGROUND_VIDEO_STORAGE_KEY = 'wwe_background_videos';
+        const BACKGROUND_VIDEO_DB_NAME = 'wwe_background_videos_db';
+        const BACKGROUND_VIDEO_DB_STORE = 'videos';
+
+        function openBackgroundVideoDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(BACKGROUND_VIDEO_DB_NAME, 1);
+                request.onupgradeneeded = event => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(BACKGROUND_VIDEO_DB_STORE)) {
+                        db.createObjectStore(BACKGROUND_VIDEO_DB_STORE);
+                    }
+                };
+                request.onsuccess = event => resolve(event.target.result);
+                request.onerror = event => reject(event.target.error || new Error('IndexedDB open failed'));
+            });
+        }
+
+        function saveBackgroundVideoBlob(id, file) {
+            return openBackgroundVideoDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(BACKGROUND_VIDEO_DB_STORE, 'readwrite');
+                const store = tx.objectStore(BACKGROUND_VIDEO_DB_STORE);
+                const request = store.put(file, id);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error || new Error('Save failed'));
+            }));
+        }
+
+        function deleteBackgroundVideoBlob(id) {
+            return openBackgroundVideoDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(BACKGROUND_VIDEO_DB_STORE, 'readwrite');
+                const store = tx.objectStore(BACKGROUND_VIDEO_DB_STORE);
+                const request = store.delete(id);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error || new Error('Delete failed'));
+            }));
+        }
+
+        function loadBackgroundVideoBlob(id) {
+            return openBackgroundVideoDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(BACKGROUND_VIDEO_DB_STORE, 'readonly');
+                const store = tx.objectStore(BACKGROUND_VIDEO_DB_STORE);
+                const request = store.get(id);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error || new Error('Load failed'));
+            }));
+        }
+
+        function loadStoredBackgroundList() {
+            return JSON.parse(localStorage.getItem(BACKGROUND_VIDEO_STORAGE_KEY) || '[]');
+        }
+
+        function saveStoredBackgroundList(list) {
+            localStorage.setItem(BACKGROUND_VIDEO_STORAGE_KEY, JSON.stringify(list));
+        }
+
+        function loadBackgroundAudioSettings() {
+            return JSON.parse(localStorage.getItem('wwe_background_audio') || JSON.stringify({ muted: false, volume: 0.65 }));
+        }
+
+        function saveBackgroundAudioSettings(settings) {
+            localStorage.setItem('wwe_background_audio', JSON.stringify(settings));
+        }
+
+        function updateBackgroundAudioUI() {
+            const volumeLabel = document.getElementById('backgroundVolumeLabel');
+            const volumeSlider = document.getElementById('backgroundVolumeSlider');
+            const muteButton = document.getElementById('backgroundMuteButton');
+            const video = ensureBackgroundVideoElement();
+            if (!volumeSlider || !volumeLabel || !muteButton || !video) return;
+            volumeSlider.value = Math.round(video.volume * 100);
+            volumeLabel.textContent = video.muted ? 'Muted' : `${Math.round(video.volume * 100)}%`;
+            muteButton.textContent = video.muted ? 'Unmute' : 'Mute';
+        }
+
+        function setBackgroundVideoVolume(value) {
+            const video = ensureBackgroundVideoElement();
+            video.volume = value;
+            video.muted = false;
+            saveBackgroundAudioSettings({ muted: false, volume: video.volume });
+            updateBackgroundAudioUI();
+        }
+
+        function toggleBackgroundVideoMute() {
+            const video = ensureBackgroundVideoElement();
+            video.muted = !video.muted;
+            saveBackgroundAudioSettings({ muted: video.muted, volume: video.volume });
+            updateBackgroundAudioUI();
+        }
+
+        async function restoreBackgroundVideosFromStorage() {
+            const storedList = loadStoredBackgroundList();
+            const loadedVideos = [];
+
+            for (const item of storedList) {
+                try {
+                    const file = await loadBackgroundVideoBlob(item.id);
+                    if (file) {
+                        loadedVideos.push({ id: item.id, name: item.name, url: URL.createObjectURL(file) });
+                    }
+                } catch (error) {
+                    console.warn('Failed to restore background video', item.id, error);
+                }
+            }
+
+            activeBackgroundVideos = loadedVideos;
+            console.debug('Restored background videos from storage', activeBackgroundVideos.map(v=>v.id));
+            saveStoredBackgroundList(activeBackgroundVideos.map(video => ({ id: video.id, name: video.name })));
+            refreshBackgroundVideoList();
+            if (activeBackgroundVideos.length) startBackgroundVideoLoop();
+        }
+
+        function ensureBackgroundVideoElement() {
+            if (!activeBackgroundVideoElement) {
+                activeBackgroundVideoElement = document.getElementById('backgroundVideoLayer');
+                if (!activeBackgroundVideoElement) {
+                    activeBackgroundVideoElement = document.createElement('video');
+                    activeBackgroundVideoElement.id = 'backgroundVideoLayer';
+                    activeBackgroundVideoElement.autoplay = true;
+                    activeBackgroundVideoElement.muted = false;
+                    activeBackgroundVideoElement.volume = 0.65;
+                    activeBackgroundVideoElement.playsInline = true;
+                    activeBackgroundVideoElement.preload = 'auto';
+                    activeBackgroundVideoElement.style.cssText = 'position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:-2; opacity:1; pointer-events:none; filter:saturate(1.1) contrast(1.05) brightness(1);';
+                    document.body.appendChild(activeBackgroundVideoElement);
+                }
+            }
+            return activeBackgroundVideoElement;
+        }
+
+        function refreshBackgroundVideoList() {
+            const list = document.getElementById('backgroundVideoList');
+            if (!list) return;
+            if (!activeBackgroundVideos.length) {
+                list.innerHTML = '<div class="background-video-row"><span>No background videos uploaded yet.</span></div>';
+                return;
+            }
+            list.innerHTML = activeBackgroundVideos.map((video, index) => `
+                <div class="background-video-row">
+                    <span>${video.name}</span>
+                    <button type="button" onclick="deleteBackgroundVideo(${index})">Delete</button>
+                </div>
+            `).join('');
+        }
+
+        function pickNextBackgroundVideoIndex() {
+            if (!activeBackgroundVideos.length) return -1;
+            if (activeBackgroundVideos.length === 1) return 0;
+            let nextIndex = Math.floor(Math.random() * activeBackgroundVideos.length);
+            while (nextIndex === activeBackgroundCurrentIndex) {
+                nextIndex = Math.floor(Math.random() * activeBackgroundVideos.length);
+            }
+            return nextIndex;
+        }
+
+        function playBackgroundVideo(index) {
+            const video = ensureBackgroundVideoElement();
+            if (!activeBackgroundVideos[index]) return;
+            activeBackgroundCurrentIndex = index;
+            video.src = activeBackgroundVideos[index].url;
+            video.load();
+            video.play().catch(() => {});
+        }
+
+        function startBackgroundVideoLoop() {
+            if (!backgroundVideosEnabled) return;
+            const video = ensureBackgroundVideoElement();
+            if (!activeBackgroundVideos.length) return;
+            video.onended = () => {
+                const nextIndex = pickNextBackgroundVideoIndex();
+                if (nextIndex !== -1) playBackgroundVideo(nextIndex);
+            };
+            const startIndex = activeBackgroundCurrentIndex >= 0 ? activeBackgroundCurrentIndex : pickNextBackgroundVideoIndex();
+            if (startIndex !== -1) playBackgroundVideo(startIndex);
+        }
+
+        function stopBackgroundVideoLoop() {
+            const video = ensureBackgroundVideoElement();
+            if (!video) return;
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            video.onended = null;
+        }
+
+        let backgroundVideosEnabled = true;
+        const BACKGROUND_VIDEO_ENABLED_KEY = 'wwe_background_enabled';
+
+        function loadBackgroundEnabledSetting() {
+            return localStorage.getItem(BACKGROUND_VIDEO_ENABLED_KEY) !== '0';
+        }
+
+        function saveBackgroundEnabledSetting(value) {
+            localStorage.setItem(BACKGROUND_VIDEO_ENABLED_KEY, value ? '1' : '0');
+        }
+
+        function updateBackgroundEnabledUI() {
+            const btn = document.getElementById('backgroundToggleButton');
+            if (!btn) return;
+            btn.textContent = backgroundVideosEnabled ? 'Background: On' : 'Background: Off';
+            btn.style.background = backgroundVideosEnabled ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)';
+            btn.style.opacity = backgroundVideosEnabled ? '1' : '0.8';
+            btn.title = backgroundVideosEnabled ? 'Pause background videos' : 'Resume background videos';
+        }
+
+        function toggleBackgroundVideoState() {
+            backgroundVideosEnabled = !backgroundVideosEnabled;
+            saveBackgroundEnabledSetting(backgroundVideosEnabled);
+            applyBackgroundVideoEnabledState();
+        }
+
+        function applyBackgroundVideoEnabledState() {
+            if (backgroundVideosEnabled) {
+                if (activeBackgroundVideos.length) startBackgroundVideoLoop();
+            } else {
+                stopBackgroundVideoLoop();
+            }
+            updateBackgroundEnabledUI();
+        }
+
+        function addBackgroundVideoFiles(files) {
+            const videoFiles = Array.from(files || []).filter(file => file.type.includes('video/mp4') || /\.mp4$/i.test(file.name));
+            if (!videoFiles.length) return;
+                (async () => {
+                    for (const file of videoFiles) {
+                        const id = `bgvideo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                        const url = URL.createObjectURL(file);
+                        try {
+                            await saveBackgroundVideoBlob(id, file);
+                            activeBackgroundVideos.push({ id, name: file.name, url });
+                            console.debug('Saved background video', id, file.name);
+                        } catch (error) {
+                            console.warn('Unable to save background video:', file.name, error);
+                            URL.revokeObjectURL(url);
+                        }
+                    }
+
+                    saveStoredBackgroundList(activeBackgroundVideos.map(video => ({ id: video.id, name: video.name })));
+                    refreshBackgroundVideoList();
+                    console.debug('Active background videos count', activeBackgroundVideos.length, activeBackgroundVideos.map(v=>v.id));
+                    if (activeBackgroundVideos.length) startBackgroundVideoLoop();
+                })();
+        }
+
+        function deleteBackgroundVideo(index) {
+            const video = activeBackgroundVideos[index];
+            if (video?.url) URL.revokeObjectURL(video.url);
+            if (video?.id) {
+                deleteBackgroundVideoBlob(video.id).catch(() => {});
+            }
+
+            activeBackgroundVideos.splice(index, 1);
+            saveStoredBackgroundList(activeBackgroundVideos.map(video => ({ id: video.id, name: video.name })));
+            refreshBackgroundVideoList();
+
+            if (!activeBackgroundVideos.length) {
+                stopBackgroundVideoLoop();
+                activeBackgroundCurrentIndex = -1;
+                return;
+            }
+            if (index <= activeBackgroundCurrentIndex || activeBackgroundCurrentIndex === -1) {
+                activeBackgroundCurrentIndex = Math.max(activeBackgroundCurrentIndex - 1, 0);
+            }
+            startBackgroundVideoLoop();
+        }
+
+        function openBackgroundSettings() {
+            const modal = document.getElementById('backgroundSettingsModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeBackgroundSettings() {
+            const modal = document.getElementById('backgroundSettingsModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const modal = document.getElementById('backgroundSettingsModal');
+            const input = document.getElementById('backgroundVideoInput');
+            const dropzone = document.getElementById('backgroundVideoDropzone');
+            const volumeSlider = document.getElementById('backgroundVolumeSlider');
+            const muteButton = document.getElementById('backgroundMuteButton');
+
+            ensureBackgroundVideoElement();
+            const audioSettings = loadBackgroundAudioSettings();
+            activeBackgroundVideoElement.volume = audioSettings.volume ?? 0.65;
+            activeBackgroundVideoElement.muted = audioSettings.muted ?? false;
+            updateBackgroundAudioUI();
+
+            backgroundVideosEnabled = loadBackgroundEnabledSetting();
+            updateBackgroundEnabledUI();
+            restoreBackgroundVideosFromStorage();
+            if (modal) {
+                modal.addEventListener('click', (event) => {
+                    if (event.target === modal) closeBackgroundSettings();
+                });
+            }
+            if (input) {
+                input.addEventListener('change', (event) => {
+                    addBackgroundVideoFiles(event.target.files);
+                    event.target.value = '';
+                });
+            }
+            if (volumeSlider) {
+                volumeSlider.addEventListener('input', (event) => {
+                    setBackgroundVideoVolume(Number(event.target.value) / 100);
+                });
+            }
+            if (muteButton) {
+                muteButton.addEventListener('click', toggleBackgroundVideoMute);
+            }
+            if (dropzone) {
+                ['dragenter', 'dragover'].forEach(type => {
+                    dropzone.addEventListener(type, (event) => {
+                        event.preventDefault();
+                        dropzone.classList.add('drag-over');
+                    });
+                });
+                ['dragleave', 'drop'].forEach(type => {
+                    dropzone.addEventListener(type, (event) => {
+                        event.preventDefault();
+                        dropzone.classList.remove('drag-over');
+                    });
+                });
+                dropzone.addEventListener('drop', (event) => {
+                    addBackgroundVideoFiles(event.dataTransfer?.files || []);
+                });
+            }
+            ensureBackgroundVideoElement();
+        });
+    </script>
+</body>
+</html>

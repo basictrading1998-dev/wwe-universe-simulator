@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Universe - Championship Lineage History</title>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; margin: 0; padding-bottom: 32px; }
+        
+        /* UNIFIED PREMIUM HEADER NAVBAR (CENTER ALIGNED) */
+        nav { background-color: #1e293b; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); font-family: sans-serif; position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; }
+        .logo { color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px; }
+        .nav-links { display: flex; gap: 16px; justify-content: center; flex: 1; }
+        .nav-btn { background: transparent; border: none; color: #94a3b8; padding: 8px 14px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-transform: uppercase; }
+        .nav-btn:hover { color: #f8fafc; background: rgba(255,255,255,0.05); }
+        .nav-btn.active { background: #ef4444; color: white; box-shadow: 0 2px 8px rgba(239,68,68,0.3); }
+        
+        /* SEARCH & SUBHEADER UTILITIES */
+        .subheader-controls { max-width: 1400px; margin: 20px auto 0 auto; padding: 0 24px; display: flex; gap: 16px; align-items: center; }
+        .search-wrapper { position: relative; width: 280px; }
+        .search-box { width: 100%; padding: 8px 12px; border: 1px solid #334155; border-radius: 6px; font-size: 0.8rem; background: #1e293b; color: white; outline: none; box-sizing: border-box; }
+        .search-box:focus { border-color: #38bdf8; }
+        .count-badge { font-size: 0.75rem; font-weight: bold; color: #64748b; text-transform: uppercase; }
+        .lineage-action-panel { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+        .lineage-action-panel input,
+        .lineage-action-panel select { padding: 8px 10px; border-radius: 6px; border: 1px solid #334155; background: #111827; color: #f8fafc; font-size: 0.8rem; outline: none; }
+        .lineage-action-panel button { background: #ef4444; border: none; color: white; padding: 10px 16px; border-radius: 8px; font-size: 0.8rem; font-weight: 800; cursor: pointer; text-transform: uppercase; }
+        .lineage-action-panel button:hover { background: #dc2626; }
+        .delete-title-btn { background: transparent; border: 1px solid rgba(255,255,255,0.18); color: #f8fafc; padding: 6px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 700; cursor: pointer; text-transform: uppercase; transition: background 0.2s ease; }
+        .delete-title-btn:hover { background: rgba(239,68,68,0.15); border-color: #ef4444; }
+        #backgroundSettingsButton { background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
+        #backgroundSettingsButton:hover { background: rgba(255,255,255,0.28); }
+        #backgroundSettingsModal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(2, 6, 23, 0.82); backdrop-filter: blur(8px); z-index: 2000; }
+        #backgroundSettingsPanel { width: min(640px, 100%); background: linear-gradient(135deg, #071426, #111827 55%, #0f172a); border: 1px solid rgba(125, 211, 252, 0.35); border-radius: 18px; box-shadow: 0 20px 55px rgba(2, 6, 23, 0.45); padding: 22px; color: white; }
+        #backgroundSettingsPanel h3 { margin: 0 0 10px 0; color: #f8fafc; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 0.08em; }
+        #backgroundSettingsPanel p { margin: 0 0 16px 0; color: #cbd5e1; font-size: 0.9rem; }
+        #backgroundVideoDropzone { border: 1px dashed rgba(248, 113, 113, 0.7); border-radius: 12px; padding: 16px; background: rgba(15, 23, 42, 0.7); cursor: pointer; transition: border-color 0.2s ease, transform 0.2s ease; display: block; }
+        #backgroundVideoDropzone.drag-over { border-color: #38bdf8; transform: translateY(-1px); }
+        #backgroundVideoDropzone input { display: none; }
+        #backgroundVideoDropzone span { display: block; font-weight: 700; color: #e2e8f0; text-align: center; }
+        #backgroundVideoList { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; padding-right: 4px; }
+        .background-video-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(36, 99, 235, 0.25); border-radius: 10px; padding: 8px 10px; }
+        .background-video-row span { font-size: 0.82rem; font-weight: 600; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .background-video-row button { background: #dc2626; color: white; border: none; border-radius: 6px; padding: 6px 8px; font-size: 0.72rem; font-weight: 700; cursor: pointer; }
+        .background-video-row button:hover { background: #b91c1c; }
+        #backgroundSettingsFooter { display: flex; justify-content: flex-end; margin-top: 16px; }
+        #backgroundSettingsFooter button { background: #0284c7; color: white; border: none; border-radius: 8px; padding: 8px 12px; font-weight: 700; cursor: pointer; }
+        #backgroundSettingsFooter button:hover { background: #0369a1; }
+        #backgroundVideoLayer { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -2; opacity: 1; pointer-events: none; filter: saturate(1.1) contrast(1.05) brightness(1); }
+        body { position: relative; }
+        body::before { content: ''; position: fixed; inset: 0; background: transparent; z-index: -1; pointer-events: none; }
+        .title-gender-badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 9999px; font-size: 0.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+        .title-gender-badge.male { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.2); }
+        .title-gender-badge.female { background: rgba(236,72,153,0.15); color: #f472b6; border: 1px solid rgba(236,72,153,0.2); }
+        .champion-details { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+        .champion-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.72rem; color: #cbd5e1; }
+        .champion-name { font-weight: 900; }
+        .champion-male { color: #22c55e; }
+        .champion-female { color: #f472b6; }
+        .champion-lost { color: #ef4444; }
+        .record-pill { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); border-radius: 999px; padding: 2px 8px; font-size: 0.65rem; font-weight: 800; color: #cbd5e1; }
+        .vacant-pill { color: #94a3b8; font-weight: 800; }
+
+        /* HORIZONTAL LIST TABLE MATRIX GRAPHICS */
+        main { max-width: 1400px; margin: 16px auto; padding: 0 24px; box-sizing: border-box; }
+        .log-table-wrapper { border: 1px solid #334155; border-radius: 8px; overflow: hidden; background: #111827; }
+        
+        .table-header { display: grid; grid-template-columns: 260px 1fr; background: #1e293b; border-bottom: 1px solid #334155; font-size: 0.7rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; padding: 12px 16px; }
+        
+        /* THE HORIZONTAL CARD FEED ROW CONTAINER BLOCK */
+        .lineage-belt-row { display: grid; grid-template-columns: 260px 1fr; border-bottom: 1px solid #1e293b; padding: 12px 16px; align-items: center; }
+        .lineage-belt-row:hover { background: rgba(255,255,255,0.02); }
+        .lineage-belt-row:nth-of-type(even) { background: #161e2e; }
+        .lineage-belt-row:nth-of-type(even):hover { background: rgba(255,255,255,0.02); }
+
+        /* LEFT SIDE BELT DESCRIPTOR PACK GRID */
+        .belt-profile-block { display: flex; align-items: center; gap: 12px; }
+        .gold-avatar-circle { width: 36px; height: 36px; background: rgba(234,179,8,0.15); border: 1px solid rgba(234,179,8,0.3); color: #facc15; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+        .name-wrapper { display: flex; flex-direction: column; }
+        .belt-display-title { font-size: 0.85rem; font-weight: 800; margin: 0; color: #facc15; text-transform: uppercase; }
+        .reigning-champ-subtext { font-size: 0.68rem; font-weight: 800; color: #94a3b8; margin-top: 2px; }
+
+        /* RIGHT SIDE HORIZONTAL DECK REIGN SLIDER TRACKS */
+        .reigns-slider-deck { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; box-sizing: border-box; width: 100%; }
+        .reigns-slider-deck::-webkit-scrollbar { height: 4px; }
+        .reigns-slider-deck::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+
+        /* HORIZONTAL TIMELINE BRICKS */
+        .reign-badge-brick { flex: 0 0 130px; background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.15); border-left: 3px solid #eab308; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; gap: 1px; font-family: sans-serif; box-sizing: border-box; }
+        .reign-badge-brick.newest-holder { background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.2); border-left-color: #10b981; }
+
+        .brick-status-lbl { font-size: 0.52rem; font-weight: 900; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.02em; }
+        .brick-wrestler-name { font-size: 0.78rem; font-weight: 800; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+        .brick-event-name { font-size: 0.58rem; font-weight: bold; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .brick-finish-method { font-size: 0.52rem; font-weight: bold; color: #475569; text-transform: uppercase; }
+
+        .empty-lineage-text { font-size: 0.7rem; color: #475569; font-style: italic; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <!-- NAV BAR UNIFIED HEADER -->
+    <nav>
+        <h1 class="logo">WWE Universe</h1>
+        <div class="nav-links">
+            <a href="index.html" class="nav-btn">Fight Cards</a>
+            <a href="fighters.html" class="nav-btn">Master Roster</a>
+            <a href="history.html" class="nav-btn">Event History</a>
+            <a href="fighter-history.html" class="nav-btn">Fight History Log</a>
+            <a href="lineage.html" class="nav-btn active">Championship Lineage</a>
+            <a href="charts.html" class="nav-btn">Roster Analytics</a>
+            <a href="royal-rumble.html" class="nav-btn">Royal Rumble</a>
+        </div>
+        <div style="flex: 0 0 420px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
+            <button type="button" id="backgroundSettingsButton" onclick="openBackgroundSettings()" style="background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Background Settings</button>
+            <button type="button" id="backgroundToggleButton" onclick="toggleBackgroundVideoState()" style="background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Background: On</button>
+        </div>
+    </nav>
+
+    <!-- LIVE FILTER FIELD HEADER BAR -->
+    <div class="subheader-controls">
+        <div class="search-wrapper">
+            <input type="text" id="lineageFilterBox" placeholder="Filter by championship name..." class="search-box" onkeyup="liveFilterLineageRows()">
+        </div>
+        <div class="count-badge" id="lineageTotalCount">0 championships</div>
+    </div>
+    <div class="subheader-controls" style="margin-top: 12px; gap: 10px;">
+        <div class="lineage-action-panel">
+            <input type="text" id="newBeltName" placeholder="New title name" style="min-width:240px;" />
+            <select id="newBeltGender">
+                <option value="male">Men's Title</option>
+                <option value="female">Women's Title</option>
+            </select>
+            <button onclick="createNewChampionship()">Create Title</button>
+            <button onclick="syncWWE2K24Titles()" title="Add WWE 2K24 standard titles (won't duplicate)">Sync WWE 2K24 Titles</button>
+        </div>
+    </div>
+
+    <main>
+        <div class="log-table-wrapper">
+            <div class="table-header">
+                <div>Championship Title</div>
+                <div>Title Reigns Lineage History <span style="color:#475569; font-weight:bold; margin-left:6px; text-transform:lowercase; font-size:0.6rem;">• oldest to newest ➡️</span></div>
+            </div>
+            <!-- Dynamic Horizontal Grid Container -->
+            <div id="lineageMasterTableContainer"></div>
+        </div>
+    </main>
+
+    <script>
+        let fighters = [];
+        let championships = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
+            championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+            sortChampionships(championships);
+            renderHorizontalLineageMatrix();
+        });
+
+        function sortChampionships(list) {
+            const target = list || championships || [];
+            // Group by gender: male titles first, then female; within each group sort alphabetically
+            target.sort((a, b) => {
+                const ga = (a.gender === 'female') ? 1 : 0;
+                const gb = (b.gender === 'female') ? 1 : 0;
+                if (ga !== gb) return ga - gb; // male(0) before female(1)
+                return String(a.name || '').localeCompare(String(b.name || ''));
+            });
+            return target;
+        }
+
+        function normalizeTitleName(name) {
+            return String(name || '').trim().toLowerCase();
+        }
+
+        function renderHorizontalLineageMatrix() {
+            championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+            const container = document.getElementById('lineageMasterTableContainer');
+            const totalBadge = document.getElementById('lineageTotalCount');
+            if (!container) return;
+
+            container.innerHTML = '';
+            if (totalBadge) totalBadge.textContent = `${championships.length} Championships`;
+
+            if (championships.length === 0) {
+                container.innerHTML = `<div style="padding: 40px; text-align: center; color: #475569; font-weight: bold; font-size: 0.85rem; font-style: italic;">No custom titles have been crowned yet. Use the title creator above or fight for a championship on your fight cards to add one.</div>`;
+                return;
+            }
+
+            championships.forEach(b => {
+                const row = document.createElement('div');
+                row.className = 'lineage-belt-row';
+
+                const currentChampObj = fighters.find(f => f.id === b.championId);
+                const currentChampName = currentChampObj ? currentChampObj.name : 'VACANT';
+                const defenseStreak = b.defenses || 0;
+                const subtitleText = currentChampObj ? `👑 Holder: ${currentChampName} (${defenseStreak} Def.)` : '❌ Title Status: VACANT';
+                const titleGender = b.gender === 'female' ? "Women's Title" : "Men's Title";
+                const genderClass = b.gender === 'female' ? 'female' : 'male';
+
+                const historyLog = Array.isArray(b.history) ? b.history : [];
+                const currentChampionLine = currentChampObj ? `<span class="champion-status"><span class="champion-name ${currentChampObj.gender === 'female' ? 'champion-female' : 'champion-male'}" onclick="openFighter('${currentChampObj.id}')" style="cursor:pointer; text-decoration:underline;">${currentChampObj.name}</span><span class="record-pill">${currentChampObj.wins || 0}-${currentChampObj.losses || 0}</span><span>Current holder</span></span>` : `<span class="champion-status"><span class="vacant-pill">VACANT</span></span>`;
+                const previousChampion = historyLog.length > 1 ? fighters.find(f => f.name === historyLog[historyLog.length - 2].wrestlerName) : null;
+                const previousChampionLine = previousChampion ? `<span class="champion-status champion-lost"><span class="champion-name champion-lost" onclick="openFighter('${previousChampion.id}')" style="cursor:pointer; text-decoration:underline;">${previousChampion.name}</span><span class="record-pill">${previousChampion.wins || 0}-${previousChampion.losses || 0}</span><span>Lost title</span></span>` : '';
+
+                const leftBeltHtml = `
+                    <div class="belt-profile-block">
+                        <div class="gold-avatar-circle">🏆</div>
+                        <div class="name-wrapper">
+                            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <h3 class="belt-display-title" style="margin:0;">${b.name}</h3>
+                                    <span class="title-gender-badge ${genderClass}">${titleGender}</span>
+                                </div>
+                                <button class="delete-title-btn" onclick="deleteChampionship('${b.id}')">Delete</button>
+                            </div>
+                            <div class="reigning-champ-subtext">${subtitleText}</div>
+                            <div class="champion-details">${currentChampionLine}${previousChampionLine}</div>
+                        </div>
+                    </div>`;
+
+                let rightDeckHtml = '<div class="reigns-slider-deck">';
+
+                if (historyLog.length === 0) {
+                    rightDeckHtml += `<span class="empty-lineage-text">No lineage data recorded yet</span>`;
+                } else {
+                    // Render oldest -> newest but visually show newest as last brick (match fighter-history ordering)
+                    for (let i = 0; i < historyLog.length; i++) {
+                        const reign = historyLog[i];
+                        const isLatest = i === historyLog.length - 1 && b.championId !== '';
+                        const isPrevious = i === historyLog.length - 2;
+
+                        // Map to fighter object if available to pull live record
+                        const holder = fighters.find(f => f.name === reign.wrestlerName) || null;
+                        const holderRecord = holder ? `${holder.wins || 0}W ${holder.losses || 0}L` : '0W 0L';
+
+                        // Use brick classes similar to fighter-history for consistent UI
+                        const classBrick = isLatest ? 'reign-badge-brick newest-holder' : (isPrevious ? 'reign-badge-brick' : 'reign-badge-brick');
+                        const statusLetter = isLatest ? 'W' : (isPrevious ? 'L' : '');
+                        const statusClass = isLatest ? 'lbl-w' : (isPrevious ? 'lbl-l' : '');
+
+                        const opponentClass = isLatest ? 'win' : (isPrevious ? 'loss' : '');
+                        const recordClass = isLatest ? 'win' : (isPrevious ? 'loss' : '');
+
+                        rightDeckHtml += `
+                            <div class="reign-badge-brick ${isLatest ? 'newest-holder' : ''}">
+                                ${statusLetter ? `<span class="brick-status-lbl">${isLatest ? 'Current Champion' : (isPrevious ? 'Previous Holder' : `Reign #${i+1}`)}</span>` : `<span class="brick-status-lbl">Reign #${i+1}</span>`}
+                                <div class="brick-wrestler-name" title="${reign.wrestlerName}">${reign.wrestlerName}</div>
+                                <div class="brick-event-name">${reign.showTitle || 'Show'}</div>
+                                <div class="brick-finish-method">${reign.winMethod || ''}</div>
+                            </div>`;
+                    }
+                }
+                rightDeckHtml += '</div>';
+
+                row.innerHTML = `<div>${leftBeltHtml}</div><div>${rightDeckHtml}</div>`;
+                container.appendChild(row);
+            });
+        }
+
+        window.createNewChampionship = function() {
+            const nameInput = document.getElementById('newBeltName');
+            const genderSelect = document.getElementById('newBeltGender');
+            const titleName = nameInput ? nameInput.value.trim() : '';
+            const gender = genderSelect ? genderSelect.value : 'male';
+
+            if (!titleName) {
+                return alert('Enter a title name before creating a championship.');
+            }
+
+            championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+            const normalizedName = normalizeTitleName(titleName);
+            const existing = championships.find(b => normalizeTitleName(b.name) === normalizedName);
+            if (existing) {
+                return alert('A title with that name already exists. Pick a different name or edit the existing one.');
+            }
+
+            const newTitle = {
+                id: 'title-' + Date.now() + Math.random().toString(36).substr(2, 5),
+                name: titleName,
+                gender: gender,
+                championId: '',
+                history: [],
+                defenses: 0
+            };
+            championships.push(newTitle);
+            sortChampionships(championships);
+            localStorage.setItem('wwe_titles', JSON.stringify(championships));
+            renderHorizontalLineageMatrix();
+            if (nameInput) nameInput.value = '';
+            if (genderSelect) genderSelect.value = 'male';
+            alert(`Created new championship: ${titleName} (${gender === 'female' ? "Women's" : "Men's"} Title)`);
+        };
+
+        // Add a safe sync function to merge WWE 2K24 standard titles into the lineage
+        window.syncWWE2K24Titles = function() {
+            const wwe2k24Titles = [
+                { name: "WWE Championship", gender: 'male' },
+                { name: "WWE Universal Championship", gender: 'male' },
+                { name: "WWE Intercontinental Championship", gender: 'male' },
+                { name: "WWE United States Championship", gender: 'male' },
+                { name: "Undisputed WWE Tag Team Championship", gender: 'male' },
+                { name: "WWE Women's World Championship", gender: 'female' },
+                { name: "WWE Women's Championship", gender: 'female' },
+                { name: "WWE Women's Tag Team Championship", gender: 'female' },
+                { name: "NXT Championship", gender: 'male' },
+                { name: "NXT North American Championship", gender: 'male' },
+                { name: "NXT Tag Team Championship", gender: 'male' },
+                { name: "NXT Women's Championship", gender: 'female' },
+                { name: "NXT Women's Tag Team Championship", gender: 'female' },
+                { name: "WWE 24/7 Championship", gender: 'male' },
+                { name: "WWE Cruiserweight Championship", gender: 'male' },
+                { name: "NXT UK Championship", gender: 'male' }
+            ];
+
+            championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+
+            // Normalize helper
+            const normalize = (s) => String(s || '').trim().toLowerCase();
+
+            const existingNames = new Set(championships.map(c => normalize(c.name)));
+
+            const toAdd = wwe2k24Titles.filter(t => !existingNames.has(normalize(t.name)));
+            if (toAdd.length === 0) return alert('All WWE 2K24 titles are already present or similar titles exist.');
+
+            const preview = toAdd.map(t => `• ${t.name} (${t.gender === 'female' ? "Women's" : "Men's"})`).join('\n');
+            if (!confirm(`The following titles will be added to your Championship Lineage (will not remove or modify existing titles):\n\n${preview}\n\nProceed?`)) return;
+
+            let added = 0;
+            toAdd.forEach(t => {
+                const newTitle = {
+                    id: 'title-' + Date.now() + Math.random().toString(36).substr(2,5),
+                    name: t.name,
+                    gender: t.gender,
+                    championId: '',
+                    history: [],
+                    defenses: 0
+                };
+                championships.push(newTitle);
+                added++;
+            });
+
+            if (added > 0) {
+                sortChampionships(championships);
+                localStorage.setItem('wwe_titles', JSON.stringify(championships));
+                renderHorizontalLineageMatrix();
+                alert(`Added ${added} new championship${added === 1 ? '' : 's'} to your lineage.`);
+            }
+        };
+
+        window.deleteChampionship = function(id) {
+            const target = championships.find(b => b.id === id);
+            if (!target) return;
+            if (!confirm(`Delete the championship "${target.name}"? This cannot be undone.`)) return;
+
+            championships = championships.filter(b => b.id !== id);
+            localStorage.setItem('wwe_titles', JSON.stringify(championships));
+            renderHorizontalLineageMatrix();
+        };
+
+        window.liveFilterLineageRows = function() {
+            const query = document.getElementById('lineageFilterBox').value.toLowerCase();
+            document.querySelectorAll('#lineageMasterTableContainer .lineage-belt-row').forEach(row => {
+                const titleText = row.querySelector('.belt-display-title')?.textContent.toLowerCase() || '';
+                row.style.display = titleText.includes(query) ? 'grid' : 'none';
+            });
+        };
+
+        window.openFighter = function(fId) {
+            if (!fId) return;
+            localStorage.setItem('wwe_selected_fighter', fId);
+            window.location.href = 'fighters.html';
+        };
+    </script>
+    <div id="backgroundSettingsModal" role="dialog" aria-modal="true" aria-labelledby="backgroundSettingsTitle">
+        <div id="backgroundSettingsPanel">
+            <h3 id="backgroundSettingsTitle">Live Background Manager</h3>
+            <p>Load MP4 background videos and let them shuffle through the page background.</p>
+            <label id="backgroundVideoDropzone" for="backgroundVideoInput">
+                <input id="backgroundVideoInput" type="file" accept="video/mp4" multiple>
+                <span>Upload Background Videos (MP4 only)</span>
+            </label>
+            <div id="backgroundAudioControls" style="display:flex; align-items:center; gap:12px; margin-top:16px; flex-wrap: wrap;">
+                <label style="color:#cbd5e1; font-size:0.9rem; font-weight:700; display:flex; align-items:center; gap:10px;">
+                    Volume
+                    <input id="backgroundVolumeSlider" type="range" min="0" max="100" step="1" value="65" style="width:160px;">
+                </label>
+                <button id="backgroundMuteButton" type="button" onclick="toggleBackgroundVideoMute()" style="background:#0284c7; color:white; border:none; border-radius:8px; padding:10px 14px; font-weight:700; cursor:pointer;">Mute</button>
+                <span id="backgroundVolumeLabel" style="color:#cbd5e1; font-size:0.85rem;">65%</span>
+            </div>
+            <div id="backgroundVideoList" aria-live="polite"></div>
+            <div id="backgroundSettingsFooter">
+                <button type="button" onclick="closeBackgroundSettings()">Close Settings</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        let activeBackgroundVideos = [];
+        let activeBackgroundCurrentIndex = -1;
+        let activeBackgroundVideoElement = null;
+        const BACKGROUND_VIDEO_STORAGE_KEY = 'wwe_background_videos';
+        const BACKGROUND_VIDEO_DB_NAME = 'wwe_background_videos_db';
+        const BACKGROUND_VIDEO_DB_STORE = 'videos';
+
+        function openBackgroundVideoDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(BACKGROUND_VIDEO_DB_NAME, 1);
+                request.onupgradeneeded = event => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(BACKGROUND_VIDEO_DB_STORE)) {
+                        db.createObjectStore(BACKGROUND_VIDEO_DB_STORE);
+                    }
+                };
+                request.onsuccess = event => resolve(event.target.result);
+                request.onerror = event => reject(event.target.error || new Error('IndexedDB open failed'));
+            });
+        }
+
+        function saveBackgroundVideoBlob(id, file) {
+            return openBackgroundVideoDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(BACKGROUND_VIDEO_DB_STORE, 'readwrite');
+                const store = tx.objectStore(BACKGROUND_VIDEO_DB_STORE);
+                const request = store.put(file, id);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error || new Error('Save failed'));
+            }));
+        }
+
+        function deleteBackgroundVideoBlob(id) {
+            return openBackgroundVideoDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(BACKGROUND_VIDEO_DB_STORE, 'readwrite');
+                const store = tx.objectStore(BACKGROUND_VIDEO_DB_STORE);
+                const request = store.delete(id);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error || new Error('Delete failed'));
+            }));
+        }
+
+        function loadBackgroundVideoBlob(id) {
+            return openBackgroundVideoDB().then(db => new Promise((resolve, reject) => {
+                const tx = db.transaction(BACKGROUND_VIDEO_DB_STORE, 'readonly');
+                const store = tx.objectStore(BACKGROUND_VIDEO_DB_STORE);
+                const request = store.get(id);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error || new Error('Load failed'));
+            }));
+        }
+
+        function loadStoredBackgroundList() {
+            return JSON.parse(localStorage.getItem(BACKGROUND_VIDEO_STORAGE_KEY) || '[]');
+        }
+
+        function saveStoredBackgroundList(list) {
+            localStorage.setItem(BACKGROUND_VIDEO_STORAGE_KEY, JSON.stringify(list));
+        }
+
+        function loadBackgroundAudioSettings() {
+            return JSON.parse(localStorage.getItem('wwe_background_audio') || JSON.stringify({ muted: false, volume: 0.65 }));
+        }
+
+        function saveBackgroundAudioSettings(settings) {
+            localStorage.setItem('wwe_background_audio', JSON.stringify(settings));
+        }
+
+        function updateBackgroundAudioUI() {
+            const volumeLabel = document.getElementById('backgroundVolumeLabel');
+            const volumeSlider = document.getElementById('backgroundVolumeSlider');
+            const muteButton = document.getElementById('backgroundMuteButton');
+            const video = ensureBackgroundVideoElement();
+            if (!volumeSlider || !volumeLabel || !muteButton || !video) return;
+            volumeSlider.value = Math.round(video.volume * 100);
+            volumeLabel.textContent = video.muted ? 'Muted' : `${Math.round(video.volume * 100)}%`;
+            muteButton.textContent = video.muted ? 'Unmute' : 'Mute';
+        }
+
+        function setBackgroundVideoVolume(value) {
+            const video = ensureBackgroundVideoElement();
+            video.volume = value;
+            video.muted = false;
+            saveBackgroundAudioSettings({ muted: false, volume: video.volume });
+            updateBackgroundAudioUI();
+        }
+
+        function toggleBackgroundVideoMute() {
+            const video = ensureBackgroundVideoElement();
+            video.muted = !video.muted;
+            saveBackgroundAudioSettings({ muted: video.muted, volume: video.volume });
+            updateBackgroundAudioUI();
+        }
+
+        async function restoreBackgroundVideosFromStorage() {
+            const storedList = loadStoredBackgroundList();
+            const loadedVideos = [];
+
+            for (const item of storedList) {
+                try {
+                    const file = await loadBackgroundVideoBlob(item.id);
+                    if (file) {
+                        loadedVideos.push({ id: item.id, name: item.name, url: URL.createObjectURL(file) });
+                    }
+                } catch (error) {
+                    console.warn('Failed to restore background video', item.id, error);
+                }
+            }
+
+            activeBackgroundVideos = loadedVideos;
+            console.debug('Restored background videos from storage', activeBackgroundVideos.map(v=>v.id));
+            saveStoredBackgroundList(activeBackgroundVideos.map(video => ({ id: video.id, name: video.name })));
+            refreshBackgroundVideoList();
+            if (activeBackgroundVideos.length) startBackgroundVideoLoop();
+        }
+
+        function ensureBackgroundVideoElement() {
+            if (!activeBackgroundVideoElement) {
+                activeBackgroundVideoElement = document.getElementById('backgroundVideoLayer');
+                if (!activeBackgroundVideoElement) {
+                    activeBackgroundVideoElement = document.createElement('video');
+                    activeBackgroundVideoElement.id = 'backgroundVideoLayer';
+                    activeBackgroundVideoElement.autoplay = true;
+                    activeBackgroundVideoElement.muted = false;
+                    activeBackgroundVideoElement.volume = 0.65;
+                    activeBackgroundVideoElement.playsInline = true;
+                    activeBackgroundVideoElement.preload = 'auto';
+                    activeBackgroundVideoElement.style.cssText = 'position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:-2; opacity:1; pointer-events:none; filter:saturate(1.1) contrast(1.05) brightness(1);';
+                    document.body.appendChild(activeBackgroundVideoElement);
+                }
+            }
+            return activeBackgroundVideoElement;
+        }
+
+        function refreshBackgroundVideoList() {
+            const list = document.getElementById('backgroundVideoList');
+            if (!list) return;
+            if (!activeBackgroundVideos.length) {
+                list.innerHTML = '<div class="background-video-row"><span>No background videos uploaded yet.</span></div>';
+                return;
+            }
+            list.innerHTML = activeBackgroundVideos.map((video, index) => `
+                <div class="background-video-row">
+                    <span>${video.name}</span>
+                    <button type="button" onclick="deleteBackgroundVideo(${index})">Delete</button>
+                </div>
+            `).join('');
+        }
+
+        function pickNextBackgroundVideoIndex() {
+            if (!activeBackgroundVideos.length) return -1;
+            if (activeBackgroundVideos.length === 1) return 0;
+            let nextIndex = Math.floor(Math.random() * activeBackgroundVideos.length);
+            while (nextIndex === activeBackgroundCurrentIndex) {
+                nextIndex = Math.floor(Math.random() * activeBackgroundVideos.length);
+            }
+            return nextIndex;
+        }
+
+        function playBackgroundVideo(index) {
+            const video = ensureBackgroundVideoElement();
+            if (!activeBackgroundVideos[index]) return;
+            activeBackgroundCurrentIndex = index;
+            video.src = activeBackgroundVideos[index].url;
+            video.load();
+            video.play().catch(() => {});
+        }
+
+        function startBackgroundVideoLoop() {
+            if (!backgroundVideosEnabled) return;
+            const video = ensureBackgroundVideoElement();
+            if (!activeBackgroundVideos.length) return;
+            video.onended = () => {
+                const nextIndex = pickNextBackgroundVideoIndex();
+                if (nextIndex !== -1) playBackgroundVideo(nextIndex);
+            };
+            const startIndex = activeBackgroundCurrentIndex >= 0 ? activeBackgroundCurrentIndex : pickNextBackgroundVideoIndex();
+            if (startIndex !== -1) playBackgroundVideo(startIndex);
+        }
+
+        function stopBackgroundVideoLoop() {
+            const video = ensureBackgroundVideoElement();
+            if (!video) return;
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            video.onended = null;
+        }
+
+        let backgroundVideosEnabled = true;
+        const BACKGROUND_VIDEO_ENABLED_KEY = 'wwe_background_enabled';
+
+        function loadBackgroundEnabledSetting() {
+            return localStorage.getItem(BACKGROUND_VIDEO_ENABLED_KEY) !== '0';
+        }
+
+        function saveBackgroundEnabledSetting(value) {
+            localStorage.setItem(BACKGROUND_VIDEO_ENABLED_KEY, value ? '1' : '0');
+        }
+
+        function updateBackgroundEnabledUI() {
+            const btn = document.getElementById('backgroundToggleButton');
+            if (!btn) return;
+            btn.textContent = backgroundVideosEnabled ? 'Background: On' : 'Background: Off';
+            btn.style.background = backgroundVideosEnabled ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)';
+            btn.style.opacity = backgroundVideosEnabled ? '1' : '0.8';
+            btn.title = backgroundVideosEnabled ? 'Pause background videos' : 'Resume background videos';
+        }
+
+        function toggleBackgroundVideoState() {
+            backgroundVideosEnabled = !backgroundVideosEnabled;
+            saveBackgroundEnabledSetting(backgroundVideosEnabled);
+            applyBackgroundVideoEnabledState();
+        }
+
+        function applyBackgroundVideoEnabledState() {
+            if (backgroundVideosEnabled) {
+                if (activeBackgroundVideos.length) startBackgroundVideoLoop();
+            } else {
+                stopBackgroundVideoLoop();
+            }
+            updateBackgroundEnabledUI();
+        }
+
+        function addBackgroundVideoFiles(files) {
+            const videoFiles = Array.from(files || []).filter(file => file.type.includes('video/mp4') || /\.mp4$/i.test(file.name));
+            if (!videoFiles.length) return;
+
+            videoFiles.forEach(async (file) => {
+                const id = `bgvideo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                const url = URL.createObjectURL(file);
+
+                try {
+                    await saveBackgroundVideoBlob(id, file);
+                    activeBackgroundVideos.push({ id, name: file.name, url });
+                    saveStoredBackgroundList(activeBackgroundVideos.map(video => ({ id: video.id, name: video.name })));
+                    refreshBackgroundVideoList();
+                    if (activeBackgroundVideos.length) startBackgroundVideoLoop();
+                } catch (error) {
+                    console.warn('Unable to save background video:', file.name, error);
+                    URL.revokeObjectURL(url);
+                }
+            });
+        }
+
+        function deleteBackgroundVideo(index) {
+            const video = activeBackgroundVideos[index];
+            if (video?.url) URL.revokeObjectURL(video.url);
+            if (video?.id) {
+                deleteBackgroundVideoBlob(video.id).catch(() => {});
+            }
+
+            activeBackgroundVideos.splice(index, 1);
+            saveStoredBackgroundList(activeBackgroundVideos.map(video => ({ id: video.id, name: video.name })));
+            refreshBackgroundVideoList();
+
+            if (!activeBackgroundVideos.length) {
+                stopBackgroundVideoLoop();
+                activeBackgroundCurrentIndex = -1;
+                return;
+            }
+            if (index <= activeBackgroundCurrentIndex || activeBackgroundCurrentIndex === -1) {
+                activeBackgroundCurrentIndex = Math.max(activeBackgroundCurrentIndex - 1, 0);
+            }
+            startBackgroundVideoLoop();
+        }
+
+        function openBackgroundSettings() {
+            const modal = document.getElementById('backgroundSettingsModal');
+            if (modal) modal.style.display = 'flex';
+        }
+
+        function closeBackgroundSettings() {
+            const modal = document.getElementById('backgroundSettingsModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const modal = document.getElementById('backgroundSettingsModal');
+            const input = document.getElementById('backgroundVideoInput');
+            const dropzone = document.getElementById('backgroundVideoDropzone');
+            const volumeSlider = document.getElementById('backgroundVolumeSlider');
+            const muteButton = document.getElementById('backgroundMuteButton');
+
+            ensureBackgroundVideoElement();
+            const audioSettings = loadBackgroundAudioSettings();
+            activeBackgroundVideoElement.volume = audioSettings.volume ?? 0.65;
+            activeBackgroundVideoElement.muted = audioSettings.muted ?? false;
+            updateBackgroundAudioUI();
+
+            backgroundVideosEnabled = loadBackgroundEnabledSetting();
+            updateBackgroundEnabledUI();
+            restoreBackgroundVideosFromStorage();
+            if (modal) {
+                modal.addEventListener('click', (event) => {
+                    if (event.target === modal) closeBackgroundSettings();
+                });
+            }
+            if (input) {
+                input.addEventListener('change', (event) => {
+                    addBackgroundVideoFiles(event.target.files);
+                    event.target.value = '';
+                });
+            }
+            if (volumeSlider) {
+                volumeSlider.addEventListener('input', (event) => {
+                    setBackgroundVideoVolume(Number(event.target.value) / 100);
+                });
+            }
+            if (muteButton) {
+                muteButton.addEventListener('click', toggleBackgroundVideoMute);
+            }
+            if (dropzone) {
+                ['dragenter', 'dragover'].forEach(type => {
+                    dropzone.addEventListener(type, (event) => {
+                        event.preventDefault();
+                        dropzone.classList.add('drag-over');
+                    });
+                });
+                ['dragleave', 'drop'].forEach(type => {
+                    dropzone.addEventListener(type, (event) => {
+                        event.preventDefault();
+                        dropzone.classList.remove('drag-over');
+                    });
+                });
+                dropzone.addEventListener('drop', (event) => {
+                    addBackgroundVideoFiles(event.dataTransfer?.files || []);
+                });
+            }
+            ensureBackgroundVideoElement();
+        });
+    </script>
+    <script src="auth.js"></script>
+</body>
+</html>
