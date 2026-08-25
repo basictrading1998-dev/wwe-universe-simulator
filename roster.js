@@ -735,6 +735,36 @@ function getWWE2K24Portrait(name) {
     return wwe2k24PortraitMapNormalized[normalizeLookupKey(name)] || '';
 }
 
+function forceHydrateAllPhotos(list = fighters) {
+    if (!Array.isArray(list)) return 0;
+
+    let restored = 0;
+    list.forEach(f => {
+        if (!f || typeof f !== 'object') return;
+        const currentPhoto = typeof f.photo === 'string' ? f.photo.trim() : '';
+        if (currentPhoto && !isGeneratedFallbackPortrait(currentPhoto)) return;
+
+        const mappedPortrait = getWWE2K24Portrait(f.name);
+        if (!mappedPortrait) return;
+
+        f.photo = mappedPortrait;
+        if (!f.photo_key) {
+            f.photo_key = `wwe2k24-${normalizeLookupKey(f.name)}`;
+        }
+        restored++;
+    });
+
+    if (restored > 0) {
+        try {
+            saveFighters(list);
+        } catch (err) {
+            console.warn('Failed to persist force-hydrated WWE 2K24 portraits', err);
+        }
+    }
+
+    return restored;
+}
+
 function isGeneratedFallbackPortrait(photo) {
     if (typeof photo !== 'string') return false;
     const value = photo.trim();
@@ -1338,8 +1368,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadAndHydrateFighters();
         const dbRecovered = await recoverPortraitsFromIndexedDB();
         const restored = recoverPortraitsFromLocalStorage();
-        if ((dbRecovered || restored) > 0) {
-            console.info(`Recovered ${dbRecovered + restored} portrait${(dbRecovered + restored) === 1 ? '' : 's'} from browser storage`);
+        const forced = forceHydrateAllPhotos(fighters);
+        if ((dbRecovered || restored || forced) > 0) {
+            console.info(`Recovered ${dbRecovered + restored + forced} portrait${(dbRecovered + restored + forced) === 1 ? '' : 's'} from browser storage and roster mapping`);
         }
     } catch (err) {
         console.warn('Photo DB migration/hydration failed', err);
