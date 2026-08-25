@@ -686,9 +686,17 @@ const wwe2k24PortraitMap = {
     'Roman Reigns': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/05/Roman_Reigns_PROFILE.png',
     'Seth “Freakin” Rollins': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/05/SETH_ROLLINS_04132026sb_0095_Profile.png',
     'Cody Rhodes': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/03/CODY_04262024gd_0100_headSawp_Profile.png',
-    'Liv Morgan': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/06/LIV_05132024ca_023_Title_Profile--530195974e3839e08bdb34e41adbaed5.png',
-    'Rhea Ripley': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/04/Rhea_04242026ca_037_Profile.png',
+    'Bayley': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Bayley_PROFILE.png',
+    'Candice LeRae': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Candice_06122026MM_24123_Profile.png',
+    'Candice LeRAE': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Candice_06122026MM_24123_Profile.png',
+    'Alexa Bliss': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Alexa_Bliss_Profile.png',
     'Bianca Belair': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2024/03/BiancaBelair_01282024RF_1159_Profile--f32b01959da5065b6d2b2b9887792b92.png',
+    'Isla Dawn': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2022/11/Isla_Dawn_PROFILE--fce74e97e2e9a286d06b5682a696b815.png',
+    'Rhea Ripley': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/04/Rhea_04242026ca_037_Profile.png',
+    'Roxanne Perez': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Roxanne_Perez_PROFILE.png',
+    'Roxxan Perez': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Roxanne_Perez_PROFILE.png',
+    'Jade Cargill': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/07/Jade_PROFILE.png',
+    'Liv Morgan': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/06/LIV_05132024ca_023_Title_Profile--530195974e3839e08bdb34e41adbaed5.png',
     'The Rock': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/03/The_Rock_PROFILE--927b15797eefad54a3bca4d2a15e4921.png'
 };
 
@@ -710,6 +718,7 @@ function normalizeLookupKey(value) {
         .replace(/[\u2010-\u2015]/g, '-')
         .replace(/\u00A0/g, ' ')
         .replace(/\s*['’]\s*(?:[0-9]{2}|[0-9]{4})\b/g, '')
+        .replace(/\s*[\"“”][^\"“”]*[\"“”]\s*/g, ' ')
         .replace(/\b(?:64|32)-Bit\b/gi, '')
         .replace(/\b(?:PS[ -]?5|PS[ -]?4|Xbox(?:\s*One)?|Switch|Steam|PC|64-Bit|32-Bit|GameCube|Dreamcast|N64|Genesis)\b/gi, '')
         .replace(/\s+/g, ' ')
@@ -735,8 +744,63 @@ function getWWE2K24Portrait(name) {
     return wwe2k24PortraitMapNormalized[normalizeLookupKey(name)] || '';
 }
 
+function normalizePortraitLookupVariants(name) {
+    if (!name) return [];
+    const base = normalizeLookupKey(name);
+    const variants = new Set([base]);
+
+    const nicknameFree = base.replace(/\s+(?:the|freakin|thee|jr|sr|ii|iii|iv|v)\b/g, ' ');
+    if (nicknameFree.trim()) variants.add(nicknameFree.trim());
+
+    const tokens = base.split(/\s+/).filter(Boolean);
+    if (tokens.length > 1) {
+        variants.add(tokens[0]);
+        variants.add(tokens[tokens.length - 1]);
+    }
+
+    return Array.from(variants).filter(Boolean);
+}
+
 function forceHydrateAllPhotos(list = fighters) {
     if (!Array.isArray(list)) return 0;
+
+    function findPortraitForName(name) {
+        if (!name) return '';
+
+        const direct = getWWE2K24Portrait(name);
+        if (direct) return direct;
+
+        const base = normalizeLookupKey(name);
+        const nameVariants = normalizePortraitLookupVariants(name);
+        const candidates = Object.entries(wwe2k24PortraitMapNormalized);
+
+        let bestMatch = null;
+        let bestScore = 0;
+
+        for (const [mapKey, url] of candidates) {
+            const mapTokens = mapKey.split(/\s+/).filter(Boolean);
+            const sourceTokens = base.split(/\s+/).filter(Boolean);
+            if (sourceTokens.length === 0 || mapTokens.length === 0) continue;
+
+            const exact = mapKey === base || nameVariants.includes(mapKey);
+            if (exact) return url;
+
+            const common = sourceTokens.filter(token => mapTokens.includes(token)).length;
+            const overlap = mapTokens.filter(token => sourceTokens.includes(token)).length;
+            const score = common + overlap;
+            if (score > 0 && score >= bestScore) {
+                bestScore = score;
+                bestMatch = url;
+            }
+
+            const normalizedMatches = nameVariants.some(variant => variant === mapKey || mapKey.includes(variant) || variant.includes(mapKey));
+            if (normalizedMatches) {
+                return url;
+            }
+        }
+
+        return bestMatch || '';
+    }
 
     let restored = 0;
     list.forEach(f => {
@@ -744,7 +808,7 @@ function forceHydrateAllPhotos(list = fighters) {
         const currentPhoto = typeof f.photo === 'string' ? f.photo.trim() : '';
         if (currentPhoto && !isGeneratedFallbackPortrait(currentPhoto)) return;
 
-        const mappedPortrait = getWWE2K24Portrait(f.name);
+        const mappedPortrait = findPortraitForName(f.name);
         if (!mappedPortrait) return;
 
         f.photo = mappedPortrait;
@@ -764,6 +828,8 @@ function forceHydrateAllPhotos(list = fighters) {
 
     return restored;
 }
+
+window.forceHydrateAllPhotos = forceHydrateAllPhotos;
 
 function isGeneratedFallbackPortrait(photo) {
     if (typeof photo !== 'string') return false;
