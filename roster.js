@@ -703,12 +703,18 @@ const maleDivisionLookupNormalized = Object.keys(maleDivisionLookup).reduce((acc
 }, {});
 
 function normalizeLookupKey(value) {
-    return (value || '').toString().normalize('NFC').trim().toLowerCase()
+    return (value || '').toString()
+        .normalize('NFC')
         .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
         .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
         .replace(/[\u2010-\u2015]/g, '-')
         .replace(/\u00A0/g, ' ')
-        .replace(/\s+/g, ' ');
+        .replace(/\s*['’]\s*(?:[0-9]{2}|[0-9]{4})\b/g, '')
+        .replace(/\b(?:64|32)-Bit\b/gi, '')
+        .replace(/\b(?:PS[ -]?5|PS[ -]?4|Xbox(?:\s*One)?|Switch|Steam|PC|64-Bit|32-Bit|GameCube|Dreamcast|N64|Genesis)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
 }
 
 function getRosterGenderFromName(name) {
@@ -727,6 +733,68 @@ function getRosterDivisionForName(name, gender) {
 
 function getWWE2K24Portrait(name) {
     return wwe2k24PortraitMapNormalized[normalizeLookupKey(name)] || '';
+}
+
+function isGeneratedFallbackPortrait(photo) {
+    if (typeof photo !== 'string') return false;
+    const value = photo.trim();
+    if (!value.startsWith('data:image/svg+xml')) return false;
+    return value.includes('portraitBg') || value.includes('rgba(255,255,255,0.18)') || value.includes('text-anchor="middle"');
+}
+
+function shouldPreferRecoveredPhoto(currentPhoto, recoveredPhoto) {
+    if (!recoveredPhoto || typeof recoveredPhoto !== 'string') return false;
+    if (!recoveredPhoto.startsWith('data:image')) return false;
+    if (isGeneratedFallbackPortrait(recoveredPhoto)) return false;
+    if (!currentPhoto || typeof currentPhoto !== 'string' || currentPhoto.trim().length === 0) return true;
+    if (isGeneratedFallbackPortrait(currentPhoto)) return true;
+    return false;
+}
+
+function buildFallbackPortraitDataUrl(name, gender = 'male') {
+    const safeName = (name || 'Fighter').toString().trim() || 'Fighter';
+    const initials = safeName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0).toUpperCase()).join('') || 'F';
+    const accentA = gender === 'female' ? '#f472b6' : '#60a5fa';
+    const accentB = gender === 'female' ? '#7c3aed' : '#1d4ed8';
+    const textColor = '#ffffff';
+    const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+            <defs>
+                <linearGradient id="portraitBg" x1="0" x2="1" y1="0" y2="1">
+                    <stop offset="0%" stop-color="${accentA}"/>
+                    <stop offset="100%" stop-color="${accentB}"/>
+                </linearGradient>
+            </defs>
+            <rect width="200" height="200" rx="100" fill="url(#portraitBg)"/>
+            <circle cx="100" cy="74" r="42" fill="rgba(255,255,255,0.18)" stroke="rgba(255,255,255,0.4)" stroke-width="3"/>
+            <path d="M52 156c10-24 32-36 48-36s38 12 48 36" fill="rgba(255,255,255,0.14)"/>
+            <text x="100" y="123" text-anchor="middle" font-size="44" font-family="Arial, sans-serif" font-weight="700" fill="${textColor}">${initials}</text>
+        </svg>
+    `;
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function ensureMissingPortraits(list = fighters) {
+    if (!Array.isArray(list)) return false;
+    let changed = false;
+    list.forEach(f => {
+        if (!f || typeof f !== 'object') return;
+        const hasPhoto = typeof f.photo === 'string' && f.photo.trim().length > 0;
+        if (hasPhoto) return;
+        const portrait = getWWE2K24Portrait(f.name) || buildFallbackPortraitDataUrl(f.name, f.gender || 'male');
+        if (portrait) {
+            f.photo = portrait;
+            changed = true;
+        }
+    });
+    if (changed) {
+        try {
+            saveFighters(list);
+        } catch (err) {
+            console.warn('Failed to save recovered fighter portraits', err);
+        }
+    }
+    return changed;
 }
 
 function normalizeDivisionName(division) {
@@ -909,9 +977,10 @@ function recoverPortraitsFromLocalStorage() {
             value.forEach(inspectValue);
             return;
         }
-        const hasPhoto = typeof value.photo === 'string' && value.photo.trim().length > 0;
+        const photo = typeof value.photo === 'string' ? value.photo.trim() : '';
+        const hasPhoto = photo.length > 0 && photo.startsWith('data:image');
         const hasIdOrName = typeof value.id === 'string' || typeof value.name === 'string';
-        if (hasPhoto && hasIdOrName) {
+        if (hasPhoto && hasIdOrName && !isGeneratedFallbackPortrait(photo)) {
             candidates.push(value);
         }
         Object.values(value).forEach(inspectValue);
@@ -920,6 +989,7 @@ function recoverPortraitsFromLocalStorage() {
     Object.keys(localStorage).forEach(key => {
         try {
             const raw = localStorage.getItem(key);
+            if (!raw) return;
             const parsed = JSON.parse(raw);
             inspectValue(parsed);
         } catch (e) {
@@ -932,8 +1002,9 @@ function recoverPortraitsFromLocalStorage() {
         const matchById = candidate.id ? fighters.find(f => f.id === candidate.id) : null;
         const matchByName = candidate.name ? fighters.find(f => f.name.toLowerCase() === candidate.name.toLowerCase()) : null;
         const fighter = matchById || matchByName;
-        if (fighter && !fighter.photo) {
+        if (fighter && shouldPreferRecoveredPhoto(fighter.photo, candidate.photo)) {
             fighter.photo = candidate.photo;
+            if (candidate.photo_key) fighter.photo_key = candidate.photo_key;
             restored++;
         }
     });
@@ -942,6 +1013,51 @@ function recoverPortraitsFromLocalStorage() {
         saveFighters(fighters);
     }
     return restored;
+}
+
+async function recoverPortraitsFromIndexedDB() {
+    try {
+        if (!('indexedDB' in window)) return 0;
+        const db = await openFighterPhotoDB();
+        return new Promise((resolve) => {
+            const tx = db.transaction('photos', 'readonly');
+            const store = tx.objectStore('photos');
+            const request = store.openCursor();
+            const valuesByKey = new Map();
+            let restored = 0;
+
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (cursor) {
+                    const value = cursor.value;
+                    if (typeof value === 'string' && value.startsWith('data:image') && !isGeneratedFallbackPortrait(value)) {
+                        valuesByKey.set(String(cursor.key), value);
+                    }
+                    cursor.continue();
+                    return;
+                }
+
+                fighters.forEach(fighter => {
+                    const photoKey = fighter.photo_key || `fighter-photo-${fighter.id}`;
+                    const matches = valuesByKey.get(String(photoKey));
+                    if (matches && shouldPreferRecoveredPhoto(fighter.photo, matches)) {
+                        fighter.photo = matches;
+                        fighter.photo_key = photoKey;
+                        restored++;
+                    }
+                });
+
+                if (restored > 0) {
+                    saveFighters(fighters);
+                }
+                resolve(restored);
+            };
+
+            request.onerror = () => resolve(0);
+        });
+    } catch (err) {
+        return 0;
+    }
 }
 
 function migrateLegacyFighters() {
@@ -975,7 +1091,9 @@ function loadFighters() {
 async function loadAndHydrateFighters() {
     fighters = loadFighters();
     await hydrateFighterPhotos();
+    await recoverPortraitsFromIndexedDB();
     recoverPortraitsFromLocalStorage();
+    ensureMissingPortraits(fighters);
     return fighters;
 }
 
@@ -997,13 +1115,39 @@ async function ensureFightersLoaded(maxAttempts = 4, delayMs = 120) {
 function saveFighters(list = fighters) {
     const normalized = (list || []).map(normalizeFighterRecord).filter(Boolean);
     assignAutoDivision(normalized);
-    const payload = normalized.map(f => {
-        if (f.photo_key) {
-            return { ...f, photo: '' };
+    const payload = normalized.map(f => ({
+        ...f,
+        photo: typeof f.photo === 'string' ? f.photo.trim() : '',
+        photo_key: f.photo_key || ''
+    }));
+    try {
+        localStorage.setItem('wwe_fighters', JSON.stringify(payload));
+    } catch (err) {
+        if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22 || err.code === 1014)) {
+            const fallbackPayload = payload.map(f => {
+                if (!f || typeof f !== 'object') return f;
+                if (typeof f.photo === 'string' && f.photo.startsWith('data:image')) {
+                    const targetKey = f.photo_key || `fighter-photo-${f.id}`;
+                    if (typeof window !== 'undefined' && 'indexedDB' in window) {
+                        openFighterPhotoDB().then(db => {
+                            const tx = db.transaction('photos', 'readwrite');
+                            const store = tx.objectStore('photos');
+                            store.put(f.photo, targetKey);
+                        }).catch(() => {});
+                    }
+                    return { ...f, photo: '', photo_key: targetKey };
+                }
+                return f;
+            });
+            try {
+                localStorage.setItem('wwe_fighters', JSON.stringify(fallbackPayload));
+            } catch (innerErr) {
+                console.error('Failed to save fighters after moving inline photos to IndexedDB:', innerErr);
+            }
+            return;
         }
-        return f;
-    });
-    localStorage.setItem('wwe_fighters', JSON.stringify(payload));
+        console.error('Failed to save fighters:', err);
+    }
 }
 
 function ensureFemaleRosterEntries() {
@@ -1154,9 +1298,10 @@ window.restoreLegacyRoster = async function() {
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         await loadAndHydrateFighters();
+        const dbRecovered = await recoverPortraitsFromIndexedDB();
         const restored = recoverPortraitsFromLocalStorage();
-        if (restored > 0) {
-            console.info(`Recovered ${restored} portrait${restored === 1 ? '' : 's'} from storage`);
+        if ((dbRecovered || restored) > 0) {
+            console.info(`Recovered ${dbRecovered + restored} portrait${(dbRecovered + restored) === 1 ? '' : 's'} from browser storage`);
         }
     } catch (err) {
         console.warn('Photo DB migration/hydration failed', err);
@@ -1251,6 +1396,8 @@ function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
+
+    ensureMissingPortraits(fighters);
 
     const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
     if (missingPhotos) {
@@ -1375,6 +1522,8 @@ function renderRosterGridWithoutReload() {
     const grid = document.getElementById('rosterGrid');
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
+
+    ensureMissingPortraits(fighters);
 
     const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
     if (missingPhotos) {

@@ -45,6 +45,13 @@ function getFighterList() {
     return fighters;
 }
 
+function isGeneratedFallbackPortrait(photo) {
+    if (typeof photo !== 'string') return false;
+    const value = photo.trim();
+    if (!value.startsWith('data:image/svg+xml')) return false;
+    return value.includes('portraitBg') || value.includes('rgba(255,255,255,0.18)') || value.includes('text-anchor="middle"');
+}
+
 function saveFighters(list = fighters) {
     const baseList = list === undefined || list === null ? getFighterList() : list;
     const payload = (baseList || []).map(f => {
@@ -62,10 +69,7 @@ function saveFighters(list = fighters) {
         normalized.win_ko = Number(normalized.win_ko || 0);
         normalized.win_submission = Number(normalized.win_submission || 0);
         normalized.photo_key = normalized.photo_key || '';
-        normalized.photo = normalized.photo || '';
-        if (normalized.photo_key || (typeof normalized.photo === 'string' && normalized.photo.startsWith('data:'))) {
-            normalized.photo = '';
-        }
+        normalized.photo = typeof normalized.photo === 'string' ? normalized.photo.trim() : '';
         return normalized;
     }).filter(Boolean);
 
@@ -75,8 +79,16 @@ function saveFighters(list = fighters) {
         if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22 || err.code === 1014)) {
             const fallbackPayload = payload.map(f => {
                 if (!f || typeof f !== 'object') return f;
-                if (typeof f.photo === 'string' && f.photo.startsWith('data:')) {
-                    return { ...f, photo: '' };
+                if (typeof f.photo === 'string' && f.photo.startsWith('data:image')) {
+                    const targetKey = f.photo_key || `fighter-photo-${f.id}`;
+                    if (typeof window !== 'undefined' && 'indexedDB' in window) {
+                        openFighterPhotoDB().then(db => {
+                            const tx = db.transaction('photos', 'readwrite');
+                            const store = tx.objectStore('photos');
+                            store.put(f.photo, targetKey);
+                        }).catch(() => {});
+                    }
+                    return { ...f, photo: '', photo_key: targetKey };
                 }
                 return f;
             });
@@ -84,7 +96,7 @@ function saveFighters(list = fighters) {
                 localStorage.setItem('wwe_fighters', JSON.stringify(fallbackPayload));
                 return;
             } catch (innerErr) {
-                console.error('Failed to save fighters after stripping inline photos:', innerErr);
+                console.error('Failed to save fighters after moving inline photos to IndexedDB:', innerErr);
             }
         }
         console.error('Failed to save fighters:', err);
