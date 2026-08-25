@@ -751,15 +751,31 @@ function shouldPreferRecoveredPhoto(currentPhoto, recoveredPhoto) {
     return false;
 }
 
+function sanitizeSvgText(value, fallback = 'F') {
+    if (value === null || value === undefined) return fallback;
+
+    const text = Array.from(String(value).normalize('NFC')).filter((char) => {
+        const code = char.codePointAt(0);
+        if (code === undefined) return false;
+        if (code < 0x20 || code === 0x7F) return false;
+        if (code >= 0xD800 && code <= 0xDFFF) return false;
+        if (code >= 0x2600 && code <= 0x27BF) return false;
+        if (code === 0xFE0F) return false;
+        if (code >= 0x1F300 && code <= 0x1FAFF) return false;
+        return true;
+    }).join('').trim();
+
+    return text || fallback;
+}
+
 function buildFallbackPortraitDataUrl(name, gender = 'male') {
-    const rawName = (name || 'Fighter').toString();
-    const safeName = rawName
-        .normalize('NFC')
-        .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
-        .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
-        .replace(/[\u0000-\u001F\u007F]/g, '')
-        .trim() || 'Fighter';
-    const initials = safeName.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part.charAt(0).toUpperCase()).join('') || 'F';
+    const rawName = sanitizeSvgText(name, 'Fighter');
+    const safeName = rawName.split(/\s+/).filter(Boolean).slice(0, 2).join(' ') || 'Fighter';
+    const initials = safeName
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase())
+        .join('') || 'F';
     const accentA = gender === 'female' ? '#f472b6' : '#60a5fa';
     const accentB = gender === 'female' ? '#7c3aed' : '#1d4ed8';
     const textColor = '#ffffff';
