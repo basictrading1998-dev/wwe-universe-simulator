@@ -835,7 +835,16 @@ function isGeneratedFallbackPortrait(photo) {
     if (typeof photo !== 'string') return false;
     const value = photo.trim();
     if (!value.startsWith('data:image/svg+xml')) return false;
-    return value.includes('portraitBg') || value.includes('rgba(255,255,255,0.18)') || value.includes('text-anchor="middle"');
+
+    let decoded = value;
+    try {
+        const encodedPayload = value.includes(',') ? value.slice(value.indexOf(',') + 1) : value;
+        decoded = decodeURIComponent(encodedPayload);
+    } catch {
+        decoded = value;
+    }
+
+    return decoded.includes('portraitBg') || decoded.includes('rgba(255,255,255,0.18)') || decoded.includes('text-anchor="middle"') || decoded.includes('text-anchor="middle"') || decoded.includes('fill="url(#portraitBg)"');
 }
 
 function shouldPreferRecoveredPhoto(currentPhoto, recoveredPhoto) {
@@ -903,6 +912,32 @@ function buildFallbackPortraitDataUrl(name, gender = 'male') {
     }
 }
 
+function purgeGeneratedPlaceholderPhotos(list = fighters) {
+    if (!Array.isArray(list)) return 0;
+    let updated = 0;
+    list.forEach(f => {
+        if (!f || typeof f !== 'object') return;
+        const photo = typeof f.photo === 'string' ? f.photo.trim() : '';
+        if (!photo || !isGeneratedFallbackPortrait(photo)) return;
+        const mapped = getWWE2K24Portrait(f.name);
+        if (mapped) {
+            f.photo = mapped;
+            updated++;
+        } else if (f.name) {
+            f.photo = '';
+            updated++;
+        }
+    });
+    if (updated > 0) {
+        try {
+            saveFighters(list);
+        } catch (err) {
+            console.warn('Failed to purge generated placeholder photos', err);
+        }
+    }
+    return updated;
+}
+
 function ensureMissingPortraits(list = fighters) {
     if (!Array.isArray(list)) return false;
     let changed = false;
@@ -938,6 +973,16 @@ function normalizeDivisionName(division) {
     if (normalized.includes('super heavy')) return 'Super HeavyWeight';
     if (normalized.includes('heavy')) return 'HeavyWeight';
     return division || 'HeavyWeight';
+}
+
+function sanitizeStoredPhoto(photo, name) {
+    const value = typeof photo === 'string' ? photo.trim() : '';
+    if (!value) return '';
+    if (isGeneratedFallbackPortrait(value)) {
+        const mapped = getWWE2K24Portrait(name);
+        return mapped || '';
+    }
+    return value;
 }
 
 function getMappedDivisionForName(name) {
@@ -981,7 +1026,7 @@ function normalizeFighterRecord(fighter) {
     normalized.win_ko = Number(normalized.win_ko || 0);
     normalized.win_submission = Number(normalized.win_submission || 0);
     normalized.photo_key = normalized.photo_key || normalized.photoKey || '';
-    normalized.photo = normalized.photo || '';
+    normalized.photo = sanitizeStoredPhoto(normalized.photo, normalized.name);
     return normalized;
 }
 
@@ -1224,6 +1269,7 @@ function loadFighters() {
 
 async function loadAndHydrateFighters() {
     fighters = loadFighters();
+    purgeGeneratedPlaceholderPhotos(fighters);
     await hydrateFighterPhotos();
     await recoverPortraitsFromIndexedDB();
     recoverPortraitsFromLocalStorage();
@@ -1251,7 +1297,7 @@ function saveFighters(list = fighters) {
     assignAutoDivision(normalized);
     const payload = normalized.map(f => ({
         ...f,
-        photo: typeof f.photo === 'string' ? f.photo.trim() : '',
+        photo: sanitizeStoredPhoto(f.photo, f.name),
         photo_key: f.photo_key || ''
     }));
     try {
