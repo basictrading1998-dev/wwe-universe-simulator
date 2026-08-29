@@ -964,6 +964,8 @@ async function preloadPhotoCache() {
                     cursor.continue();
                     return;
                 }
+                // flag that cache preload completed
+                window._fighterPhotoCacheLoaded = true;
                 resolve(count);
             };
             req.onerror = () => resolve(0);
@@ -1143,9 +1145,10 @@ async function migrateExistingPhotosToIDB() {
         });
 
         tx.oncomplete = () => {
+            // Keep the in-memory `photo` value so the UI remains visible immediately.
+            // Persist the key so future loads may hydrate from IndexedDB.
             pendingUpdates.forEach(update => {
                 update.fighter.photo_key = update.key;
-                update.fighter.photo = '';
             });
             try {
                 saveFighters(fighters);
@@ -1162,6 +1165,38 @@ async function migrateExistingPhotosToIDB() {
             reject(tx.error || new Error('Failed to migrate existing photos to IndexedDB'));
         };
     });
+}
+
+// Persist any inline data-URL photos into IndexedDB while keeping them in-memory
+async function persistInlinePhotosToIDB() {
+    if (!Array.isArray(fighters) || fighters.length === 0) return 0;
+    if (!('indexedDB' in window)) return 0;
+    let migrated = 0;
+    for (const f of fighters) {
+        try {
+            const inline = typeof f.photo === 'string' ? f.photo.trim() : '';
+            if (!inline || !inline.startsWith('data:image')) continue;
+            const key = f.photo_key || `fighter-photo-${f.id}`;
+            // If cache already has it, skip
+            if (window._fighterPhotoCache && window._fighterPhotoCache[String(key)]) {
+                f.photo_key = f.photo_key || key;
+                continue;
+            }
+            await storeFighterPhotoInIDB(key, inline);
+            // set photo_key but keep f.photo so UI does not lose the image
+            f.photo_key = key;
+            // also prime the session cache for immediate renders
+            window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
+            window._fighterPhotoCache[String(key)] = inline;
+            migrated++;
+        } catch (e) {
+            console.warn('persistInlinePhotosToIDB failed for', f && f.id, e);
+        }
+    }
+    if (migrated > 0) {
+        try { saveFighters(fighters); } catch (e) { /* non-fatal */ }
+    }
+    return migrated;
 }
 
 async function hydrateFighterPhotos() {
@@ -1515,6 +1550,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadAndHydrateFighters();
         // Preload any photos stored in IndexedDB into a fast session cache
         await preloadPhotoCache();
+        // Persist any inline data-URL photos into IndexedDB (keep them in-memory)
+        try { await persistInlinePhotosToIDB(); } catch (e) { /* ignore */ }
         const dbRecovered = await recoverPortraitsFromIndexedDB();
         const restored = recoverPortraitsFromLocalStorage();
         const forced = forceHydrateAllPhotos(fighters);
@@ -1620,6 +1657,16 @@ function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
+
+    // If photo cache hasn't finished loading yet, preload then re-run render to avoid flashes
+    if (!window._fighterPhotoCacheLoaded) {
+        if (typeof preloadPhotoCache === 'function') {
+            preloadPhotoCache().then(() => {
+                try { renderRosterGrid(); } catch (e) {}
+            });
+            return;
+        }
+    }
 
     ensureMissingPortraits(fighters);
 
@@ -1747,6 +1794,15 @@ function renderRosterGridWithoutReload() {
     const grid = document.getElementById('rosterGrid');
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
+
+    if (!window._fighterPhotoCacheLoaded) {
+        if (typeof preloadPhotoCache === 'function') {
+            preloadPhotoCache().then(() => {
+                try { renderRosterGridWithoutReload(); } catch (e) {}
+            });
+            return;
+        }
+    }
 
     ensureMissingPortraits(fighters);
 
