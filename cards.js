@@ -157,6 +157,17 @@ async function hydrateFighterPhotos() {
     }));
 }
 
+// Prefer inline photo, otherwise check session cache (populated by roster.js) for photo_key
+function getEffectivePhotoFor(fighter) {
+    if (!fighter || typeof fighter !== 'object') return '';
+    if (typeof fighter.photo === 'string' && fighter.photo) return fighter.photo;
+    try {
+        const key = fighter.photo_key || fighter.photoKey || (`fighter-photo-${fighter.id}`);
+        if (key && window._fighterPhotoCache && window._fighterPhotoCache[String(key)]) return window._fighterPhotoCache[String(key)];
+    } catch (e) {}
+    return '';
+}
+
 function buildWwePopupModal() {
     if (document.getElementById('wwePopupModal')) return;
     const modal = document.createElement('div');
@@ -2012,7 +2023,8 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName) {
             updateFighterRecordDisplay(matchRowId, changedSlot, pick);
             const av = document.getElementById(`${matchRowId}-${changedSlot}`).querySelector('.avatar-box');
             if (av) {
-                av.innerHTML = pick.photo ? `<img src="${pick.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : pick.name.charAt(0);
+                const _eff = getEffectivePhotoFor(pick);
+                av.innerHTML = _eff ? `<img src="${_eff}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : pick.name.charAt(0);
                 av.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
             }
             refreshTitleFightState(matchRowId);
@@ -2613,7 +2625,8 @@ window.randomizeEntireShow = function() {
                 input1.value = fighter1.name;
                 input1.setAttribute('data-fighter-id', fighter1.id);
                 const av1 = slot1.querySelector('.avatar-box');
-                av1.innerHTML = fighter1.photo ? `<img src="${fighter1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter1.name.charAt(0);
+                const _eff1 = getEffectivePhotoFor(fighter1);
+                av1.innerHTML = _eff1 ? `<img src="${_eff1}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter1.name.charAt(0);
                 av1.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
                 av1.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter1.id); };
                 updateFighterRecordDisplay(matchId, 'slot1', fighter1);
@@ -2623,7 +2636,8 @@ window.randomizeEntireShow = function() {
                 input2.value = fighter2.name;
                 input2.setAttribute('data-fighter-id', fighter2.id);
                 const av2 = slot2.querySelector('.avatar-box');
-                av2.innerHTML = fighter2.photo ? `<img src="${fighter2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter2.name.charAt(0);
+                const _eff2 = getEffectivePhotoFor(fighter2);
+                av2.innerHTML = _eff2 ? `<img src="${_eff2}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter2.name.charAt(0);
                 av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
                 av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
                 updateFighterRecordDisplay(matchId, 'slot2', fighter2);
@@ -3368,10 +3382,11 @@ function restoreLoggedResult(id, state) {
             }
         }
         const avatar = slotEl.querySelector('.avatar-box');
-        if (avatar) {
+            if (avatar) {
             let avatarContent = '';
-            if (fighter && fighter.photo) {
-                avatarContent = `<img src="${fighter.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+            const _eff = getEffectivePhotoFor(fighter) || '';
+            if (_eff) {
+                avatarContent = `<img src="${_eff}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
             } else {
                 avatarContent = fighterName.charAt(0);
             }

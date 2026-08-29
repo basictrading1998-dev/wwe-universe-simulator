@@ -938,6 +938,41 @@ function purgeGeneratedPlaceholderPhotos(list = fighters) {
     return updated;
 }
 
+// In-memory session cache for photos stored in IndexedDB to avoid flashes
+window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
+
+async function preloadPhotoCache() {
+    try {
+        if (!('indexedDB' in window)) return 0;
+        const db = await openFighterPhotoDB();
+        return new Promise((resolve) => {
+            const tx = db.transaction('photos', 'readonly');
+            const store = tx.objectStore('photos');
+            const req = store.openCursor();
+            let count = 0;
+            req.onsuccess = () => {
+                const cursor = req.result;
+                if (cursor) {
+                    try {
+                        const key = String(cursor.key);
+                        const val = cursor.value;
+                        if (typeof val === 'string' && val.startsWith('data:image')) {
+                            window._fighterPhotoCache[key] = val;
+                            count++;
+                        }
+                    } catch (e) {}
+                    cursor.continue();
+                    return;
+                }
+                resolve(count);
+            };
+            req.onerror = () => resolve(0);
+        });
+    } catch (e) {
+        return 0;
+    }
+}
+
 function ensureMissingPortraits(list = fighters) {
     if (!Array.isArray(list)) return false;
     let changed = false;
@@ -1478,6 +1513,8 @@ window.restoreLegacyRoster = async function() {
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         await loadAndHydrateFighters();
+        // Preload any photos stored in IndexedDB into a fast session cache
+        await preloadPhotoCache();
         const dbRecovered = await recoverPortraitsFromIndexedDB();
         const restored = recoverPortraitsFromLocalStorage();
         const forced = forceHydrateAllPhotos(fighters);
@@ -1627,9 +1664,10 @@ function renderRosterGrid() {
         let totalDefenses = championships.filter(b => b.championId === f.id).reduce((sum, b) => sum + (b.defenses || 0), 0);
         let titleFightsCount = f.title_fights || 0;
 
+        const effectivePhoto = (typeof f.photo === 'string' && f.photo) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
         let avatarContent = '';
-        if (f.photo) {
-            avatarContent = `<img src="${f.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
+        if (effectivePhoto) {
+            avatarContent = `<img src="${effectivePhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
         } else {
             avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
         }
@@ -1751,9 +1789,10 @@ function renderRosterGridWithoutReload() {
         let totalDefenses = championships.filter(b => b.championId === f.id).reduce((sum, b) => sum + (b.defenses || 0), 0);
         let titleFightsCount = f.title_fights || 0;
 
+        const effectivePhoto = (typeof f.photo === 'string' && f.photo) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
         let avatarContent = '';
-        if (f.photo) {
-            avatarContent = `<img src="${f.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
+        if (effectivePhoto) {
+            avatarContent = `<img src="${effectivePhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
         } else {
             avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
         }
