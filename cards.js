@@ -154,16 +154,14 @@ async function loadFighterPhotoFromIDB(key) {
 }
 }
 
-if (typeof hydrateFighterPhotos !== 'function') {
-async function hydrateFighterPhotos() {
+const hydrateFighterPhotos = async function() {
     await Promise.all(fighters.map(async (fighter) => {
         if (!fighter.photo && fighter.photo_key) {
             const photo = await loadFighterPhotoFromIDB(fighter.photo_key);
             if (photo) fighter.photo = photo;
         }
     }));
-}
-}
+};
 
 // Prefer inline photo, otherwise check session cache (populated by roster.js) for photo_key
 function getEffectivePhotoFor(fighter) {
@@ -317,180 +315,7 @@ function customPrompt(message, defaultValue, callback, title = 'Input') {
     });
 }
 
-// === BETTING SYSTEM ===
-function initBettingSystem() {
-    const stored = localStorage.getItem('wwe_betting_money');
-    if (stored === null || stored === '100000') {
-        localStorage.setItem('wwe_betting_money', '1000'); // Start with $1,000
-    }
-}
-
-function getBettingMoney() {
-    return Number(localStorage.getItem('wwe_betting_money')) || 0;
-}
-
-function setBettingMoney(amount) {
-    localStorage.setItem('wwe_betting_money', Math.max(0, amount).toString());
-    updateBettingMoneyDisplay();
-}
-
-function updateBettingMoney(delta) {
-    const current = getBettingMoney();
-    setBettingMoney(current + delta);
-}
-
-function updateBettingMoneyDisplay() {
-    const display = document.getElementById('betting-money-display');
-    if (display) {
-        display.textContent = `$${getBettingMoney().toLocaleString()}`;
-    }
-}
-
-window.resetBettingMoney = function() {
-    setBettingMoney(1000);
-    customAlert('💵 Betting balance reset to $1,000.', 'Betting Reset');
-}
-
-// Store active bets for each match
-let activeBets = {};
-
-window.selectBetFighter = function(matchId, fighterSlot) {
-    if (!window.bettingEnabled) return;
-    if (!activeBets[matchId]) activeBets[matchId] = {};
-    activeBets[matchId].selectedFighter = fighterSlot;
-    
-    // Update button states
-    const btn1 = document.getElementById(`${matchId}-bet-f1`);
-    const btn2 = document.getElementById(`${matchId}-bet-f2`);
-    
-    if (fighterSlot === '1') {
-        btn1.style.background = '#10b981';
-        btn1.style.borderColor = '#10b981';
-        btn1.style.color = 'white';
-        btn2.style.background = '#f1f5f9';
-        btn2.style.borderColor = '#cbd5e1';
-        btn2.style.color = '#475569';
-    } else {
-        btn2.style.background = '#10b981';
-        btn2.style.borderColor = '#10b981';
-        btn2.style.color = 'white';
-        btn1.style.background = '#f1f5f9';
-        btn1.style.borderColor = '#cbd5e1';
-        btn1.style.color = '#475569';
-    }
-    
-    updateBetDisplay(matchId);
-};
-
-window.setBetAmount = function(matchId, multiplier) {
-    if (!window.bettingEnabled) return;
-    if (!activeBets[matchId]) activeBets[matchId] = {};
-    
-    const currentMoney = getBettingMoney();
-    let betAmount = 0;
-    
-    if (multiplier === 'MAX') {
-        betAmount = currentMoney;
-    } else {
-        const mult = parseInt(multiplier.replace('x', ''));
-        const baseAmount = Math.floor(currentMoney / 10); // Base is 10% of current money
-        betAmount = baseAmount * mult;
-    }
-    
-    // Cap at available money
-    betAmount = Math.min(betAmount, currentMoney);
-    activeBets[matchId].betAmount = betAmount;
-    
-    updateBetDisplay(matchId);
-};
-
-function updateBetDisplay(matchId) {
-    const bet = activeBets[matchId] || {};
-    const betAmount = bet.betAmount || 0;
-    
-    document.getElementById(`${matchId}-bet-amount`).textContent = `$${betAmount.toLocaleString()}`;
-    
-    // Calculate potential win (2x the bet as profit)
-    const potentialWin = betAmount * 2;
-    document.getElementById(`${matchId}-potential-win`).textContent = `$${potentialWin.toLocaleString()}`;
-}
-
-window.clearBet = function(matchId) {
-    activeBets[matchId] = {};
-    const btn1 = document.getElementById(`${matchId}-bet-f1`);
-    const btn2 = document.getElementById(`${matchId}-bet-f2`);
-    if (btn1) {
-        btn1.style.background = '#f1f5f9';
-        btn1.style.borderColor = '#cbd5e1';
-        btn1.style.color = '#475569';
-    }
-    if (btn2) {
-        btn2.style.background = '#f1f5f9';
-        btn2.style.borderColor = '#cbd5e1';
-        btn2.style.color = '#475569';
-    }
-    document.getElementById(`${matchId}-bet-amount`).textContent = '$0';
-    document.getElementById(`${matchId}-potential-win`).textContent = '$0';
-};
-
-window.placeBet = function(matchId) {
-    if (!window.bettingEnabled) {
-        customAlert('Betting is currently disabled.', 'Betting Disabled');
-        return;
-    }
-    const bet = activeBets[matchId] || {};
-    
-    if (!bet.selectedFighter) {
-        return customAlert('Select which fighter you want to bet on first!', 'Place Bet');
-    }
-    
-    if (!bet.betAmount || bet.betAmount <= 0) {
-        return customAlert('Select a bet amount!', 'Place Bet');
-    }
-    
-    const slot1Input = document.getElementById(`${matchId}-slot1`)?.querySelector('.fighter-search-input');
-    const slot2Input = document.getElementById(`${matchId}-slot2`)?.querySelector('.fighter-search-input');
-    
-    if (!slot1Input?.value || !slot2Input?.value) {
-        return customAlert('Both fighters must be selected before placing a bet!', 'Place Bet');
-    }
-    
-    const currentMoney = getBettingMoney();
-    if (bet.betAmount > currentMoney) {
-        return customAlert('Insufficient funds!', 'Place Bet');
-    }
-    
-    // Deduct bet from money
-    updateBettingMoney(-bet.betAmount);
-    
-    const betOnFighterNum = bet.selectedFighter;
-    const betOnInput = betOnFighterNum === '1' ? slot1Input : slot2Input;
-    const betOnFighterName = betOnInput.value;
-    
-    // Store the bet data for later when match is logged
-    if (!window.placedBets) window.placedBets = {};
-    window.placedBets[matchId] = {
-        betAmount: bet.betAmount,
-        betOnFighterNum: betOnFighterNum,
-        betOnFighterName: betOnFighterName,
-        timestamp: Date.now()
-    };
-    
-    customAlert(`✅ Bet placed! $${bet.betAmount.toLocaleString()} on ${betOnFighterName} to win!\n\nYou could win $${(bet.betAmount * 2).toLocaleString()}`, 'Bet Placed');
-    
-    // Reset bet UI
-    activeBets[matchId] = {};
-    document.getElementById(`${matchId}-bet-f1`).style.background = '#f1f5f9';
-    document.getElementById(`${matchId}-bet-f1`).style.borderColor = '#cbd5e1';
-    document.getElementById(`${matchId}-bet-f1`).style.color = '#475569';
-    document.getElementById(`${matchId}-bet-f2`).style.background = '#f1f5f9';
-    document.getElementById(`${matchId}-bet-f2`).style.borderColor = '#cbd5e1';
-    document.getElementById(`${matchId}-bet-f2`).style.color = '#475569';
-    document.getElementById(`${matchId}-bet-amount`).textContent = '$0';
-    document.getElementById(`${matchId}-potential-win`).textContent = '$0';
-    
-    saveCurrentCardDraft();
-};
+// Betting system removed
 
 let fighters = loadFightersFromStorage();
 window.fighters = fighters;
@@ -638,218 +463,9 @@ function applyCompletedShowVisuals() {
     });
 }
 
-// --- Announcer / SpeechSynthesis Helpers ---
-window.announcerEnabled = localStorage.getItem('wwe_announcer_enabled') === '1';
-window.preferredAnnouncerGender = 'female'; // currently only female option requested
-window.bettingEnabled = localStorage.getItem('wwe_betting_enabled') === '1';
-window.announcerTimeoutId = null;
+// Announcer system removed
 
-function saveAnnouncerSetting(enabled) {
-    window.announcerEnabled = !!enabled;
-    localStorage.setItem('wwe_announcer_enabled', window.announcerEnabled ? '1' : '0');
-    applyAnnouncerState();
-}
-
-function saveBettingSetting(enabled) {
-    window.bettingEnabled = !!enabled;
-    localStorage.setItem('wwe_betting_enabled', window.bettingEnabled ? '1' : '0');
-    applyBettingState();
-}
-
-function getPreferredVoice() {
-    const voices = speechSynthesis.getVoices() || [];
-    const saved = localStorage.getItem('wwe_announcer_voice') || '';
-    if (saved) {
-        const found = voices.find(v => v.name === saved || v.name.indexOf(saved) !== -1);
-        if (found) return found;
-    }
-    // prefer voices that look female or are English
-    const femaleMatch = voices.find(v => /female|zira|samantha|victoria|alloy|amy|kate|karen/i.test(v.name));
-    if (femaleMatch) return femaleMatch;
-    const enVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
-    return femaleMatch || enVoice || voices[0] || null;
-}
-
-function speakText(text, onEnd) {
-    if (!('speechSynthesis' in window)) { if (onEnd) onEnd(); return; }
-    const utter = new SpeechSynthesisUtterance(text);
-    const voice = getPreferredVoice();
-    if (voice) utter.voice = voice;
-    utter.rate = 1.0;
-    utter.onend = function() { if (onEnd) onEnd(); };
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utter);
-}
-
-function scheduleAnnouncerSpeak(text, onEnd, delay = 0) {
-    if (window.announcerTimeoutId) {
-        clearTimeout(window.announcerTimeoutId);
-        window.announcerTimeoutId = null;
-    }
-    window.announcerTimeoutId = setTimeout(() => {
-        window.announcerTimeoutId = null;
-        speakText(text, onEnd);
-    }, delay);
-}
-
-function stopAnnouncer() {
-    if (!('speechSynthesis' in window)) return;
-    speechSynthesis.cancel();
-    if (window.announcerTimeoutId) {
-        clearTimeout(window.announcerTimeoutId);
-        window.announcerTimeoutId = null;
-    }
-}
-
-function composeFighterAnnouncement(f) {
-    if (!f) return '';
-    const wins = Number(f.wins || 0);
-    const losses = Number(f.losses || 0);
-    const ko = Number(f.win_ko || 0);
-    const pin = Number(f.win_pinfall || 0);
-    const sub = Number(f.win_submission || 0);
-    const titles = Number(f.title_fights || 0);
-    let parts = [];
-    parts.push(`${f.name}.`);
-    parts.push(`Professional record: ${wins} wins, ${losses} losses.`);
-    const finishes = [];
-    if (ko) finishes.push(`${ko} by knockout`);
-    if (pin) finishes.push(`${pin} by pinfall`);
-    if (sub) finishes.push(`${sub} by submission`);
-    if (finishes.length) parts.push(`Notable finishes: ${finishes.join(', ')}.`);
-    parts.push(`Title fights: ${titles}.`);
-    return parts.join(' ');
-}
-
-function maybeAnnounceSlot(matchId, force) {
-    if (!window.announcerEnabled) return;
-    const slot1Input = document.getElementById(`${matchId}-slot1`)?.querySelector('.fighter-search-input');
-    const slot2Input = document.getElementById(`${matchId}-slot2`)?.querySelector('.fighter-search-input');
-    const id1 = slot1Input?.getAttribute('data-fighter-id') || '';
-    const id2 = slot2Input?.getAttribute('data-fighter-id') || '';
-    const f1 = fighters.find(x => x.id === id1) || (slot1Input && slot1Input.value ? { name: slot1Input.value, wins:0, losses:0, win_ko:0, win_pinfall:0, win_submission:0, title_fights:0 } : null);
-    const f2 = fighters.find(x => x.id === id2) || (slot2Input && slot2Input.value ? { name: slot2Input.value, wins:0, losses:0, win_ko:0, win_pinfall:0, win_submission:0, title_fights:0 } : null);
-
-    if (f1 && f2) {
-        scheduleAnnouncerSpeak(composeFighterAnnouncement(f1), function() {
-            window.announcerTimeoutId = setTimeout(() => {
-                window.announcerTimeoutId = null;
-                scheduleAnnouncerSpeak(composeFighterAnnouncement(f2));
-            }, 250);
-        });
-    } else if (f1) {
-        scheduleAnnouncerSpeak(composeFighterAnnouncement(f1));
-    } else if (f2) {
-        scheduleAnnouncerSpeak(composeFighterAnnouncement(f2));
-    }
-}
-
-window.announceEventRecap = function() {
-    if (!isShowCompleted(activeShowId)) {
-        customAlert('The show must be finalized first before recapping.', 'Show Not Finalized');
-        return;
-    }
-    
-    if (!window.announcerEnabled) {
-        customAlert('Announcer is disabled. Enable it in the controls above.', 'Announcer Off');
-        return;
-    }
-    
-    const activeShowSavedData = JSON.parse(localStorage.getItem(getActiveShowMatchesStorageKey() || '')) || {};
-    const allMatchRows = Array.from(document.querySelectorAll('.match-row'));
-    const matchEntries = allMatchRows.slice().reverse().map(row => {
-        const state = activeShowSavedData[row.id];
-        if (!state || !state.winnerName || !state.loserName || !state.methodName) return null;
-        return {
-            ...state,
-            tierName: state.tierName || row.parentNode.querySelector('.tier-title')?.textContent || 'Match'
-        };
-    }).filter(Boolean);
-    
-    if (!matchEntries.length) {
-        customAlert('No logged matches to recap. Log some results first!', 'No Matches');
-        return;
-    }
-    
-    const championshipsRegistry = JSON.parse(localStorage.getItem('wwe_titles')) || [];
-    const tierOrder = {
-        'early prelims': 0,
-        'preliminary card': 1,
-        'prelims': 1,
-        'main card': 2,
-        'co-main event': 3,
-        'co-main': 3,
-        'main event': 4
-    };
-
-    const normalizeTier = (name) => {
-        if (!name) return 'other';
-        const key = name.toString().trim().toLowerCase();
-        if (key.includes('early')) return 'early prelims';
-        if (key.includes('co-main')) return 'co-main event';
-        if (key.includes('main card')) return 'main card';
-        if (key.includes('prelim')) return key.includes('early') ? 'early prelims' : 'preliminary card';
-        if (key.includes('main event')) return 'main event';
-        return key;
-    };
-
-    const tierIntro = (tierName, count) => {
-        const normalized = normalizeTier(tierName);
-        switch (normalized) {
-            case 'early prelims':
-                return count > 1 ? 'In the early prelims, we have the following victories.' : 'In the early prelims, we have one victory.';
-            case 'preliminary card':
-                return count > 1 ? 'Next, on the preliminary card, here are the results.' : 'Next, on the preliminary card, here is the result.';
-            case 'main card':
-                return count > 1 ? 'Now on the main card, the winners are:' : 'Now on the main card, the winner is:';
-            case 'co-main event':
-                return 'As we move into the co-main event, the result is:';
-            case 'main event':
-                return 'Finally, in the main event, the winner is:';
-            default:
-                return `For ${tierName}, here are the results.`;
-        }
-    };
-
-    const grouped = {};
-    matchEntries.forEach(state => {
-        const tierKey = state.tierName || 'Match';
-        if (!grouped[tierKey]) grouped[tierKey] = [];
-        grouped[tierKey].push(state);
-    });
-
-    const orderedTiers = Object.keys(grouped).sort((a, b) => {
-        const orderA = tierOrder[normalizeTier(a)] ?? 99;
-        const orderB = tierOrder[normalizeTier(b)] ?? 99;
-        return orderB - orderA || a.localeCompare(b);
-    });
-
-    let recapParts = [];
-    recapParts.push('Ladies and gentlemen, here is your official event recap.');
-
-    orderedTiers.forEach(tierName => {
-        const matches = grouped[tierName];
-        recapParts.push(tierIntro(tierName, matches.length));
-        matches.forEach(state => {
-            const methodLabel = state.methodName.replace('PINFALL', 'by pinfall').replace('KO/TKO', 'by knockout').replace('SUBMISSION', 'by submission').toLowerCase();
-            let matchAnnounce = `${state.winnerName} defeated ${state.loserName} ${methodLabel}.`;
-            if (state.isTitle) {
-                const titleBelt = championshipsRegistry.find(t => t.id === state.titleId);
-                if (titleBelt) {
-                    const defenseCount = titleBelt.defenses || 0;
-                    matchAnnounce += ` ${state.winnerName} retains the ${titleBelt.name}${defenseCount ? ` with ${defenseCount} successful defense${defenseCount !== 1 ? 's' : ''}` : ''}.`;
-                } else if (state.titleName) {
-                    matchAnnounce += ` ${state.winnerName} is the new champion of the ${state.titleName}.`;
-                }
-            }
-            recapParts.push(matchAnnounce);
-        });
-    });
-
-    recapParts.push('Thank you for watching!');
-    const fullRecap = recapParts.join(' ');
-    speakText(fullRecap);
-};
+// Announcer recap function removed
 
 function populateVoiceList() {
     if (!('speechSynthesis' in window)) return;
@@ -886,42 +502,141 @@ function populateVoiceList() {
     };
 }
 
-function applyAnnouncerState() {
-    document.querySelectorAll('.announce-btn').forEach(btn => {
-        btn.disabled = !window.announcerEnabled;
-        btn.style.opacity = window.announcerEnabled ? '1' : '0.45';
-        btn.style.cursor = window.announcerEnabled ? 'pointer' : 'not-allowed';
-        btn.title = window.announcerEnabled ? '' : 'Announcer is disabled.';
-    });
-    const voiceSelect = document.getElementById('announcer-voice-select');
-    if (voiceSelect) voiceSelect.disabled = !window.announcerEnabled;
-}
+// applyAnnouncerState and applyBettingState removed
 
-function applyBettingState() {
-    const showCompleted = isShowCompleted(activeShowId);
-    document.querySelectorAll('.betting-panel').forEach(panel => {
-        panel.style.display = (!showCompleted && window.bettingEnabled) ? 'flex' : 'none';
+
+function buildShowSchedulerHeader() {
+    if (document.getElementById('schedulerControlRow')) return;
+    
+    const headerRow = document.createElement('div');
+    headerRow.id = 'schedulerControlRow';
+    headerRow.style.cssText = 'background:#f0f4f8; border:1px solid #cbd5e1; border-radius:8px; padding:12px; display:flex; flex-wrap:wrap; gap:12px; align-items:center;';
+    
+    const select = document.createElement('select');
+    select.id = 'activeShowSelector';
+    select.style.cssText = 'padding:6px 10px; border:1px solid #cbd5e1; border-radius:4px; background:white; font-weight:bold; cursor:pointer;';
+    futureShows.forEach(show => {
+        const option = document.createElement('option');
+        option.value = show.id;
+        option.textContent = show.name;
+        if (show.id === activeShowId) option.selected = true;
+        select.appendChild(option);
     });
-    const betControls = document.querySelectorAll('[id$="-bet-f1"], [id$="-bet-f2"], [id$="-bet-amount"], [id$="-potential-win"], button[onclick*="placeBet"], button[onclick*="clearBet"], button[onclick*="setBetAmount"], button[onclick*="selectBetFighter"]');
-    betControls.forEach(el => {
-        const enabled = window.bettingEnabled && !showCompleted;
-        el.disabled = !enabled;
-        if (el.style) {
-            el.style.opacity = enabled ? '1' : '0.35';
-            el.style.cursor = enabled ? 'pointer' : 'not-allowed';
+    select.addEventListener('change', function() {
+        window.switchActiveShowCard(this.value);
+    });
+    headerRow.appendChild(select);
+    
+    // Show name input field
+    const currentShow = futureShows.find(s => s.id === activeShowId);
+    const nameInput = document.createElement('input');
+    nameInput.id = 'showNameInput';
+    nameInput.type = 'text';
+    nameInput.value = currentShow ? currentShow.name : 'Unnamed Show';
+    nameInput.placeholder = 'Show name...';
+    nameInput.style.cssText = 'padding:6px 10px; border:1px solid #cbd5e1; border-radius:4px; background:white; font-weight:bold; cursor:text; min-width:150px;';
+    nameInput.addEventListener('blur', function() {
+        if (this.value.trim() && currentShow) {
+            currentShow.name = this.value.trim();
+            localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+            select.options[select.selectedIndex].textContent = currentShow.name;
+        } else if (currentShow) {
+            this.value = currentShow.name;
         }
     });
-    if (!window.bettingEnabled || showCompleted) {
-        activeBets = {};
-        if (window.placedBets) window.placedBets = {};
+    nameInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') this.blur();
+    });
+    headerRow.appendChild(nameInput);
+    
+    // Bulk add shows
+    const bulkDiv = document.createElement('div');
+    bulkDiv.style.cssText = 'display:flex; gap:8px; align-items:center;';
+    
+    const bulkLabel = document.createElement('label');
+    bulkLabel.textContent = 'Add:';
+    bulkLabel.style.cssText = 'font-weight:bold; font-size:0.9rem; color:#0f172a;';
+    bulkDiv.appendChild(bulkLabel);
+    
+    const bulkInput = document.createElement('input');
+    bulkInput.type = 'number';
+    bulkInput.min = '1';
+    bulkInput.value = '1';
+    bulkInput.placeholder = '1';
+    bulkInput.style.cssText = 'padding:6px 8px; border:1px solid #cbd5e1; border-radius:4px; background:white; width:50px; font-weight:bold; cursor:text;';
+    bulkDiv.appendChild(bulkInput);
+    
+    const bulkLabel2 = document.createElement('label');
+    bulkLabel2.textContent = 'shows';
+    bulkLabel2.style.cssText = 'font-weight:bold; font-size:0.9rem; color:#0f172a;';
+    bulkDiv.appendChild(bulkLabel2);
+    
+    const bulkBtn = document.createElement('button');
+    bulkBtn.textContent = 'BULK ADD';
+    bulkBtn.style.cssText = 'background:#06b6d4; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold;';
+    bulkBtn.addEventListener('click', function() {
+        const count = parseInt(bulkInput.value) || 1;
+        if (count < 1) {
+            customAlert('Please enter a number greater than 0.', 'Bulk Add');
+            return;
+        }
+        window.bulkAddFutureShows(count);
+    });
+    bulkDiv.appendChild(bulkBtn);
+    headerRow.appendChild(bulkDiv);
+    
+    const editBtn = document.createElement('button');
+    editBtn.textContent = 'EDIT';
+    editBtn.style.cssText = 'background:#4b5563; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold;';
+    editBtn.addEventListener('click', window.editCurrentShowName);
+    headerRow.appendChild(editBtn);
+    
+    const randomBtn = document.createElement('button');
+    randomBtn.textContent = 'RANDOMIZE ALL';
+    randomBtn.style.cssText = 'background:#7c3aed; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold;';
+    randomBtn.addEventListener('click', window.randomizeEntireShow);
+    headerRow.appendChild(randomBtn);
+    
+    const addBtn = document.createElement('button');
+    addBtn.textContent = 'ADD SHOW';
+    addBtn.style.cssText = 'background:#0284c7; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold;';
+    addBtn.addEventListener('click', window.createNewFutureShow);
+    headerRow.appendChild(addBtn);
+    
+    const delBtn = document.createElement('button');
+    delBtn.textContent = 'DELETE';
+    delBtn.style.cssText = 'background:#ef4444; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold;';
+    delBtn.addEventListener('click', window.deleteCurrentFutureShow);
+    headerRow.appendChild(delBtn);
+    
+    // Create a section wrapper and insert it at the top of main, after the archive panel
+    const section = document.createElement('section');
+    section.style.cssText = 'background-color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #bae6fd; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
+    section.appendChild(headerRow);
+    
+    const main = document.querySelector('main');
+    const firstSection = main.querySelector('section');
+    if (main && firstSection) {
+        firstSection.parentNode.insertBefore(section, firstSection.nextSibling);
     }
 }
 
+function insertCompletedShowNotice() {
+    if (!isShowCompleted(activeShowId)) return;
+    const headerRow = document.getElementById('schedulerControlRow');
+    if (!headerRow) return;
+    if (document.getElementById('completedShowNotice')) return;
+
+    const notice = document.createElement('div');
+    notice.id = 'completedShowNotice';
+    notice.style.cssText = 'background:#f1f5f9; border:1px solid #cbd5e1; border-radius:12px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:10px; color:#0f172a;';
+    notice.innerHTML = `<div style="display:flex; align-items:center; gap:10px; font-size:0.9rem;"><strong style="color:#094067;">This show is completed and archived.</strong><span style="color:#475569;">Use the top controls to restart or edit the show name.</span></div><button onclick="restartCurrentShow()" style="background:#ef4444; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.75rem; text-transform:uppercase;">Restart Event</button>`;
+    headerRow.parentNode.insertBefore(notice, headerRow.nextSibling);
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
     refreshFightersFromStorage();
     await hydrateFighterPhotos();
-    initBettingSystem();
     const tiers = ['mainEventContainer', 'coMainContainer', 'mainCardContainer', 'prelimsContainer', 'earlyPrelimsContainer'];
     tiers.forEach(id => {
         let box = document.getElementById(id);
@@ -934,9 +649,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     buildModalContainer();
     insertCompletedShowNotice();
     applyCompletedShowVisuals();
-    applyAnnouncerState();
-    applyBettingState();
-    updateBettingMoneyDisplay();
     updateFinalizeButtonState();
     updateRandomizerState();
     const eventNameInput = document.getElementById('eventNameInput');
@@ -1024,106 +736,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 });
 
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        refreshFightersFromStorage();
-        await hydrateFighterPhotos();
-        initBettingSystem();
-        const tiers = ['mainEventContainer', 'coMainContainer', 'mainCardContainer', 'prelimsContainer', 'earlyPrelimsContainer'];
-        console.debug('cards.js init: rendering tiers, activeShowId=', activeShowId, 'futureShowsCount=', futureShows.length);
-        tiers.forEach(id => {
-            let box = document.getElementById(id);
-            if (!box) {
-                console.debug('cards.js init: missing container', id);
-                return;
-            }
-            let num = (id.includes('mainEvent') || id.includes('coMain')) ? 1 : 4;
-            renderCardRows(box, num, id, id.includes('mainEvent'));
-            console.debug('cards.js init: rendered rows for', id, 'childCount=', box.children.length);
-        });
-        restoreCurrentCardDraft();
-        buildShowSchedulerHeader();
-        buildModalContainer();
-        insertCompletedShowNotice();
-        applyCompletedShowVisuals();
-        applyAnnouncerState();
-        applyBettingState();
-        updateBettingMoneyDisplay();
-        updateFinalizeButtonState();
-        updateRandomizerState();
-        const eventNameInput = document.getElementById('eventNameInput');
-        if (eventNameInput) {
-            eventNameInput.addEventListener('input', updateFinalizeButtonState);
-        }
-        // Populate available voices for announcer (may arrive asynchronously)
-        try {
-            populateVoiceList();
-            if ('onvoiceschanged' in speechSynthesis) {
-                speechSynthesis.onvoiceschanged = populateVoiceList;
-            }
-        } catch (e) {}
-        // LIVE WATCHER: Auto-clears title field blocks if a fighter name is ever deleted
-        document.addEventListener('input', (e) => {
-            if (e.target.classList.contains('fighter-search-input')) {
-                const matchRow = e.target.closest('.match-row');
-                if (matchRow) {
-                    const id = matchRow.id;
-                    const slot1Input = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input');
-                    const slot2Input = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input');
-                    const slotType = e.target.closest('.fighter-slot')?.id?.replace(`${id}-`, '') || '';
-                    const hasEmptyFighter = !slot1Input?.value.trim() || !slot2Input?.value.trim();
-                    const cb = document.getElementById(`${id}-title-check`);
-                    const titleInput = document.getElementById(`${id}-title-name-input`);
 
-                    if (!e.target.value.trim()) {
-                        const slot = e.target.closest('.fighter-slot');
-                        if (slot) {
-                            const avatar = slot.querySelector('.avatar-box');
-                            if (avatar) {
-                                avatar.innerHTML = '👤';
-                                avatar.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;";
-                            }
-                            e.target.setAttribute('data-fighter-id', '');
-                            const badge = slot.querySelector('.win-badge');
-                            const label = slot.querySelector('.win-method-label');
-                            if (badge) badge.style.display = 'none';
-                            if (label) label.style.display = 'none';
-
-                            if (matchRow) {
-                                const titleInput = document.getElementById(`${id}-title-name-input`);
-                                if (titleInput) titleInput.value = '';
-                                const cb2 = document.getElementById(`${id}-title-check`);
-                                if (cb2) cb2.checked = false;
-                                const rem = document.getElementById(`${id}-rematch-count`);
-                                if (rem) rem.value = 1;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    } catch (err) {
-        console.error('cards.js initialization failed:', err);
-        try { alert('Initialization error in cards.js: ' + (err && err.message ? err.message : String(err))); } catch (e) {}
-    }
-}
 
 // fighter schedule search UI removed; related functions omitted
 
 // suggestion helpers removed
-
-function insertCompletedShowNotice() {
-    if (!isShowCompleted(activeShowId)) return;
-    const headerRow = document.getElementById('schedulerControlRow');
-    if (!headerRow) return;
-    if (document.getElementById('completedShowNotice')) return;
-
-    const notice = document.createElement('div');
-    notice.id = 'completedShowNotice';
-    notice.style.cssText = 'background:#f1f5f9; border:1px solid #cbd5e1; border-radius:12px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:10px; color:#0f172a;';
-    notice.innerHTML = `<div style="display:flex; align-items:center; gap:10px; font-size:0.9rem;"><strong style="color:#094067;">This show is completed and archived.</strong><span style="color:#475569;">Use the top controls to restart or edit the show name.</span></div><button onclick="restartCurrentShow()" style="background:#ef4444; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.75rem; text-transform:uppercase;">Restart Event</button>`;
-    headerRow.parentNode.insertBefore(notice, headerRow.nextSibling);
-}
 
 window.switchActiveShowCard = function(showId) {
     localStorage.setItem('wwe_active_show_id', showId);
@@ -1243,6 +860,37 @@ window.editCurrentShowName = function() {
     }, 'Edit Show');
 };
 
+window.bulkAddFutureShows = function(count) {
+    if (!count || count < 1) {
+        customAlert('Please enter a number greater than 0.', 'Bulk Add Shows');
+        return;
+    }
+    
+    // Find the highest existing FIGHT CARD number
+    let maxCardNumber = 0;
+    futureShows.forEach(show => {
+        const match = show.name.match(/^FIGHT CARD\s*(\d+)$/i);
+        if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > maxCardNumber) maxCardNumber = num;
+        }
+    });
+    
+    const startNumber = maxCardNumber + 1;
+    const timestamp = Date.now();
+    
+    for (let i = 0; i < count; i++) {
+        const newId = `show-${timestamp}-${i}-${Math.floor(Math.random() * 9999)}`;
+        const cardNumber = startNumber + i;
+        const name = `FIGHT CARD ${cardNumber}`;
+        futureShows.push({ id: newId, name });
+    }
+    
+    localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+    customAlert(`Added ${count} show${count === 1 ? '' : 's'}! (FIGHT CARD ${startNumber} - ${startNumber + count - 1})`, 'Bulk Shows Added');
+    location.reload();
+};
+
 function renderCardRows(box, num, tierId, isMain) {
     for (let i = 1; i <= num; i++) {
         const uId = `${tierId}-m${i}`;
@@ -1348,7 +996,6 @@ function renderCardRows(box, num, tierId, isMain) {
                     </select>
                         <button id="${uId}-log-btn" onclick="logMatchResult('${uId}')" style="background:#ef4444; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Log Result</button>
                         <button id="${uId}-unlog-btn" onclick="unlogMatchResult('${uId}')" style="display:none; background:#d946ef; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Unlog Result</button>
-                        <button id="${uId}-announce-btn" class="announce-btn" onclick="maybeAnnounceSlot('${uId}', true)" style="background:#0b74ff; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Announce</button>
                 </div>
                                 <div style="width:30%; display:flex; justify-content:flex-end; gap:8px; font-size:0.7rem; font-weight:bold; color:#475569; align-items:center;">
                     <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="${uId}-title-check" onchange="toggleTitleFight('${uId}', this)"> 🏆 TITLE / BELT MATCH</label>
@@ -1358,32 +1005,6 @@ function renderCardRows(box, num, tierId, isMain) {
                     <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" onchange="toggleRematchCounter('${uId}', this)"> 🔄 REMATCH <input type="number" min="1" value="1" id="${uId}-rematch-count" style="display:none; width:32px; font-size:0.65rem; margin-left:2px;"></label>
                 </div>
 
-            </div>
-            <div id="${uId}-betting-panel" class="betting-panel" style="display:flex; flex-direction:column; gap:8px; width:100%; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:8px; margin:8px 0;">
-                <div style="display:flex; gap:6px; font-size:0.65rem; font-weight:bold;">
-                    <button onclick="selectBetFighter('${uId}', '1')" id="${uId}-bet-f1" style="flex:1; background:#f1f5f9; border:2px solid #cbd5e1; color:#475569; padding:4px; border-radius:4px; cursor:pointer; transition:0.2s; font-size:0.65rem;">BET F1</button>
-                    <button onclick="selectBetFighter('${uId}', '2')" id="${uId}-bet-f2" style="flex:1; background:#f1f5f9; border:2px solid #cbd5e1; color:#475569; padding:4px; border-radius:4px; cursor:pointer; transition:0.2s; font-size:0.65rem;">BET F2</button>
-                </div>
-                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:4px; font-size:0.6rem; font-weight:bold;">
-                    <button onclick="setBetAmount('${uId}', 'x2')" style="background:#ef4444; color:white; border:none; padding:4px; border-radius:3px; cursor:pointer; transition:0.2s; font-size:0.65rem;">x2</button>
-                    <button onclick="setBetAmount('${uId}', 'x5')" style="background:#ef4444; color:white; border:none; padding:4px; border-radius:3px; cursor:pointer; transition:0.2s; font-size:0.65rem;">x5</button>
-                    <button onclick="setBetAmount('${uId}', 'x10')" style="background:#ef4444; color:white; border:none; padding:4px; border-radius:3px; cursor:pointer; transition:0.2s; font-size:0.65rem;">x10</button>
-                    <button onclick="setBetAmount('${uId}', 'MAX')" style="background:#dc2626; color:white; border:none; padding:4px; border-radius:3px; cursor:pointer; font-weight:900; transition:0.2s; font-size:0.65rem;">MAX</button>
-                </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px;">
-                    <div style="background:white; border:1px solid #86efac; border-radius:4px; padding:6px; text-align:center;">
-                        <div style="font-size:0.6rem; color:#65a30d; font-weight:bold; text-transform:uppercase;">Bet</div>
-                        <div id="${uId}-bet-amount" style="font-size:0.9rem; font-weight:900; color:#16a34a;">$0</div>
-                    </div>
-                    <div style="background:white; border:1px solid #86efac; border-radius:4px; padding:6px; text-align:center;">
-                        <div style="font-size:0.6rem; color:#65a30d; font-weight:bold; text-transform:uppercase;">Win</div>
-                        <div id="${uId}-potential-win" style="font-size:0.9rem; font-weight:900; color:#16a34a;">$0</div>
-                    </div>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">
-                        <button onclick="placeBet('${uId}')" style="background:#10b981; border:none; color:white; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; text-transform:uppercase; font-size:0.65rem; transition:0.2s;">PLACE</button>
-                        <button onclick="clearBet('${uId}')" style="background:#f97316; border:none; color:white; padding:6px; border-radius:4px; cursor:pointer; font-weight:bold; text-transform:uppercase; font-size:0.65rem; transition:0.2s;">CLEAR</button>
-                    </div>
-                </div>
             </div>`;
         box.appendChild(matchRow);
         clearMatchWinnerBadges(uId);
