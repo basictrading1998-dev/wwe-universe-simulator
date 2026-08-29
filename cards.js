@@ -103,6 +103,7 @@ function saveFighters(list = fighters) {
     }
 }
 
+if (typeof openFighterPhotoDB !== 'function') {
 async function openFighterPhotoDB() {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open('wwe_fighter_photos', 1);
@@ -120,7 +121,9 @@ async function openFighterPhotoDB() {
         };
     });
 }
+}
 
+if (typeof storeFighterPhotoInIDB !== 'function') {
 async function storeFighterPhotoInIDB(key, photoData) {
     const db = await openFighterPhotoDB();
     return new Promise((resolve, reject) => {
@@ -131,7 +134,9 @@ async function storeFighterPhotoInIDB(key, photoData) {
         request.onerror = () => reject(request.error || new Error('Failed to save fighter photo in IndexedDB'));
     });
 }
+}
 
+if (typeof loadFighterPhotoFromIDB !== 'function') {
 async function loadFighterPhotoFromIDB(key) {
     if (!key) return null;
     try {
@@ -147,7 +152,9 @@ async function loadFighterPhotoFromIDB(key) {
         return null;
     }
 }
+}
 
+if (typeof hydrateFighterPhotos !== 'function') {
 async function hydrateFighterPhotos() {
     await Promise.all(fighters.map(async (fighter) => {
         if (!fighter.photo && fighter.photo_key) {
@@ -155,6 +162,7 @@ async function hydrateFighterPhotos() {
             if (photo) fighter.photo = photo;
         }
     }));
+}
 }
 
 // Prefer inline photo, otherwise check session cache (populated by roster.js) for photo_key
@@ -1307,7 +1315,7 @@ function renderCardRows(box, num, tierId, isMain) {
                     </div>
                 </div>
 
-                <div class="vs-badge" style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:20%;">
+                <div class="vs-badge" style="display:flex; flex-direction:row; align-items:center; justify-content:center; gap:8px; width:20%;">
                     <span style="font-size:0.75rem; font-weight:900; background:#64748b; color:white; padding:4px 10px; border-radius:4px; letter-spacing:0.05em; ${isMain?'background:#dc2626;':''}">VS</span>
                     <button onclick="suggestOpponent('${uId}')" style="background:#f0fdf4; border:1px solid #bbf7d0; color:#16a34a; padding:2px 6px; border-radius:4px; cursor:pointer; font-size:0.65rem; font-weight:bold; margin-top:6px;">💡 Suggest</button>
                 </div>
@@ -2438,7 +2446,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
             const rosterSearch = document.getElementById('rosterSearchInput');
             const searchQuery = rosterSearch ? rosterSearch.value : '';
             const hadFocus = document.activeElement === rosterSearch;
-            renderRosterGrid();
+            if (typeof scheduleRenderRosterGrid === 'function') scheduleRenderRosterGrid(); else try { renderRosterGrid(); } catch(e){}
             const rs = document.getElementById('rosterSearchInput');
             if (rs) {
                 rs.value = searchQuery;
@@ -2482,7 +2490,7 @@ window.deleteFighterPhoto = async function(fighterId, isRoster) {
         saveFighters(fighters);
         if (document.getElementById('photoCropDialog')) document.getElementById('photoCropDialog').remove();
         if (isRoster) {
-            renderRosterGrid();
+            if (typeof scheduleRenderRosterGrid === 'function') scheduleRenderRosterGrid(); else try { renderRosterGrid(); } catch(e){}
         } else {
             document.querySelectorAll(`.avatar-box`).forEach(av => {
                 const input = av.closest('.fighter-slot')?.querySelector('.fighter-search-input');

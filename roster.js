@@ -1576,7 +1576,7 @@ window.restoreLegacyRoster = async function() {
 
     if (restored > 0) {
         saveFighters(fighters);
-        renderRosterGrid();
+        scheduleRenderRosterGrid();
         alert(`Restored ${restored} missing fighter${restored === 1 ? '' : 's'} from your legacy roster.`);
     } else {
         alert('No additional fighters were found in legacy roster data. Your current roster already has everything loaded.');
@@ -1602,7 +1602,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     ensureFemaleRosterEntries();
     ensureFighterHistoryButtonStyles();
     refreshFighterNameDatalist();
-    renderRosterGrid();
+    scheduleRenderRosterGrid();
     setupSidebarFormEngine();
     setupLiveSearchEngine();
     window.addEventListener('beforeunload', () => saveFighters(fighters));
@@ -1672,11 +1672,11 @@ window.addEventListener('pageshow', () => {
             });
             await ensureFightersLoaded();
             console.debug('pageshow: fighters loaded (post-ensure), count=', fighters.length);
-            renderRosterGrid();
+            scheduleRenderRosterGrid();
             rehydrateRosterCompareInputs(40);
         } catch (e) {
             // fallback: try render with current in-memory fighters
-            try { renderRosterGrid(); rehydrateRosterCompareInputs(40); } catch (_) {}
+            try { scheduleRenderRosterGrid(); rehydrateRosterCompareInputs(40); } catch (_) {}
         }
     })();
 });
@@ -1700,7 +1700,7 @@ function renderRosterGrid() {
     if (!window._fighterPhotoCacheLoaded) {
         if (typeof preloadPhotoCache === 'function') {
             preloadPhotoCache().then(() => {
-                try { renderRosterGrid(); } catch (e) {}
+                try { scheduleRenderRosterGrid(); } catch (e) {}
             });
             return;
         }
@@ -1713,7 +1713,7 @@ function renderRosterGrid() {
     const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
     if (missingPhotos) {
         hydrateFighterPhotos().then(loaded => {
-            if (loaded) renderRosterGrid();
+            if (loaded) scheduleRenderRosterGrid();
         }).catch(() => {
             // ignore hydration failures and render any available images
         });
@@ -1772,7 +1772,7 @@ function renderRosterGrid() {
             <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a;">${f.name}</h4>
             <span style="font-size: 0.65rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 2px;">${f.division} • ${f.gender}</span>
             
-            <div style="margin-top: 2px; display: flex; flex-direction: column; gap: 2px; align-items: center;">${goldBadgesHtml}</div>
+            <div style="margin-top: 2px; display: flex; flex-direction: row; gap: 6px; align-items: center; justify-content: center;">${goldBadgesHtml}</div>
 
             <div style="margin-top:8px; display:flex; flex-direction:column; align-items:center; width:100%; box-sizing:border-box;">
                 <div style="display:flex; gap:8px; align-items:center;">
@@ -1829,6 +1829,16 @@ function renderRosterGrid() {
         }, 50);
     }
 }
+
+// Debounced scheduler to avoid rapid consecutive renders which cause visual glitches
+window._renderRosterTimer = window._renderRosterTimer || null;
+window.scheduleRenderRosterGrid = function(delay = 50) {
+    if (window._renderRosterTimer) clearTimeout(window._renderRosterTimer);
+    window._renderRosterTimer = setTimeout(() => {
+                try { if (typeof renderRosterGrid === 'function') renderRosterGrid(); } catch (e) { /* ignore */ }
+        window._renderRosterTimer = null;
+    }, delay);
+};
 
     // Harvest any existing in-DOM data-URL portraits synchronously into memory/cache so
     // they survive the imminent DOM replace. IDB writes are queued in the background.
@@ -1968,7 +1978,7 @@ function renderRosterGridWithoutReload() {
             <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a;">${f.name}</h4>
             <span style="font-size: 0.65rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 2px;">${f.division} • ${f.gender}</span>
             
-            <div style="margin-top: 2px; display: flex; flex-direction: column; gap: 2px; align-items: center;">${goldBadgesHtml}</div>
+            <div style="margin-top: 2px; display: flex; flex-direction: row; gap: 6px; align-items: center; justify-content: center;">${goldBadgesHtml}</div>
 
             <div style="margin-top:8px; display:flex; flex-direction:column; align-items:center; width:100%; box-sizing:border-box;">
                 <div style="display:flex; gap:8px; align-items:center;">
@@ -2329,7 +2339,7 @@ function setupSidebarFormEngine() {
             if (divisionInput) divisionInput.value = 'HeavyWeight';
             
             alert(`Contract Signed! "${newFighter.name}" has officially been added back to your Universe roster!`);
-            renderRosterGrid();
+            scheduleRenderRosterGrid();
         };
     }
 }
@@ -2412,7 +2422,7 @@ window.importBulkSuperstars = async function() {
     assignAutoDivision(fighters);
     saveFighters(fighters);
     refreshFighterNameDatalist();
-    renderRosterGrid();
+    scheduleRenderRosterGrid();
     textarea.value = '';
     alert(`${added} ${added === 1 ? 'superstar' : 'superstars'} imported successfully.`);
 };
@@ -2465,7 +2475,7 @@ window.syncWWE2K24Roster = async function() {
     if (added || updated) {
         saveFighters(fighters);
         refreshFighterNameDatalist();
-        renderRosterGrid();
+        scheduleRenderRosterGrid();
     }
 
     alert(`WWE 2K24 sync complete. Added ${added} new fighter${added === 1 ? '' : 's'} and updated ${updated} existing fighter${updated === 1 ? '' : 's'}.`);
@@ -2644,7 +2654,7 @@ window.saveInlineEdit = function(id) {
 
         // Use the central save method to ensure normalization and auto-division mapping
         saveFighters(fighters);
-        renderRosterGrid();
+        scheduleRenderRosterGrid();
         refreshFighterNameDatalist();
     }
 };
@@ -2685,7 +2695,7 @@ window.fireSuperstar = function(id) {
     if (confirm("Release this competitor from their contract? This will remove them completely from your Universe roster!")) {
         fighters = fighters.filter(f => f.id !== id);
         saveFighters(fighters);
-        renderRosterGrid();
+        scheduleRenderRosterGrid();
     }
 };
 
@@ -2977,7 +2987,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
         const hadFocus = document.activeElement === rosterSearch;
         if (isRoster) {
             await hydrateFighterPhotos();
-            renderRosterGrid();
+            scheduleRenderRosterGrid();
             const rs = document.getElementById('rosterSearchInput');
             if (rs) {
                 rs.value = searchQuery;
@@ -3026,7 +3036,7 @@ window.deleteFighterPhoto = async function(fighterId, isRoster) {
     }
     
     if (isRoster) {
-        renderRosterGrid();
+        if (typeof scheduleRenderRosterGrid === 'function') scheduleRenderRosterGrid(); else try { renderRosterGrid(); } catch(e){}
     }
 };
 
