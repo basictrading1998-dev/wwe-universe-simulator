@@ -1588,6 +1588,8 @@ window.addEventListener('pageshow', () => {
     // When returning to the page, reload roster from storage then render and restore inputs
     (async () => {
         try {
+            // ensure photo cache is preloaded so avatar rendering can use it immediately
+            if (typeof preloadPhotoCache === 'function') await preloadPhotoCache();
             console.debug('pageshow: loading fighters from storage, keys:', {
                 fightersKey: localStorage.getItem('wwe_fighters') ? 'present' : 'missing',
                 compareA: localStorage.getItem('wwe_roster_compare_fighter_a') || null,
@@ -1609,6 +1611,10 @@ window.addEventListener('visibilitychange', () => {
     if (!document.hidden) rehydrateRosterCompareInputs(60);
 });
 window.addEventListener('focus', () => rehydrateRosterCompareInputs(30));
+
+// Also refresh the cache when the page regains focus/visibility so later renders use cached blobs
+window.addEventListener('focus', async () => { if (typeof preloadPhotoCache === 'function') await preloadPhotoCache(); });
+window.addEventListener('visibilitychange', async () => { if (!document.hidden && typeof preloadPhotoCache === 'function') await preloadPhotoCache(); });
 
 function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
