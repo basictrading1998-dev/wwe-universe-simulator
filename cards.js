@@ -1795,6 +1795,17 @@ window.uploadFighterPhotoFromCard = function(fighterId) {
     input.click();
 };
 
+// Backward-compatible alias for older card code and cached browser pages.
+window.loadFighterPhotoFromCard = function(fighterId) {
+    if (!fighterId && fighterId !== 0) return;
+    const fighter = fighters.find(f => f && f.id === fighterId) || getFighterByIdOrName(String(fighterId));
+    if (fighter && fighter.photo) {
+        openPhotoCropDialog(fighter.photo, fighter.id, false);
+        return;
+    }
+    window.uploadFighterPhotoFromCard(fighterId);
+};
+
 window.openPhotoCropDialog = function(imageSrc, fighterId, isRoster) {
     if (document.getElementById('photoCropDialog')) {
         document.getElementById('photoCropDialog').remove();
