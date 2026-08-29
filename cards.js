@@ -154,11 +154,41 @@ async function loadFighterPhotoFromIDB(key) {
 }
 }
 
+const wwe2k24PortraitMap = (typeof window !== 'undefined' && window.wwe2k24PortraitMap) ? window.wwe2k24PortraitMap : {};
+const wwe2k24PortraitMapNormalized = (typeof window !== 'undefined' && window.wwe2k24PortraitMapNormalized) ? window.wwe2k24PortraitMapNormalized : wwe2k24PortraitMap;
+
+function normalizeLookupKey(value) {
+    return (value || '').toString()
+        .normalize('NFC')
+        .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
+        .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+        .replace(/[\u2010-\u2015]/g, '-')
+        .replace(/\u00A0/g, ' ')
+        .replace(/\s*['’]\s*(?:[0-9]{2}|[0-9]{4})\b/g, '')
+        .replace(/\s*["“”][^"“”]*["“”]\s*/g, ' ')
+        .replace(/\b(?:64|32)-Bit\b/gi, '')
+        .replace(/\b(?:PS[ -]?5|PS[ -]?4|Xbox(?:\s*One)?|Switch|Steam|PC|64-Bit|32-Bit|GameCube|Dreamcast|N64|Genesis)\b/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
 const hydrateFighterPhotos = async function() {
     await Promise.all(fighters.map(async (fighter) => {
-        if (!fighter.photo && fighter.photo_key) {
-            // Skip photo DB hydration when the browser photo store is empty or unavailable.
-            // This avoids startup crashes during initial page load.
+        if (!fighter || typeof fighter !== 'object') return;
+        if (fighter.photo && fighter.photo.trim()) return;
+
+        const fighterName = fighter.name || '';
+        const lookupKey = normalizeLookupKey(fighterName);
+        const portraitUrl = (wwe2k24PortraitMapNormalized && wwe2k24PortraitMapNormalized[lookupKey]) ||
+            (wwe2k24PortraitMap && wwe2k24PortraitMap[lookupKey]) ||
+            (typeof window !== 'undefined' && window.wwe2k24PortraitMapNormalized && window.wwe2k24PortraitMapNormalized[lookupKey]) ||
+            (typeof window !== 'undefined' && window.wwe2k24PortraitMap && window.wwe2k24PortraitMap[lookupKey]) ||
+            '';
+
+        if (portraitUrl) {
+            fighter.photo = portraitUrl;
+            fighter.photo_key = fighter.photo_key || `wwe2k24-${lookupKey}`;
         }
     }));
 };
