@@ -1670,38 +1670,7 @@ function renderRosterGrid() {
 
     ensureMissingPortraits(fighters);
 
-    // Harvest any existing in-DOM data-URL portraits (e.g., from BFCache or transient DOM) so
-    // they are persisted to IndexedDB and won't be lost when we replace the grid below.
-    (async () => {
-        try {
-            const imgs = Array.from(document.querySelectorAll('#rosterGrid [id^="fighter-card-"] img'));
-            if (imgs.length) {
-                for (const img of imgs) {
-                    try {
-                        const card = img.closest('[id^="fighter-card-"]');
-                        if (!card) continue;
-                        const idMatch = String(card.id || '').replace('fighter-card-', '');
-                        if (!idMatch) continue;
-                        const fighter = fighters.find(ff => String(ff.id) === String(idMatch));
-                        const src = img.src || '';
-                        if (!fighter || !src || !src.startsWith('data:image')) continue;
-                        // If fighter already has a persistent photo or photo_key, skip
-                        if ((fighter.photo && fighter.photo.startsWith && fighter.photo.startsWith('data:image')) || fighter.photo_key) continue;
-                        const key = fighter.photo_key || `fighter-photo-${fighter.id}`;
-                        await storeFighterPhotoInIDB(key, src);
-                        fighter.photo_key = key;
-                        // keep fighter.photo in-memory so UI stays visible until any later hydration
-                        fighter.photo = src;
-                        window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
-                        window._fighterPhotoCache[String(key)] = src;
-                    } catch (e) {
-                        /* non-fatal */
-                    }
-                }
-                try { saveFighters(fighters); } catch (e) { /* ignore */ }
-            }
-        } catch (e) { /* ignore */ }
-    })();
+    
 
     const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
     if (missingPhotos) {
@@ -1823,6 +1792,39 @@ function renderRosterGrid() {
     }
 }
 
+    // Harvest any existing in-DOM data-URL portraits synchronously into memory/cache so
+    // they survive the imminent DOM replace. IDB writes are queued in the background.
+    try {
+        const imgs = Array.from(document.querySelectorAll('#rosterGrid [id^="fighter-card-"] img'));
+        const pending = [];
+        if (imgs.length) {
+            for (const img of imgs) {
+                try {
+                    const card = img.closest('[id^="fighter-card-"]');
+                    if (!card) continue;
+                    const idMatch = String(card.id || '').replace('fighter-card-', '');
+                    if (!idMatch) continue;
+                    const fighter = fighters.find(ff => String(ff.id) === String(idMatch));
+                    const src = img.src || '';
+                    if (!fighter || !src || !src.startsWith('data:image')) continue;
+                    if ((fighter.photo && fighter.photo.startsWith && fighter.photo.startsWith('data:image')) || fighter.photo_key) continue;
+                    const key = fighter.photo_key || `fighter-photo-${fighter.id}`;
+                    // immediately keep photo in-memory and prime session cache so render uses it
+                    fighter.photo_key = fighter.photo_key || key;
+                    fighter.photo = src;
+                    window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
+                    window._fighterPhotoCache[String(key)] = src;
+                    // queue IDB persist in background (do not await here)
+                    if (typeof storeFighterPhotoInIDB === 'function') pending.push(storeFighterPhotoInIDB(key, src).catch(() => {}));
+                } catch (e) {
+                    // non-fatal
+                }
+            }
+            // persist fighters and let background IDB writes proceed
+            try { saveFighters(fighters); } catch (e) { /* ignore */ }
+            if (pending.length) Promise.allSettled(pending).then(() => { try { saveFighters(fighters); } catch (e) {} });
+        }
+    } catch (e) { /* ignore */ }
 function renderRosterGridWithoutReload() {
     const grid = document.getElementById('rosterGrid');
     const countBadge = document.getElementById('rosterCount');
@@ -1839,10 +1841,11 @@ function renderRosterGridWithoutReload() {
 
     ensureMissingPortraits(fighters);
 
-    // Preserve any existing data-URL avatars that are currently in the DOM
-    (async () => {
+    
+        // Preserve any existing data-URL avatars that are currently in the DOM (sync into memory/cache)
         try {
             const imgs = Array.from(document.querySelectorAll('#rosterGrid [id^="fighter-card-"] img'));
+            const pending = [];
             if (imgs.length) {
                 for (const img of imgs) {
                     try {
@@ -1855,17 +1858,17 @@ function renderRosterGridWithoutReload() {
                         if (!fighter || !src || !src.startsWith('data:image')) continue;
                         if ((fighter.photo && fighter.photo.startsWith && fighter.photo.startsWith('data:image')) || fighter.photo_key) continue;
                         const key = fighter.photo_key || `fighter-photo-${fighter.id}`;
-                        await storeFighterPhotoInIDB(key, src);
-                        fighter.photo_key = key;
+                        fighter.photo_key = fighter.photo_key || key;
                         fighter.photo = src;
                         window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
                         window._fighterPhotoCache[String(key)] = src;
+                        if (typeof storeFighterPhotoInIDB === 'function') pending.push(storeFighterPhotoInIDB(key, src).catch(() => {}));
                     } catch (e) { /* non-fatal */ }
                 }
                 try { saveFighters(fighters); } catch (e) { /* ignore */ }
+                if (pending.length) Promise.allSettled(pending).then(() => { try { saveFighters(fighters); } catch (e) {} });
             }
         } catch (e) { /* ignore */ }
-    })();
 
     const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
     if (missingPhotos) {
