@@ -1840,6 +1840,12 @@ window.scheduleRenderRosterGrid = function(delay = 50) {
     }, delay);
 };
 
+// Backwards-compatible alias used by other modules (e.g., app.js)
+window.renderRoster = function() {
+    if (typeof scheduleRenderRosterGrid === 'function') return scheduleRenderRosterGrid();
+    try { if (typeof renderRosterGrid === 'function') return renderRosterGrid(); } catch (e) {}
+};
+
     // Harvest any existing in-DOM data-URL portraits synchronously into memory/cache so
     // they survive the imminent DOM replace. IDB writes are queued in the background.
     try {
@@ -2068,18 +2074,27 @@ function buildMasterRankingsPanel() {
 
     filterPanel.innerHTML = `
         <span style="font-size: 0.75rem; font-weight: 800; color: #0284c7; text-transform: uppercase; letter-spacing: 0.05em;">📊 Roster Rankings:</span>
-        <button onclick="sortRosterByMetric('alphabetical')" style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #475569; cursor: pointer;">🔤 A-Z</button>
-        <button onclick="sortRosterByMetric('wins')" style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #16a34a; cursor: pointer;">👑 Most Wins</button>
-        <button onclick="sortRosterByMetric('losses')" style="background: #fff5f5; border: 1px solid #fecaca; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #dc2626; cursor: pointer;">📉 Most Losses</button>
-        <button onclick="sortRosterByMetric('fights')" style="background: #fef3c7; border: 1px solid #fde68a; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #b45309; cursor: pointer;">🥊 Most Fights</button>
-        <button onclick="sortRosterByMetric('win_pinfall')" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">📌 Pinfall Leaders</button>
-        <button onclick="sortRosterByMetric('win_ko')" style="background: #fff7ed; border: 1px solid #ffedd5; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #ea580c; cursor: pointer;">💥 KO Masters</button>
-        <button onclick="sortRosterByMetric('win_submission')" style="background: #fbf7ff; border: 1px solid #f3e8ff; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #7c3aed; cursor: pointer;">🥋 Submission Experts</button>
-        <button onclick="sortRosterByMetric('win_rate')" style="background: #ecfeff; border: 1px solid #cffafe; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">📈 Win Rate</button>
-        <button onclick="sortRosterByMetric('title_fights')" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🏆 Most Title Fights</button>
-        <button onclick="sortRosterByMetric('defenses')" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🛡️ Most Title Defenses</button>
-        <button onclick="sortRosterByMetric('current_belts')" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🎖️ Most Current Belts</button>
+        <button type="button" data-metric="alphabetical" style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #475569; cursor: pointer;">🔤 A-Z</button>
+        <button type="button" data-metric="wins" style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #16a34a; cursor: pointer;">👑 Most Wins</button>
+        <button type="button" data-metric="losses" style="background: #fff5f5; border: 1px solid #fecaca; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #dc2626; cursor: pointer;">📉 Most Losses</button>
+        <button type="button" data-metric="fights" style="background: #fef3c7; border: 1px solid #fde68a; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #b45309; cursor: pointer;">🥊 Most Fights</button>
+        <button type="button" data-metric="win_pinfall" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">📌 Pinfall Leaders</button>
+        <button type="button" data-metric="win_ko" style="background: #fff7ed; border: 1px solid #ffedd5; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #ea580c; cursor: pointer;">💥 KO Masters</button>
+        <button type="button" data-metric="win_submission" style="background: #fbf7ff; border: 1px solid #f3e8ff; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #7c3aed; cursor: pointer;">🥋 Submission Experts</button>
+        <button type="button" data-metric="win_rate" style="background: #ecfeff; border: 1px solid #cffafe; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">📈 Win Rate</button>
+        <button type="button" data-metric="title_fights" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🏆 Most Title Fights</button>
+        <button type="button" data-metric="defenses" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🛡️ Most Title Defenses</button>
+        <button type="button" data-metric="current_belts" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🎖️ Most Current Belts</button>
     `;
+
+    // Make clicks responsive: use event delegation and pointerdown for immediacy
+    filterPanel.addEventListener('pointerdown', function(ev) {
+        const btn = ev.target.closest && ev.target.closest('button[data-metric]');
+        if (!btn) return;
+        ev.preventDefault();
+        const metric = btn.getAttribute('data-metric');
+        try { sortRosterByMetric(metric); } catch (e) { console.error('sortRosterByMetric failed', e); }
+    });
 
     gridElement.parentNode.insertBefore(filterPanel, gridElement);
 }
@@ -2688,6 +2703,13 @@ window.sortRosterByMetric = function(metricType) {
     } else {
         fighters.sort((a, b) => (b[metricType] || 0) - (a[metricType] || 0));
     }
+    // Cancel any pending debounced render to avoid it overwriting this immediate sorted state
+    try {
+        if (window._renderRosterTimer) {
+            clearTimeout(window._renderRosterTimer);
+            window._renderRosterTimer = null;
+        }
+    } catch (e) {}
     renderRosterGridWithoutReload();
 };
 
