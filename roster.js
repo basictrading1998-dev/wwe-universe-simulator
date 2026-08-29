@@ -805,6 +805,8 @@ function forceHydrateAllPhotos(list = fighters) {
     let restored = 0;
     list.forEach(f => {
         if (!f || typeof f !== 'object') return;
+        // If a valid custom photo is already assigned (in-memory, cached, or DOM), do not overwrite
+        if (hasValidAssignedPhoto(f)) return;
         const currentPhoto = typeof f.photo === 'string' ? f.photo.trim() : '';
         if (currentPhoto && !isGeneratedFallbackPortrait(currentPhoto)) return;
 
@@ -920,6 +922,8 @@ function purgeGeneratedPlaceholderPhotos(list = fighters) {
         const photo = typeof f.photo === 'string' ? f.photo.trim() : '';
         if (!photo || !isGeneratedFallbackPortrait(photo)) return;
         const mapped = getWWE2K24Portrait(f.name);
+        // Do not overwrite if the fighter already has a valid custom photo assigned (in-memory or DOM)
+        if (hasValidAssignedPhoto(f)) return;
         if (mapped) {
             f.photo = mapped;
             updated++;
@@ -980,8 +984,8 @@ function ensureMissingPortraits(list = fighters) {
     let changed = false;
     list.forEach(f => {
         if (!f || typeof f !== 'object') return;
-        const hasPhoto = typeof f.photo === 'string' && f.photo.trim().length > 0;
-        if (hasPhoto) return;
+        // If a valid custom photo is already assigned (either in-memory, cached, or in the DOM), do not overwrite
+        if (hasValidAssignedPhoto(f)) return;
         let portrait = '';
         try {
             portrait = getWWE2K24Portrait(f.name) || buildFallbackPortraitDataUrl(f.name, f.gender || 'male');
@@ -1020,6 +1024,39 @@ function sanitizeStoredPhoto(photo, name) {
         return mapped || '';
     }
     return value;
+}
+
+// Returns true if the photo value looks like a real user-provided image (data URL, http, blob)
+function isCustomPhotoValue(photo) {
+    if (typeof photo !== 'string') return false;
+    const v = photo.trim();
+    if (!v) return false;
+    if (isGeneratedFallbackPortrait(v)) return false;
+    return v.startsWith('data:image/') || v.startsWith('http://') || v.startsWith('https://') || v.startsWith('blob:');
+}
+
+function domHasAssignedPhoto(fighter) {
+    try {
+        if (!fighter || !fighter.id) return false;
+        const el = document.getElementById(`fighter-card-${fighter.id}`);
+        if (!el) return false;
+        const img = el.querySelector('img');
+        if (!img || !img.src) return false;
+        const src = String(img.src || '').trim();
+        if (!src) return false;
+        if (isGeneratedFallbackPortrait(src)) return false;
+        return src.startsWith('data:image/') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('blob:');
+    } catch (e) {
+        return false;
+    }
+}
+
+function hasValidAssignedPhoto(fighter) {
+    if (!fighter) return false;
+    if (isCustomPhotoValue(fighter.photo)) return true;
+    if (isCustomPhotoValue(fighter.photo_key && window._fighterPhotoCache && window._fighterPhotoCache[String(fighter.photo_key)] ? window._fighterPhotoCache[String(fighter.photo_key)] : '')) return true;
+    if (domHasAssignedPhoto(fighter)) return true;
+    return false;
 }
 
 function getMappedDivisionForName(name) {
@@ -1202,7 +1239,8 @@ async function persistInlinePhotosToIDB() {
 async function hydrateFighterPhotos() {
     let loadedAny = false;
     await Promise.all(fighters.map(async f => {
-        if (!f.photo && f.photo_key) {
+        // Only hydrate from IDB when there is no valid assigned photo (in-memory or DOM)
+        if (!hasValidAssignedPhoto(f) && f.photo_key) {
             const photo = await loadFighterPhotoFromIDB(f.photo_key);
             if (photo) {
                 f.photo = photo;
@@ -1251,7 +1289,7 @@ function recoverPortraitsFromLocalStorage() {
         const matchById = candidate.id ? fighters.find(f => f.id === candidate.id) : null;
         const matchByName = candidate.name ? fighters.find(f => f.name.toLowerCase() === candidate.name.toLowerCase()) : null;
         const fighter = matchById || matchByName;
-        if (fighter && shouldPreferRecoveredPhoto(fighter.photo, candidate.photo)) {
+        if (fighter && !hasValidAssignedPhoto(fighter) && shouldPreferRecoveredPhoto(fighter.photo, candidate.photo)) {
             fighter.photo = candidate.photo;
             if (candidate.photo_key) fighter.photo_key = candidate.photo_key;
             restored++;
@@ -1289,7 +1327,7 @@ async function recoverPortraitsFromIndexedDB() {
                 fighters.forEach(fighter => {
                     const photoKey = fighter.photo_key || `fighter-photo-${fighter.id}`;
                     const matches = valuesByKey.get(String(photoKey));
-                    if (matches && shouldPreferRecoveredPhoto(fighter.photo, matches)) {
+                    if (matches && !hasValidAssignedPhoto(fighter) && shouldPreferRecoveredPhoto(fighter.photo, matches)) {
                         fighter.photo = matches;
                         fighter.photo_key = photoKey;
                         restored++;
