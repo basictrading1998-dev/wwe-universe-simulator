@@ -1030,11 +1030,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         await hydrateFighterPhotos();
         initBettingSystem();
         const tiers = ['mainEventContainer', 'coMainContainer', 'mainCardContainer', 'prelimsContainer', 'earlyPrelimsContainer'];
+        console.debug('cards.js init: rendering tiers, activeShowId=', activeShowId, 'futureShowsCount=', futureShows.length);
         tiers.forEach(id => {
             let box = document.getElementById(id);
-            if (!box) return;
+            if (!box) {
+                console.debug('cards.js init: missing container', id);
+                return;
+            }
             let num = (id.includes('mainEvent') || id.includes('coMain')) ? 1 : 4;
             renderCardRows(box, num, id, id.includes('mainEvent'));
+            console.debug('cards.js init: rendered rows for', id, 'childCount=', box.children.length);
         });
         restoreCurrentCardDraft();
         buildShowSchedulerHeader();
@@ -1101,7 +1106,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('cards.js initialization failed:', err);
         try { alert('Initialization error in cards.js: ' + (err && err.message ? err.message : String(err))); } catch (e) {}
     }
-});
+
         const savedState = JSON.parse(localStorage.getItem(storageKey)) || {};
 
         Object.values(savedState).forEach(state => {
