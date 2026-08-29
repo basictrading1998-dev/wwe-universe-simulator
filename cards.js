@@ -187,6 +187,17 @@ if (typeof window !== 'undefined') {
 }
 
 const hydrateFighterPhotos = async function() {
+    await Promise.all(fighters.map(async (fighter) => {
+        if (!fighter || typeof fighter !== 'object' || fighter.photo || !fighter.photo_key) return;
+        if (typeof loadFighterPhotoFromIDB !== 'function') return;
+        const storedPhoto = await loadFighterPhotoFromIDB(fighter.photo_key);
+        if (storedPhoto) {
+            fighter.photo = storedPhoto;
+            window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
+            window._fighterPhotoCache[String(fighter.photo_key)] = storedPhoto;
+        }
+    }));
+
     if (typeof window !== 'undefined' && typeof window.ensureMissingPortraits === 'function') {
         window.ensureMissingPortraits(fighters);
     }
@@ -203,7 +214,7 @@ const hydrateFighterPhotos = async function() {
         const lookupKey = normalizeLookupKey(fighterName);
         let portraitUrl = '';
 
-        if (typeof window !== 'undefined' && typeof window.getWWE2K24Portrait === 'function') {
+        if (!portraitUrl && typeof window !== 'undefined' && typeof window.getWWE2K24Portrait === 'function') {
             portraitUrl = window.getWWE2K24Portrait(fighterName);
         }
         if (!portraitUrl && typeof window !== 'undefined' && window.wwe2k24PortraitMapNormalized) {

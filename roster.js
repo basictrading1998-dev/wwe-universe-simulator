@@ -1375,7 +1375,7 @@ function migrateLegacyFighters() {
 function loadFighters() {
     migrateLegacyFighters();
     const stored = localStorage.getItem('wwe_fighters');
-    if (!stored) return [];
+    if (!stored) return hardcodedRosterBackup.map(normalizeFighterRecord).filter(Boolean);
     try {
         const parsed = JSON.parse(stored);
         if (!Array.isArray(parsed)) return [];
@@ -1384,6 +1384,9 @@ function loadFighters() {
         return [];
     }
 }
+
+// Paste the array from a downloaded roster backup here to restore it without browser storage.
+const hardcodedRosterBackup = [];
 
 async function loadAndHydrateFighters() {
     fighters = loadFighters();
@@ -1518,6 +1521,33 @@ window.downloadAppBackup = function() {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `wwe-universe-backup-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+};
+
+window.downloadRosterBackup = async function() {
+    let roster = [];
+    try {
+        const stored = localStorage.getItem('wwe_fighters');
+        const parsed = stored ? JSON.parse(stored) : fighters;
+        if (!Array.isArray(parsed)) throw new Error('Roster data is not an array');
+        roster = parsed.map(normalizeFighterRecord).filter(Boolean);
+        await Promise.all(roster.map(async fighter => {
+            if (fighter.photo || !fighter.photo_key) return;
+            const storedPhoto = await loadFighterPhotoFromIDB(fighter.photo_key);
+            if (storedPhoto) fighter.photo = storedPhoto;
+        }));
+    } catch (err) {
+        alert('Could not read the roster data for export.');
+        return;
+    }
+
+    const blob = new Blob([JSON.stringify(roster, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `wwe-roster-backup-${Date.now()}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
