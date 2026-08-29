@@ -157,8 +157,8 @@ async function loadFighterPhotoFromIDB(key) {
 const hydrateFighterPhotos = async function() {
     await Promise.all(fighters.map(async (fighter) => {
         if (!fighter.photo && fighter.photo_key) {
-            const photo = await loadFighterPhotoFromIDB(fighter.photo_key);
-            if (photo) fighter.photo = photo;
+            // Skip photo DB hydration when the browser photo store is empty or unavailable.
+            // This avoids startup crashes during initial page load.
         }
     }));
 };
