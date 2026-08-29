@@ -1106,44 +1106,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('cards.js initialization failed:', err);
         try { alert('Initialization error in cards.js: ' + (err && err.message ? err.message : String(err))); } catch (e) {}
     }
-
-        const savedState = JSON.parse(localStorage.getItem(storageKey)) || {};
-
-        Object.values(savedState).forEach(state => {
-            if (!state || typeof state !== 'object') return;
-            const slot1Name = String(state.slot1Name || '').trim().toLowerCase();
-            const slot2Name = String(state.slot2Name || '').trim().toLowerCase();
-            const slot1Id = String(state.slot1Id || '').trim();
-            const slot2Id = String(state.slot2Id || '').trim();
-            const matchesFighter = slot1Name === normalized || slot2Name === normalized || slot1Id === normalized || slot2Id === normalized;
-            if (!matchesFighter) return;
-
-            const opponent = slot1Name === normalized ? state.slot2Name : state.slot1Name;
-            const tier = state.tierName || state.matchTier || state.title || '';
-            showMatches.push({ opponent: opponent || 'TBD', tier: tier || 'Unknown tier' });
-        });
-
-        if (show.id === activeShowId) {
-            document.querySelectorAll('.match-row').forEach(row => {
-                const slot1Input = row.querySelector('.fighter-search-input');
-                if (!slot1Input) return;
-                const rowSlot1 = String(row.querySelector(`#${row.id}-slot1 .fighter-search-input`)?.value || '').trim().toLowerCase();
-                const rowSlot2 = String(row.querySelector(`#${row.id}-slot2 .fighter-search-input`)?.value || '').trim().toLowerCase();
-                if (rowSlot1 === normalized || rowSlot2 === normalized) {
-                    const opponent = rowSlot1 === normalized ? rowSlot2 : rowSlot1;
-                    const tierName = row.closest('section')?.querySelector('.tier-title')?.textContent || 'Current card';
-                    const exists = showMatches.some(item => item.opponent.toLowerCase() === opponent.toLowerCase() && item.tier === tierName);
-                    if (!exists) showMatches.push({ opponent: opponent || 'TBD', tier: tierName });
-                }
-            });
-        }
-
-        if (showMatches.length) {
-            results.push({ show, matches: showMatches });
-        }
-    });
-
-    return results;
 }
 
 // fighter schedule search UI removed; related functions omitted
