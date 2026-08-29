@@ -687,6 +687,8 @@ const wwe2k24PortraitMap = {
     'Seth “Freakin” Rollins': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/05/SETH_ROLLINS_04132026sb_0095_Profile.png',
     'Cody Rhodes': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/03/CODY_04262024gd_0100_headSawp_Profile.png',
     'Bayley': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Bayley_PROFILE.png',
+    'Becky Lynch': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Becky_Lynch_PROFILE.png',
+    "Becky Lynch '19": 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Becky_Lynch_PROFILE.png',
     'Candice LeRae': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Candice_06122026MM_24123_Profile.png',
     'Candice LeRAE': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Candice_06122026MM_24123_Profile.png',
     'Alexa Bliss': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Alexa_Bliss_Profile.png',
@@ -697,6 +699,8 @@ const wwe2k24PortraitMap = {
     'Roxxan Perez': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Roxanne_Perez_PROFILE.png',
     'Jade Cargill': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/07/Jade_PROFILE.png',
     'Liv Morgan': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/06/LIV_05132024ca_023_Title_Profile--530195974e3839e08bdb34e41adbaed5.png',
+    'Shawn Michaels': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Shawn_Michaels_PROFILE.png',
+    "Shawn Michaels '94": 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Shawn_Michaels_PROFILE.png',
     'The Rock': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/03/The_Rock_PROFILE--927b15797eefad54a3bca4d2a15e4921.png'
 };
 
@@ -704,6 +708,9 @@ const wwe2k24PortraitMapNormalized = Object.keys(wwe2k24PortraitMap).reduce((acc
     acc[normalizeLookupKey(name)] = wwe2k24PortraitMap[name];
     return acc;
 }, {});
+
+window.wwe2k24PortraitMap = wwe2k24PortraitMap;
+window.wwe2k24PortraitMapNormalized = wwe2k24PortraitMapNormalized;
 
 const maleDivisionLookupNormalized = Object.keys(maleDivisionLookup).reduce((acc, name) => {
     acc[normalizeLookupKey(name)] = maleDivisionLookup[name];
@@ -743,6 +750,9 @@ function getRosterDivisionForName(name, gender) {
 function getWWE2K24Portrait(name) {
     return wwe2k24PortraitMapNormalized[normalizeLookupKey(name)] || '';
 }
+
+window.getWWE2K24Portrait = getWWE2K24Portrait;
+window.normalizeLookupKey = normalizeLookupKey;
 
 function normalizePortraitLookupVariants(name) {
     if (!name) return [];
@@ -1236,7 +1246,7 @@ async function persistInlinePhotosToIDB() {
     return migrated;
 }
 
-async function hydrateFighterPhotos() {
+async function hydrateRosterFighterPhotos() {
     let loadedAny = false;
     await Promise.all(fighters.map(async f => {
         // Only hydrate from IDB when there is no valid assigned photo (in-memory or DOM)
@@ -1378,7 +1388,7 @@ function loadFighters() {
 async function loadAndHydrateFighters() {
     fighters = loadFighters();
     purgeGeneratedPlaceholderPhotos(fighters);
-    await hydrateFighterPhotos();
+    await hydrateRosterFighterPhotos();
     await recoverPortraitsFromIndexedDB();
     recoverPortraitsFromLocalStorage();
     ensureMissingPortraits(fighters);
@@ -1712,7 +1722,7 @@ function renderRosterGrid() {
 
     const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
     if (missingPhotos) {
-        hydrateFighterPhotos().then(loaded => {
+        hydrateRosterFighterPhotos().then(loaded => {
             if (loaded) scheduleRenderRosterGrid();
         }).catch(() => {
             // ignore hydration failures and render any available images
@@ -1926,7 +1936,7 @@ function renderRosterGridWithoutReload() {
 
     const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
     if (missingPhotos) {
-        hydrateFighterPhotos().then(loaded => {
+        hydrateRosterFighterPhotos().then(loaded => {
             if (loaded) renderRosterGridWithoutReload();
         }).catch(() => {
             // ignore hydration failures and continue rendering current state
@@ -3008,7 +3018,7 @@ window.saveCroppedPhoto = async function(fighterId, isRoster) {
         const searchQuery = rosterSearch ? rosterSearch.value : '';
         const hadFocus = document.activeElement === rosterSearch;
         if (isRoster) {
-            await hydrateFighterPhotos();
+            await hydrateRosterFighterPhotos();
             scheduleRenderRosterGrid();
             const rs = document.getElementById('rosterSearchInput');
             if (rs) {

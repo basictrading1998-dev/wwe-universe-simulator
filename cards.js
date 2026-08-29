@@ -154,9 +154,6 @@ async function loadFighterPhotoFromIDB(key) {
 }
 }
 
-const wwe2k24PortraitMap = (typeof window !== 'undefined' && window.wwe2k24PortraitMap) ? window.wwe2k24PortraitMap : {};
-const wwe2k24PortraitMapNormalized = (typeof window !== 'undefined' && window.wwe2k24PortraitMapNormalized) ? window.wwe2k24PortraitMapNormalized : wwe2k24PortraitMap;
-
 function normalizeLookupKey(value) {
     return (value || '').toString()
         .normalize('NFC')
@@ -173,18 +170,51 @@ function normalizeLookupKey(value) {
         .toLowerCase();
 }
 
+const rosterPortraitMap = (typeof window !== 'undefined' && window.wwe2k24PortraitMap) ? window.wwe2k24PortraitMap : {};
+const rosterPortraitMapNormalized = (typeof window !== 'undefined' && window.wwe2k24PortraitMapNormalized) ? window.wwe2k24PortraitMapNormalized : Object.keys(rosterPortraitMap).reduce((acc, name) => {
+    acc[normalizeLookupKey(name)] = rosterPortraitMap[name];
+    return acc;
+}, {});
+
+if (typeof window !== 'undefined') {
+    window.wwe2k24PortraitMap = rosterPortraitMap;
+    window.wwe2k24PortraitMapNormalized = rosterPortraitMapNormalized;
+    window.normalizeLookupKey = window.normalizeLookupKey || normalizeLookupKey;
+    window.getWWE2K24Portrait = window.getWWE2K24Portrait || function(name) {
+        if (!name) return '';
+        return (window.wwe2k24PortraitMapNormalized || {})[normalizeLookupKey(name)] || '';
+    };
+}
+
 const hydrateFighterPhotos = async function() {
+    if (typeof window !== 'undefined' && typeof window.ensureMissingPortraits === 'function') {
+        window.ensureMissingPortraits(fighters);
+    }
+
+    if (typeof window !== 'undefined' && typeof window.forceHydrateAllPhotos === 'function') {
+        window.forceHydrateAllPhotos(fighters);
+    }
+
     await Promise.all(fighters.map(async (fighter) => {
         if (!fighter || typeof fighter !== 'object') return;
         if (fighter.photo && fighter.photo.trim()) return;
 
         const fighterName = fighter.name || '';
         const lookupKey = normalizeLookupKey(fighterName);
-        const portraitUrl = (wwe2k24PortraitMapNormalized && wwe2k24PortraitMapNormalized[lookupKey]) ||
-            (wwe2k24PortraitMap && wwe2k24PortraitMap[lookupKey]) ||
-            (typeof window !== 'undefined' && window.wwe2k24PortraitMapNormalized && window.wwe2k24PortraitMapNormalized[lookupKey]) ||
-            (typeof window !== 'undefined' && window.wwe2k24PortraitMap && window.wwe2k24PortraitMap[lookupKey]) ||
-            '';
+        let portraitUrl = '';
+
+        if (typeof window !== 'undefined' && typeof window.getWWE2K24Portrait === 'function') {
+            portraitUrl = window.getWWE2K24Portrait(fighterName);
+        }
+        if (!portraitUrl && typeof window !== 'undefined' && window.wwe2k24PortraitMapNormalized) {
+            portraitUrl = window.wwe2k24PortraitMapNormalized[lookupKey] || '';
+        }
+        if (!portraitUrl && typeof window !== 'undefined' && window.wwe2k24PortraitMap) {
+            portraitUrl = window.wwe2k24PortraitMap[normalizeLookupKey(fighterName)] || '';
+        }
+        if (!portraitUrl && typeof window !== 'undefined' && typeof window.buildFallbackPortraitDataUrl === 'function') {
+            portraitUrl = window.buildFallbackPortraitDataUrl(fighterName, fighter.gender || 'male');
+        }
 
         if (portraitUrl) {
             fighter.photo = portraitUrl;
@@ -193,10 +223,13 @@ const hydrateFighterPhotos = async function() {
     }));
 };
 
-// Prefer inline photo, otherwise check session cache (populated by roster.js) for photo_key
 function getEffectivePhotoFor(fighter) {
     if (!fighter || typeof fighter !== 'object') return '';
     if (typeof fighter.photo === 'string' && fighter.photo) return fighter.photo;
+    const mapped = typeof window !== 'undefined' && typeof window.getWWE2K24Portrait === 'function'
+        ? window.getWWE2K24Portrait(fighter.name || '')
+        : getWWE2K24Portrait(fighter.name || '');
+    if (mapped) return mapped;
     try {
         const key = fighter.photo_key || fighter.photoKey || (`fighter-photo-${fighter.id}`);
         if (key && window._fighterPhotoCache && window._fighterPhotoCache[String(key)]) return window._fighterPhotoCache[String(key)];
@@ -347,7 +380,7 @@ function customPrompt(message, defaultValue, callback, title = 'Input') {
 
 // Betting system removed
 
-let fighters = loadFightersFromStorage();
+fighters = loadFightersFromStorage();
 window.fighters = fighters;
 let futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
 let activeShowId = localStorage.getItem('wwe_active_show_id') || '';
