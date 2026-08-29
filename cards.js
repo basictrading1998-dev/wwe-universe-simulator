@@ -1024,80 +1024,84 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 });
 
-window.addEventListener('beforeunload', () => {
-    if (!window.skipDraftSaveOnUnload) saveCurrentCardDraft();
-});
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        refreshFightersFromStorage();
+        await hydrateFighterPhotos();
+        initBettingSystem();
+        const tiers = ['mainEventContainer', 'coMainContainer', 'mainCardContainer', 'prelimsContainer', 'earlyPrelimsContainer'];
+        tiers.forEach(id => {
+            let box = document.getElementById(id);
+            if (!box) return;
+            let num = (id.includes('mainEvent') || id.includes('coMain')) ? 1 : 4;
+            renderCardRows(box, num, id, id.includes('mainEvent'));
+        });
+        restoreCurrentCardDraft();
+        buildShowSchedulerHeader();
+        buildModalContainer();
+        insertCompletedShowNotice();
+        applyCompletedShowVisuals();
+        applyAnnouncerState();
+        applyBettingState();
+        updateBettingMoneyDisplay();
+        updateFinalizeButtonState();
+        updateRandomizerState();
+        const eventNameInput = document.getElementById('eventNameInput');
+        if (eventNameInput) {
+            eventNameInput.addEventListener('input', updateFinalizeButtonState);
+        }
+        // Populate available voices for announcer (may arrive asynchronously)
+        try {
+            populateVoiceList();
+            if ('onvoiceschanged' in speechSynthesis) {
+                speechSynthesis.onvoiceschanged = populateVoiceList;
+            }
+        } catch (e) {}
+        // LIVE WATCHER: Auto-clears title field blocks if a fighter name is ever deleted
+        document.addEventListener('input', (e) => {
+            if (e.target.classList.contains('fighter-search-input')) {
+                const matchRow = e.target.closest('.match-row');
+                if (matchRow) {
+                    const id = matchRow.id;
+                    const slot1Input = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input');
+                    const slot2Input = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input');
+                    const slotType = e.target.closest('.fighter-slot')?.id?.replace(`${id}-`, '') || '';
+                    const hasEmptyFighter = !slot1Input?.value.trim() || !slot2Input?.value.trim();
+                    const cb = document.getElementById(`${id}-title-check`);
+                    const titleInput = document.getElementById(`${id}-title-name-input`);
 
-function buildShowSchedulerHeader() {
-    const mainBox = document.getElementById('mainEventContainer');
-    if (!mainBox || document.getElementById('schedulerControlRow')) return;
+                    if (!e.target.value.trim()) {
+                        const slot = e.target.closest('.fighter-slot');
+                        if (slot) {
+                            const avatar = slot.querySelector('.avatar-box');
+                            if (avatar) {
+                                avatar.innerHTML = '👤';
+                                avatar.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;";
+                            }
+                            e.target.setAttribute('data-fighter-id', '');
+                            const badge = slot.querySelector('.win-badge');
+                            const label = slot.querySelector('.win-method-label');
+                            if (badge) badge.style.display = 'none';
+                            if (label) label.style.display = 'none';
 
-    const row = document.createElement('div');
-    row.id = 'schedulerControlRow';
-    row.style.cssText = "background:white; border:1px solid #bae6fd; border-radius:12px; padding:16px; margin-bottom:24px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:16px; box-shadow:0 1px 3px rgba(0,0,0,0.05); width:100%; box-sizing:border-box;";
-
-    let opts = '';
-    futureShows.forEach(s => {
-        opts += `<option value="${s.id}" ${s.id === activeShowId ? 'selected' : ''}>${s.name}</option>`;
-    });
-    const activeShowCompleted = isShowCompleted(activeShowId);
-
-    row.innerHTML = `
-        <div style="display:flex; align-items:center; gap:10px; flex:1 1 320px; min-width:260px; flex-wrap:wrap;">
-            <span style="font-size:0.75rem; font-weight:800; color:#0369a1; text-transform:uppercase;">📅 Active Schedule:</span>
-            <select id="activeShowSelector" onchange="switchActiveShowCard(this.value)" style="padding:6px 12px; border-radius:6px; border:1px solid #cbd5e1; font-weight:bold; font-size:0.85rem; color:#1e293b; background:white; min-width:180px; max-width:260px; width:100%;">${opts}</select>
-            <button onclick="editCurrentShowName()" style="background:#64748b; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase;">✏️ Edit</button>
-            <button onclick="deleteCurrentFutureShow()" style="background:#ef4444; border:none; color:white; font-weight:bold; padding:6px 8px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase;">🗑️ Delete</button>
-            <button id="randomizeShowButton" onclick="randomizeEntireShow()" ${activeShowCompleted ? 'disabled' : ''} style="background:#7c3aed; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:${activeShowCompleted ? 'not-allowed' : 'pointer'}; text-transform:uppercase; white-space:nowrap; opacity:${activeShowCompleted ? '0.45' : '1'};">🎲 Randomize All</button>
-            <button id="recapButton" onclick="announceEventRecap()" style="background:#f59e0b; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">📢 Recap</button>
-            <button id="stopAnnouncerButton" onclick="stopAnnouncer()" style="background:#0f172a; border:none; color:white; font-weight:bold; padding:6px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">⏹ Stop</button>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; flex:1 1 280px; min-width:220px; flex-wrap:wrap; justify-content:flex-end;">
-            
-            <input type="text" id="eventNameInput" placeholder="Name" value="${activeShowId ? (futureShows.find(s => s.id === activeShowId)?.name || '') : ''}" style="padding:6px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem; font-weight:600; outline:none; min-width:140px; max-width:200px; width:100%; background:white; color:#1e293b;">
-            <!-- fighter schedule search removed per user request -->
-            <label style="display:inline-flex; align-items:center; gap:8px; padding:6px 8px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-weight:700; color:#475569; white-space:nowrap;">
-                <input id="announcer-toggle" type="checkbox" onchange="saveAnnouncerSetting(this.checked)" ${window.announcerEnabled ? 'checked' : ''}>
-                <span style="font-size:0.8rem;">Announcer</span>
-            </label>
-            <label style="display:inline-flex; align-items:center; gap:8px; padding:6px 8px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; font-weight:700; color:#475569; white-space:nowrap;">
-                <input id="betting-toggle" type="checkbox" onchange="saveBettingSetting(this.checked)" ${window.bettingEnabled ? 'checked' : ''}>
-                <span style="font-size:0.8rem;">Betting</span>
-            </label>
-            <select id="announcer-voice-select" style="padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.75rem; background:white; color:#1e293b; min-width:180px; max-width:260px;">
-                <option>Loading voices…</option>
-            </select>
-            ${isShowCompleted(activeShowId) ? `<span style="display:inline-flex; align-items:center; gap:6px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:6px 10px; font-size:0.75rem; font-weight:700; color:#475569; white-space:nowrap;">✅ Completed<span style="font-size:0.7rem; color:#64748b;">${futureShows.find(s => s.id === activeShowId)?.completedAt ? new Date(futureShows.find(s => s.id === activeShowId).completedAt).toLocaleDateString() : ''}</span></span>` : ''}
-            <button onclick="createNewFutureShow()" style="background:#0369a1; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">+ Add Show</button>
-            <label style="display:inline-flex; align-items:center; gap:6px; margin-left:6px;">
-                <input id="bulkShowCount" type="number" min="1" value="1" style="width:72px; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-weight:700;">
-                <button onclick="bulkCreateFutureShows()" style="background:#06b6d4; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer;">+ Add Many</button>
-            </label>
-            ${isShowCompleted(activeShowId) ? `<button onclick="restartCurrentShow()" style="background:#f97316; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">Restart Card</button>` : ''}
-            <button onclick="downloadAppBackup()" style="background:#0f766e; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">⬇️ Backup</button>
-            <button onclick="importAppBackup()" style="background:#0c4a6e; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:6px; font-size:0.75rem; cursor:pointer; text-transform:uppercase; white-space:nowrap;">⬆️ Restore</button>
-        </div>`;
-        
-    const mainSection = mainBox ? mainBox.closest('section') : null;
-    if (mainSection && mainSection.parentNode) {
-        mainSection.parentNode.insertBefore(row, mainSection);
-    } else if (mainBox && mainBox.parentNode) {
-        mainBox.parentNode.insertBefore(row, mainBox);
+                            if (matchRow) {
+                                const titleInput = document.getElementById(`${id}-title-name-input`);
+                                if (titleInput) titleInput.value = '';
+                                const cb2 = document.getElementById(`${id}-title-check`);
+                                if (cb2) cb2.checked = false;
+                                const rem = document.getElementById(`${id}-rematch-count`);
+                                if (rem) rem.value = 1;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (err) {
+        console.error('cards.js initialization failed:', err);
+        try { alert('Initialization error in cards.js: ' + (err && err.message ? err.message : String(err))); } catch (e) {}
     }
-
-    // fighter schedule search handlers removed
-}
-
-function findUpcomingShowMatchesForFighter(query) {
-    const normalized = String(query || '').trim().toLowerCase();
-    if (!normalized) return [];
-
-    const results = [];
-    const pendingShows = futureShows.filter(show => !show.completed);
-
-    pendingShows.forEach(show => {
-        const showMatches = [];
-        const storageKey = `wwe_matches_${show.id}`;
+});
         const savedState = JSON.parse(localStorage.getItem(storageKey)) || {};
 
         Object.values(savedState).forEach(state => {
