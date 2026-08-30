@@ -401,6 +401,25 @@ function getActiveShowMatchesStorageKey() {
     return `wwe_matches_${activeShowId}`;
 }
 
+function getEventNameInput() {
+    const input = document.getElementById('eventNameInput') || document.getElementById('showNameInput');
+    if (!input) return null;
+    if (input.id !== 'eventNameInput') {
+        input.id = 'eventNameInput';
+    }
+    return input;
+}
+
+function syncEventNameInputToActiveShow() {
+    const input = getEventNameInput();
+    if (!input) return;
+    const currentShow = futureShows.find(s => s.id === activeShowId);
+    if (!currentShow) return;
+    if (input.value.trim() !== currentShow.name) {
+        input.value = currentShow.name;
+    }
+}
+
 function ensureActiveShowSelected() {
     if (activeShowId && futureShows.find(s => s.id === activeShowId)) {
         if (localStorage.getItem('wwe_matches_')) {
@@ -604,7 +623,7 @@ function buildShowSchedulerHeader() {
     // Show name input field
     const currentShow = futureShows.find(s => s.id === activeShowId);
     const nameInput = document.createElement('input');
-    nameInput.id = 'showNameInput';
+    nameInput.id = 'eventNameInput';
     nameInput.type = 'text';
     nameInput.value = currentShow ? currentShow.name : 'Unnamed Show';
     nameInput.placeholder = 'Show name...';
@@ -614,6 +633,7 @@ function buildShowSchedulerHeader() {
             currentShow.name = this.value.trim();
             localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
             select.options[select.selectedIndex].textContent = currentShow.name;
+            updateFinalizeButtonState();
         } else if (currentShow) {
             this.value = currentShow.name;
         }
@@ -725,7 +745,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyCompletedShowVisuals();
     updateFinalizeButtonState();
     updateRandomizerState();
-    const eventNameInput = document.getElementById('eventNameInput');
+    const eventNameInput = getEventNameInput();
     if (eventNameInput) {
         eventNameInput.addEventListener('input', updateFinalizeButtonState);
     }
@@ -824,7 +844,7 @@ window.switchActiveShowCard = function(showId) {
 
 
 window.createNewFutureShow = function() {
-    const input = document.getElementById('eventNameInput');
+    const input = getEventNameInput();
     const name = input ? input.value.trim() : '';
     if (!name) return customAlert('Type a name to book an upcoming event card!', 'Create Event');
 
@@ -878,7 +898,7 @@ window.deleteCurrentFutureShow = function() {
 
 window.bulkCreateFutureShows = function() {
     const countEl = document.getElementById('bulkShowCount');
-    const nameInput = document.getElementById('eventNameInput');
+    const nameInput = getEventNameInput();
     if (!countEl) return alert('Bulk create control not found.');
     const count = Math.max(0, parseInt(countEl.value, 10) || 0);
     if (!count) return alert('Enter a number greater than zero.');
@@ -3019,7 +3039,14 @@ window.updateFinalizeButtonState = function() {
     const button = getFinalizeEventButton();
     if (!button) return;
 
-    const eventNameValue = document.getElementById('eventNameInput')?.value.trim() || '';
+    const eventNameInput = getEventNameInput();
+    const eventNameValue = eventNameInput?.value.trim() || '';
+    if (eventNameInput && activeShowId) {
+        const currentShow = futureShows.find(s => s.id === activeShowId);
+        if (currentShow && currentShow.name && !eventNameInput.value.trim()) {
+            eventNameInput.value = currentShow.name;
+        }
+    }
     const activeShowCompleted = isShowCompleted(activeShowId);
     const allMatchRows = Array.from(document.querySelectorAll('.match-row'));
     const activeShowSavedData = JSON.parse(localStorage.getItem(getActiveShowMatchesStorageKey() || '')) || {};
@@ -3292,7 +3319,7 @@ function showMatchWinnerBadge(matchId, slotType, methodText) {
 }
 
 window.finalizeFullEventCard = function() {
-    const topInput = document.getElementById('eventNameInput');
+    const topInput = getEventNameInput();
     const shownShowName = topInput ? topInput.value.trim() : "";
     if (!shownShowName) {
         customAlert("Archive Blocked!\nYou must enter an Event/Show Title Name before finalizing.", 'Finalize Event');
