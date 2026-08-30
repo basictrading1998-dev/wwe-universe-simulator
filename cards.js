@@ -79,6 +79,11 @@ function saveFighters(list = fighters) {
 
     try {
         localStorage.setItem('wwe_fighters', JSON.stringify(payload));
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('wwe_fighters:changed', {
+                detail: { source: 'cards.js', count: payload.length }
+            }));
+        }
     } catch (err) {
         if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22 || err.code === 1014)) {
             const fallbackPayload = payload.map(f => {
@@ -98,6 +103,11 @@ function saveFighters(list = fighters) {
             });
             try {
                 localStorage.setItem('wwe_fighters', JSON.stringify(fallbackPayload));
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('wwe_fighters:changed', {
+                        detail: { source: 'cards.js-fallback', count: fallbackPayload.length }
+                    }));
+                }
                 return;
             } catch (innerErr) {
                 console.error('Failed to save fighters after moving inline photos to IndexedDB:', innerErr);
@@ -408,6 +418,8 @@ fighters = loadFightersFromStorage();
 window.fighters = fighters;
 let futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
 let activeShowId = localStorage.getItem('wwe_active_show_id') || '';
+let portraitHydrationOnLoadRan = false;
+let portraitHydrationOnChangeRan = false;
 
 function refreshShowStateFromStorage() {
     try {
@@ -629,6 +641,37 @@ function populateVoiceList() {
 // applyAnnouncerState and applyBettingState removed
 
 
+async function refreshFightCardPortraits() {
+    try {
+        refreshFightersFromStorage();
+        await hydrateFighterPhotos();
+        document.querySelectorAll('.fighter-search-input').forEach(input => {
+            const slot = input.closest('.fighter-slot');
+            const row = input.closest('.match-row');
+            if (!slot || !row) return;
+
+            const slotType = slot.id.endsWith('-slot1') ? 'slot1' : 'slot2';
+            const fighterId = input.getAttribute('data-fighter-id');
+            const fighter = fighterId ? fighters.find(f => f.id === fighterId) : getFighterByIdOrName(input.value.trim());
+            const avatar = slot.querySelector('.avatar-box');
+            if (!avatar) return;
+
+            if (fighter) {
+                const photo = getEffectivePhotoFor(fighter);
+                avatar.innerHTML = photo ? `<img src="${photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : (fighter.name || 'F').charAt(0);
+                avatar.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+                if (fighter.id) input.setAttribute('data-fighter-id', fighter.id);
+                updateFighterRecordDisplay(row.id, slotType, fighter);
+            } else {
+                avatar.innerHTML = '👤';
+                avatar.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; cursor:pointer; overflow:hidden;";
+            }
+        });
+    } catch (err) {
+        console.warn('Failed to refresh fight-card portraits', err);
+    }
+}
+
 function buildShowSchedulerHeader() {
     if (document.getElementById('schedulerControlRow')) return;
     
@@ -759,9 +802,21 @@ function insertCompletedShowNotice() {
     headerRow.parentNode.insertBefore(notice, headerRow.nextSibling);
 }
 
+async function triggerInitialPortraitHydration() {
+    if (portraitHydrationOnLoadRan) return;
+    portraitHydrationOnLoadRan = true;
+    await hydrateFighterPhotos();
+}
+
+async function triggerSelectedFighterPortraitHydration() {
+    if (portraitHydrationOnChangeRan) return;
+    portraitHydrationOnChangeRan = true;
+    await hydrateFighterPhotos();
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     refreshFightersFromStorage();
-    await hydrateFighterPhotos();
+    await triggerInitialPortraitHydration();
     const tiers = ['mainEventContainer', 'coMainContainer', 'mainCardContainer', 'prelimsContainer', 'earlyPrelimsContainer'];
     tiers.forEach(id => {
         let box = document.getElementById(id);
@@ -780,14 +835,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (eventNameInput) {
         eventNameInput.addEventListener('input', updateFinalizeButtonState);
     }
-    // Populate available voices for announcer (may arrive asynchronously)
     try {
         populateVoiceList();
         if ('onvoiceschanged' in speechSynthesis) {
             speechSynthesis.onvoiceschanged = populateVoiceList;
         }
     } catch (e) {}
-        // LIVE WATCHER: Auto-clears title field blocks if a fighter name is ever deleted
+
     document.addEventListener('input', (e) => {
         if (e.target.classList.contains('fighter-search-input')) {
             const matchRow = e.target.closest('.match-row');
@@ -797,8 +851,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const slot2Input = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input');
                 const slotType = e.target.closest('.fighter-slot')?.id?.replace(`${id}-`, '') || '';
                 const hasEmptyFighter = !slot1Input?.value.trim() || !slot2Input?.value.trim();
-                const cb = document.getElementById(`${id}-title-check`);
-                const titleInput = document.getElementById(`${id}-title-name-input`);
+                const titleCheckbox = document.getElementById(`${id}-title-check`);
 
                 if (!e.target.value.trim()) {
                     const slot = e.target.closest('.fighter-slot');
@@ -821,7 +874,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 refreshTitleFightState(id);
-                const titleCheckbox = document.getElementById(`${id}-title-check`);
                 if (hasEmptyFighter && (!titleCheckbox || !titleCheckbox.checked)) {
                     matchRow.style.border = '1px solid #bae6fd';
                     matchRow.style.background = '#ffffff';
@@ -845,20 +897,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    document.addEventListener('change', (e) => {
-        if (e.target.closest && e.target.closest('.match-row')) {
-            saveCurrentCardDraft();
+    document.addEventListener('change', async (e) => {
+        const target = e.target;
+        if (!target || !target.classList || !target.classList.contains('fighter-search-input')) {
+            if (target && target.closest && target.closest('.match-row')) {
+                saveCurrentCardDraft();
+            }
+            return;
         }
-    });
 
-    window.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden' && !window.skipDraftSaveOnUnload) saveCurrentCardDraft();
+        const selectedValue = (target.value || '').trim();
+        if (!selectedValue) return;
+
+        const associatedFighter = getFighterByIdOrName(selectedValue);
+        if (!associatedFighter) return;
+        if (target.getAttribute('data-fighter-id') !== associatedFighter.id) return;
+
+        hydrateFighterPhotos().catch(() => {});
+        saveCurrentCardDraft();
     });
 
     window.addEventListener('pagehide', (event) => {
         if (!window.skipDraftSaveOnUnload) saveCurrentCardDraft(event);
     });
-
 });
 
 
@@ -1215,6 +1276,7 @@ window.triggerSearchFill = function(uId, slotType) {
             checkExistingFightRematch(uId, slotType);
             checkDuplicateOnCard(uId, slotType);
             refreshTitleFightState(uId);
+            hydrateFighterPhotos().catch(() => {});
             saveCurrentCardDraft();
         };
         panel.appendChild(item);
@@ -1555,7 +1617,7 @@ function checkExistingFightRematch(matchRowId, changedSlot) {
     setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, priorCount);
     showRematchWarning(matchRowId, fighter1, fighter2, historySummary, changedSlot);
 
-    return true;
+    return false; // Rematch detected: return false to prevent further actions and let user interact with warning
 }
 
 function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot) {
@@ -2345,7 +2407,27 @@ window.randomizeEntireShow = function() {
                 failCount++;
                 return;
             }
-            const chosenPair = allowedPairs[Math.floor(Math.random() * allowedPairs.length)];
+
+            let chosenPair = null;
+            let pairPool = [...allowedPairs];
+            let pairAttempts = 0;
+            while (!chosenPair && pairPool.length && pairAttempts < 250) {
+                const pickIndex = Math.floor(Math.random() * pairPool.length);
+                const candidate = pairPool.splice(pickIndex, 1)[0];
+                const [f1, f2] = candidate;
+                const historyEntries = getFightHistoryBetween(f1, f2);
+                if (!historyEntries.length) {
+                    chosenPair = candidate;
+                    break;
+                }
+                pairAttempts++;
+            }
+
+            if (!chosenPair) {
+                failCount++;
+                return;
+            }
+
             const [fighter1, fighter2] = chosenPair;
             
             // Set the gender for this match based on the chosen fighters
@@ -2487,7 +2569,26 @@ window.randomizeMatchup = function(matchId) {
         if (!allowedPairs.length) {
             return customAlert(`No weight class has 2+ available ${selectedGender} fighters who are not already paired elsewhere.`, 'Randomize Matchup');
         }
-        const chosenPair = allowedPairs[Math.floor(Math.random() * allowedPairs.length)];
+
+        let chosenPair = null;
+        let pairPool = [...allowedPairs];
+        let pairAttempts = 0;
+        while (!chosenPair && pairPool.length && pairAttempts < 250) {
+            const pickIndex = Math.floor(Math.random() * pairPool.length);
+            const candidate = pairPool.splice(pickIndex, 1)[0];
+            const [f1, f2] = candidate;
+            const historyEntries = getFightHistoryBetween(f1, f2);
+            if (!historyEntries.length) {
+                chosenPair = candidate;
+                break;
+            }
+            pairAttempts++;
+        }
+
+        if (!chosenPair) {
+            return customAlert('No fresh matchup could be generated from the available fighters. Try a different roster or re-roll.', 'Randomize Matchup');
+        }
+
         const [fighter1, fighter2] = chosenPair;
         
         // Populate slot 1
@@ -3112,6 +3213,8 @@ function restoreLoggedResult(id, state) {
     const slot2 = document.getElementById(`${id}-slot2`);
     const slot1Input = slot1?.querySelector('.fighter-search-input');
     const slot2Input = slot2?.querySelector('.fighter-search-input');
+    const titleCheck = document.getElementById(`${id}-title-check`);
+    const titleInput = document.getElementById(`${id}-title-name-input`);
 
     const restoreSlot = (slotEl, inputEl, fighterName, fighterId) => {
         if (!slotEl || !inputEl || !fighterName) return;
@@ -3156,8 +3259,6 @@ function restoreLoggedResult(id, state) {
         'male';
     setMatchRowSelectedGender(id, rowGender);
 
-    const titleCheck = document.getElementById(`${id}-title-check`);
-    const titleInput = document.getElementById(`${id}-title-name-input`);
     if (titleCheck) {
         titleCheck.checked = !!state.isTitle;
     }
@@ -3179,6 +3280,12 @@ function restoreLoggedResult(id, state) {
             titleInput.value = '';
             titleInput.innerHTML = '';
         }
+    }
+
+    if (titleCheck && titleCheck.checked) {
+        applyMatchRowTitleGlow(row);
+    } else if (row) {
+        clearMatchRowTitleGlow(row);
     }
 
     const hasSlot1Value = slot1Input?.value?.trim();
@@ -3315,6 +3422,13 @@ function disableMatchRowControls(matchId) {
             el.title = 'This match is finalized and can no longer be changed.';
         }
     });
+
+    const titleCheck = document.getElementById(`${matchId}-title-check`);
+    if (titleCheck && titleCheck.checked) {
+        applyMatchRowTitleGlow(row);
+    } else {
+        clearMatchRowTitleGlow(row);
+    }
 
     row.querySelectorAll('.search-results-floating-panel').forEach(panel => {
         panel.style.display = 'none';

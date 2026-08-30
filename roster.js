@@ -1445,6 +1445,11 @@ function saveFighters(list = fighters) {
     }));
     try {
         localStorage.setItem('wwe_fighters', JSON.stringify(payload));
+        if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('wwe_fighters:changed', {
+                detail: { source: 'roster.js', count: payload.length }
+            }));
+        }
     } catch (err) {
         if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22 || err.code === 1014)) {
             const fallbackPayload = payload.map(f => {
@@ -1464,6 +1469,11 @@ function saveFighters(list = fighters) {
             });
             try {
                 localStorage.setItem('wwe_fighters', JSON.stringify(fallbackPayload));
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('wwe_fighters:changed', {
+                        detail: { source: 'roster.js-fallback', count: fallbackPayload.length }
+                    }));
+                }
             } catch (innerErr) {
                 console.error('Failed to save fighters after moving inline photos to IndexedDB:', innerErr);
             }
@@ -1803,6 +1813,8 @@ function renderRosterGrid() {
         card.id = `fighter-card-${f.id}`;
         
         let rate = (f.wins + f.losses) === 0 ? 0 : Math.round((f.wins / (f.wins + f.losses)) * 100);
+        let totalFights = Number(f.total_fights ?? f.match_count ?? f.matches ?? f.totalMatches ?? ((Number(f.wins) || 0) + (Number(f.losses) || 0)));
+        if (!Number.isFinite(totalFights) || totalFights < 0) totalFights = (Number(f.wins) || 0) + (Number(f.losses) || 0);
         let genderColor = f.gender === 'male' ? '#0284c7' : '#db2777';
 
         let heldBelts = championships.filter(b => b.championId === f.id);
@@ -1829,6 +1841,7 @@ function renderRosterGrid() {
         }
 
         card.innerHTML = `
+            <div style="position:absolute; left:10px; top:10px; background:#e0f2fe; color:#075985; border:1px solid #bae6fd; border-radius:999px; font-size:0.58rem; font-weight:800; letter-spacing:0.06em; padding:3px 7px; line-height:1.2; box-shadow:0 1px 2px rgba(14,116,144,0.12); text-transform:uppercase;">Fights ${totalFights}</div>
             <div onclick="uploadFighterPhoto('${f.id}')" style="width: 44px; height: 44px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
             <button class="fighter-history-btn" onclick='openFighterHistory(${JSON.stringify(f.name)})' title="View history" aria-label="View history">📊</button>
             <button class="fighter-analytics-btn" onclick='openFighterAnalytics(${JSON.stringify(f.name)})' title="Open analytics" aria-label="Open analytics">📈</button>
@@ -2015,6 +2028,8 @@ function renderRosterGridWithoutReload() {
         card.id = `fighter-card-${f.id}`;
         
         let rate = (f.wins + f.losses) === 0 ? 0 : Math.round((f.wins / (f.wins + f.losses)) * 100);
+        let totalFights = Number(f.total_fights ?? f.match_count ?? f.matches ?? f.totalMatches ?? ((Number(f.wins) || 0) + (Number(f.losses) || 0)));
+        if (!Number.isFinite(totalFights) || totalFights < 0) totalFights = (Number(f.wins) || 0) + (Number(f.losses) || 0);
         let genderColor = f.gender === 'male' ? '#0284c7' : '#db2777';
 
         let heldBelts = championships.filter(b => b.championId === f.id);
@@ -2041,6 +2056,7 @@ function renderRosterGridWithoutReload() {
         }
 
         card.innerHTML = `
+            <div style="position:absolute; left:10px; top:10px; background:#e0f2fe; color:#075985; border:1px solid #bae6fd; border-radius:999px; font-size:0.58rem; font-weight:800; letter-spacing:0.06em; padding:3px 7px; line-height:1.2; box-shadow:0 1px 2px rgba(14,116,144,0.12); text-transform:uppercase;">Fights ${totalFights}</div>
             <div onclick="uploadFighterPhoto('${f.id}')" style="width: 44px; height: 44px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
             <button class="fighter-history-btn" onclick='openFighterHistory(${JSON.stringify(f.name)})' title="View history" aria-label="View history">📊</button>
             <button class="fighter-analytics-btn" onclick='openFighterAnalytics(${JSON.stringify(f.name)})' title="Open analytics" aria-label="Open analytics">📈</button>
