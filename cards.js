@@ -389,7 +389,13 @@ function customPrompt(message, defaultValue, callback, title = 'Input') {
     });
 }
 
-// Betting system removed
+// Betting system removed, but some legacy UI still calls these hooks.
+window.updateBettingMoney = function(amount) {
+    return Number(amount || 0);
+};
+window.resetBettingMoney = function() {
+    return 0;
+};
 
 fighters = loadFightersFromStorage();
 window.fighters = fighters;
@@ -2868,7 +2874,7 @@ window.logMatchResult = function(id) {
         if (betWon) {
             // Double the money (original bet + winnings)
             const winnings = bet.betAmount * 2;
-            updateBettingMoney(winnings);
+            window.updateBettingMoney(winnings);
             customAlert(`🎉 BET WON! You won $${winnings.toLocaleString()}!`, 'Bet Result');
         } else {
             // Bet lost (money already deducted when bet was placed)
@@ -3366,8 +3372,10 @@ window.finalizeFullEventCard = function() {
         return;
     }
 
-    // Award event archive bonus once per completed show
-    updateBettingMoney(1000);
+    // Award event archive bonus once per completed show. Legacy hook kept as a no-op when betting is disabled.
+    if (typeof window.updateBettingMoney === 'function') {
+        window.updateBettingMoney(1000);
+    }
     customAlert('🏆 Live show finalized! You earned a $1,000 bonus for archiving the event.', 'Event Archived');
 
     let eventMatchesCompiled = allMatchRows.map(row => {
