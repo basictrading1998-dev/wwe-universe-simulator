@@ -396,7 +396,23 @@ window.fighters = fighters;
 let futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
 let activeShowId = localStorage.getItem('wwe_active_show_id') || '';
 
+function refreshShowStateFromStorage() {
+    try {
+        futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
+    } catch (e) {
+        futureShows = [];
+    }
+
+    if (!activeShowId || !futureShows.find(s => s.id === activeShowId)) {
+        activeShowId = futureShows[0]?.id || '';
+        if (activeShowId) {
+            localStorage.setItem('wwe_active_show_id', activeShowId);
+        }
+    }
+}
+
 function getActiveShowMatchesStorageKey() {
+    refreshShowStateFromStorage();
     if (!activeShowId || !futureShows.find(s => s.id === activeShowId)) return null;
     return `wwe_matches_${activeShowId}`;
 }
@@ -509,11 +525,13 @@ function loadCompletedMatchesForShow(showId) {
 }
 
 function isShowCompleted(showId) {
+    refreshShowStateFromStorage();
     const show = futureShows.find(s => s.id === showId);
     return Boolean(show && show.completed);
 }
 
 function setShowCompleted(showId, value) {
+    refreshShowStateFromStorage();
     const show = futureShows.find(s => s.id === showId);
     if (!show) return;
     show.completed = !!value;
@@ -3036,6 +3054,7 @@ window.updateRandomizerState = function() {
 };
 
 window.updateFinalizeButtonState = function() {
+    refreshShowStateFromStorage();
     const button = getFinalizeEventButton();
     if (!button) return;
 
@@ -3050,12 +3069,14 @@ window.updateFinalizeButtonState = function() {
     const activeShowCompleted = isShowCompleted(activeShowId);
     const allMatchRows = Array.from(document.querySelectorAll('.match-row'));
     const activeShowSavedData = JSON.parse(localStorage.getItem(getActiveShowMatchesStorageKey() || '')) || {};
-    const incompleteRows = allMatchRows.filter(row => {
-        const saved = activeShowSavedData[row.id];
+    const savedResultEntries = Object.entries(activeShowSavedData).filter(([id, saved]) => {
+        return !!saved && !!saved.winnerName && !!saved.loserName && !!saved.methodName;
+    });
+    const incompleteSavedEntries = Object.entries(activeShowSavedData).filter(([id, saved]) => {
         return !saved || !saved.winnerName || !saved.loserName || !saved.methodName;
     });
-
-    const canEnable = !activeShowCompleted && eventNameValue.length > 0 && allMatchRows.length > 0 && incompleteRows.length === 0;
+    const hasLoggedResult = savedResultEntries.length > 0;
+    const canEnable = !activeShowCompleted && eventNameValue.length > 0 && hasLoggedResult && incompleteSavedEntries.length === 0;
     button.disabled = !canEnable;
     button.style.opacity = canEnable ? '1' : '0.55';
     button.style.cursor = canEnable ? 'pointer' : 'not-allowed';
@@ -3063,8 +3084,10 @@ window.updateFinalizeButtonState = function() {
         button.title = 'This show has already been finalized and archived.';
     } else if (!eventNameValue) {
         button.title = 'Enter an Event/Show Title Name before finalizing.';
-    } else if (incompleteRows.length > 0) {
-        button.title = `Log all ${allMatchRows.length} matches first (${allMatchRows.length - incompleteRows.length}/${allMatchRows.length}).`;
+    } else if (!hasLoggedResult) {
+        button.title = `Log at least one match before finalizing this card.`;
+    } else if (incompleteSavedEntries.length > 0) {
+        button.title = `Finish saving the current result before finalizing (${savedResultEntries.length}/${savedResultEntries.length + incompleteSavedEntries.length} complete).`;
     } else {
         button.title = 'Finalize and archive the event.';
     }
@@ -3334,13 +3357,12 @@ window.finalizeFullEventCard = function() {
 
     const activeShowSavedData = JSON.parse(localStorage.getItem(getActiveShowMatchesStorageKey() || '')) || {};
     const allMatchRows = Array.from(document.querySelectorAll('.match-row'));
-    const incompleteRows = allMatchRows.filter(row => {
-        const saved = activeShowSavedData[row.id];
-        return !saved || !saved.winnerName || !saved.loserName || !saved.methodName;
-    });
+    const completeRows = Object.values(activeShowSavedData).filter(saved => saved && saved.winnerName && saved.loserName && saved.methodName).length;
+    const incompleteRows = Object.entries(activeShowSavedData).filter(([id, saved]) => !saved || !saved.winnerName || !saved.loserName || !saved.methodName);
 
-    if (incompleteRows.length > 0) {
-        customAlert(`Archive Blocked!\nYou must log all ${allMatchRows.length} matches before completing the event.\n\nCurrent Progress: ${allMatchRows.length - incompleteRows.length}/${allMatchRows.length}`, 'Finalize Event');
+    if (completeRows === 0 || incompleteRows.length > 0) {
+        const totalLogged = completeRows + incompleteRows.length;
+        customAlert(`Archive Blocked!\nYou must finish saving at least one valid result before completing the event.\n\nCurrent Progress: ${completeRows}/${Math.max(1, totalLogged)}`, 'Finalize Event');
         return;
     }
 
