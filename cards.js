@@ -70,6 +70,10 @@ function saveFighters(list = fighters) {
         normalized.win_submission = Number(normalized.win_submission || 0);
         normalized.photo_key = normalized.photo_key || '';
         normalized.photo = typeof normalized.photo === 'string' ? normalized.photo.trim() : '';
+        // Preserve fight history and other deck properties
+        normalized.compiled_history_deck = Array.isArray(f.compiled_history_deck) ? f.compiled_history_deck : [];
+        normalized.history_deck = Array.isArray(f.history_deck) ? f.history_deck : [];
+        normalized.history = Array.isArray(f.history) ? f.history : [];
         return normalized;
     }).filter(Boolean);
 
