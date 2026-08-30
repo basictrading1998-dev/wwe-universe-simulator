@@ -2175,20 +2175,20 @@ function buildRosterComparePanel() {
 
     const comparePanel = document.createElement('div');
     comparePanel.id = 'rosterComparePanel';
-    comparePanel.style.cssText = 'background: white; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);';
+    comparePanel.style.cssText = 'background: white; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); position: relative; z-index: 25; pointer-events: auto; overflow: visible; isolation: isolate;';
     comparePanel.innerHTML = `
         <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end;">
             <div style="flex: 1 1 220px; min-width: 220px;">
                 <label style="display: block; margin-bottom: 6px; font-size: 0.75rem; font-weight: 700; color: #0c4a6e; text-transform: uppercase;">Fighter A</label>
-                <input id="compareFighterA" list="compareNamesA" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterA}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem;">
+                <input id="compareFighterA" list="compareNamesA" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterA}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem; position: relative; z-index: 21; pointer-events: auto;">
             </div>
             <div style="flex: 1 1 220px; min-width: 220px;">
                 <label style="display: block; margin-bottom: 6px; font-size: 0.75rem; font-weight: 700; color: #0c4a6e; text-transform: uppercase;">Fighter B</label>
-                <input id="compareFighterB" list="compareNamesB" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterB}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem;">
+                <input id="compareFighterB" list="compareNamesB" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterB}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem; position: relative; z-index: 21; pointer-events: auto;">
             </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-                <button onclick="compareRosterFighters()" style="background: #0284c7; color: white; border: none; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer;">Compare</button>
-                <button onclick="clearRosterCompare()" style="background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer;">Clear</button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; position: relative; z-index: 21; pointer-events: auto;">
+                <button onclick="compareRosterFighters()" style="background: #0284c7; color: white; border: none; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer; pointer-events: auto;">Compare</button>
+                <button onclick="clearRosterCompare()" style="background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer; pointer-events: auto;">Clear</button>
             </div>
         </div>
     `;
