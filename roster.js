@@ -682,32 +682,26 @@ Zoey Stark
 
 const wwe2k24RosterNamesList = wwe2k24RosterNames.split(/\r?\n/).map(name => name.trim()).filter(Boolean);
 
-const wwe2k24PortraitMap = {
-    'Roman Reigns': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/05/Roman_Reigns_PROFILE.png',
-    'Seth “Freakin” Rollins': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/05/SETH_ROLLINS_04132026sb_0095_Profile.png',
-    'Cody Rhodes': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/03/CODY_04262024gd_0100_headSawp_Profile.png',
-    'Bayley': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Bayley_PROFILE.png',
-    'Becky Lynch': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Becky_Lynch_PROFILE.png',
-    "Becky Lynch '19": 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Becky_Lynch_PROFILE.png',
-    'Candice LeRae': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Candice_06122026MM_24123_Profile.png',
-    'Candice LeRAE': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Candice_06122026MM_24123_Profile.png',
-    'Alexa Bliss': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Alexa_Bliss_Profile.png',
-    'Bianca Belair': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2024/03/BiancaBelair_01282024RF_1159_Profile--f32b01959da5065b6d2b2b9887792b92.png',
-    'Isla Dawn': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2022/11/Isla_Dawn_PROFILE--fce74e97e2e9a286d06b5682a696b815.png',
-    'Rhea Ripley': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/04/Rhea_04242026ca_037_Profile.png',
-    'Roxanne Perez': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Roxanne_Perez_PROFILE.png',
-    'Roxxan Perez': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Roxanne_Perez_PROFILE.png',
-    'Jade Cargill': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/07/Jade_PROFILE.png',
-    'Liv Morgan': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/06/LIV_05132024ca_023_Title_Profile--530195974e3839e08bdb34e41adbaed5.png',
-    'Shawn Michaels': 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Shawn_Michaels_PROFILE.png',
-    "Shawn Michaels '94": 'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Shawn_Michaels_PROFILE.png',
-    'The Rock': 'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/03/The_Rock_PROFILE--927b15797eefad54a3bca4d2a15e4921.png'
-};
+const wwe2k24PortraitMap = {};
+const legacyWWE2K24PortraitUrls = new Set([
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/05/Roman_Reigns_PROFILE.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/05/SETH_ROLLINS_04132026sb_0095_Profile.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/03/CODY_04262024gd_0100_headSawp_Profile.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Bayley_PROFILE.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Becky_Lynch_PROFILE.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Candice_06122026MM_24123_Profile.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Alexa_Bliss_Profile.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2024/03/BiancaBelair_01282024RF_1159_Profile--f32b01959da5065b6d2b2b9887792b92.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2022/11/Isla_Dawn_PROFILE--fce74e97e2e9a286d06b5682a696b815.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/04/Rhea_04242026ca_037_Profile.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/08/Roxanne_Perez_PROFILE.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2026/07/Jade_PROFILE.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/06/LIV_05132024ca_023_Title_Profile--530195974e3839e08bdb34e41adbaed5.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/2025/11/Shawn_Michaels_PROFILE.png',
+    'https://www.wwe.com/f/styles/talent_champion_xl/public/all/2024/03/The_Rock_PROFILE--927b15797eefad54a3bca4d2a15e4921.png'
+]);
 
-const wwe2k24PortraitMapNormalized = Object.keys(wwe2k24PortraitMap).reduce((acc, name) => {
-    acc[normalizeLookupKey(name)] = wwe2k24PortraitMap[name];
-    return acc;
-}, {});
+const wwe2k24PortraitMapNormalized = {};
 
 window.wwe2k24PortraitMap = wwe2k24PortraitMap;
 window.wwe2k24PortraitMapNormalized = wwe2k24PortraitMapNormalized;
@@ -748,11 +742,38 @@ function getRosterDivisionForName(name, gender) {
 }
 
 function getWWE2K24Portrait(name) {
-    return wwe2k24PortraitMapNormalized[normalizeLookupKey(name)] || '';
+    return '';
+}
+
+function clearInjectedWWE2K24Portraits(list = fighters) {
+    if (!Array.isArray(list)) return 0;
+    let removed = 0;
+
+    list.forEach(f => {
+        if (!f || typeof f !== 'object') return;
+        const currentPhoto = typeof f.photo === 'string' ? f.photo.trim() : '';
+        const photoKey = typeof f.photo_key === 'string' ? f.photo_key.trim() : '';
+
+        const isInjectedPortrait = legacyWWE2K24PortraitUrls.has(currentPhoto)
+            || (photoKey.startsWith('wwe2k24-') && !currentPhoto.startsWith('data:image') && !currentPhoto.startsWith('blob:'));
+
+        if (!isInjectedPortrait || hasValidAssignedPhoto(f)) return;
+
+        f.photo = '';
+        if (photoKey) f.photo_key = '';
+        removed++;
+    });
+
+    if (removed > 0) {
+        try { saveFighters(list); } catch (err) { console.warn('Failed to remove injected WWE portraits', err); }
+    }
+
+    return removed;
 }
 
 window.getWWE2K24Portrait = getWWE2K24Portrait;
 window.normalizeLookupKey = normalizeLookupKey;
+window.clearInjectedWWE2K24Portraits = clearInjectedWWE2K24Portraits;
 
 function normalizePortraitLookupVariants(name) {
     if (!name) return [];
@@ -1390,6 +1411,7 @@ const hardcodedRosterBackup = [];
 
 async function loadAndHydrateFighters() {
     fighters = loadFighters();
+    clearInjectedWWE2K24Portraits(fighters);
     purgeGeneratedPlaceholderPhotos(fighters);
     await hydrateRosterFighterPhotos();
     await recoverPortraitsFromIndexedDB();
@@ -1640,6 +1662,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('Photo DB migration/hydration failed', err);
     }
     ensureFemaleRosterEntries();
+    clearInjectedWWE2K24Portraits(fighters);
     ensureFighterHistoryButtonStyles();
     refreshFighterNameDatalist();
     scheduleRenderRosterGrid();
@@ -2259,12 +2282,54 @@ function rehydrateRosterCompareInputs(delay = 50) {
     }, delay);
 }
 
-function filterRosterByComparison(selectedNames = []) {
+function getRosterSearchQuery() {
+    const input = document.getElementById('rosterSearchInput');
+    return input ? input.value.trim().toLowerCase() : (localStorage.getItem('wwe_roster_search_query') || '').toLowerCase();
+}
+
+function getRosterCompareSelection() {
+    const a = localStorage.getItem('wwe_roster_compare_fighter_a') || '';
+    const b = localStorage.getItem('wwe_roster_compare_fighter_b') || '';
+    const selection = [a, b].map(value => String(value).trim()).filter(Boolean);
+    return selection;
+}
+
+function applyCombinedRosterFilters() {
+    const searchQuery = getRosterSearchQuery();
+    const compareSelection = getRosterCompareSelection();
+
     document.querySelectorAll('#rosterGrid > div').forEach(card => {
         const nameEl = card.querySelector('.fighter-name-target');
         if (!nameEl) return;
+
         const nameText = nameEl.textContent.trim();
-        card.style.display = selectedNames.length > 0 ? (selectedNames.includes(nameText) ? 'flex' : 'none') : 'flex';
+        const normalizedName = nameText.toLowerCase();
+        const matchesSearch = !searchQuery || normalizedName.includes(searchQuery);
+
+        let matchesCompare = true;
+        if (compareSelection.length === 2) {
+            matchesCompare = compareSelection.some(value => normalizedName === value.toLowerCase());
+        } else if (compareSelection.length === 1) {
+            matchesCompare = normalizedName === compareSelection[0].toLowerCase();
+        }
+
+        card.style.display = (matchesSearch && matchesCompare) ? 'flex' : 'none';
+    });
+}
+
+function filterRosterByComparison(selectedNames = []) {
+    const selected = selectedNames.map(value => String(value).trim()).filter(Boolean).map(value => value.toLowerCase());
+    const cards = document.querySelectorAll('#rosterGrid > div');
+    const searchQuery = getRosterSearchQuery();
+
+    cards.forEach(card => {
+        const nameEl = card.querySelector('.fighter-name-target');
+        if (!nameEl) return;
+        const nameText = nameEl.textContent.trim();
+        const normalizedName = nameText.toLowerCase();
+        const matchesSearch = !searchQuery || normalizedName.includes(searchQuery);
+        const matchesCompare = selected.length === 0 || selected.includes(normalizedName);
+        card.style.display = matchesSearch && matchesCompare ? 'flex' : 'none';
     });
 }
 
@@ -2316,11 +2381,31 @@ function tryAutoCompare() {
 function applySavedCompareFilter() {
     const savedA = localStorage.getItem('wwe_roster_compare_fighter_a') || '';
     const savedB = localStorage.getItem('wwe_roster_compare_fighter_b') || '';
-    if (!savedA || !savedB) return;
+
+    if (!savedA && !savedB) {
+        applyCombinedRosterFilters();
+        return;
+    }
+
+    const names = [savedA, savedB].map(value => String(value).trim()).filter(Boolean);
+    if (names.length === 0) {
+        applyCombinedRosterFilters();
+        return;
+    }
+
     const fighterA = fighters.find(f => f.name.toLowerCase() === savedA.toLowerCase());
     const fighterB = fighters.find(f => f.name.toLowerCase() === savedB.toLowerCase());
+
     if (fighterA && fighterB) {
         filterRosterByComparison([fighterA.name, fighterB.name]);
+        return;
+    }
+
+    const exactMatches = names.filter(name => fighters.some(f => f.name.toLowerCase() === name.toLowerCase()));
+    if (exactMatches.length > 0) {
+        filterRosterByComparison(exactMatches);
+    } else {
+        applyCombinedRosterFilters();
     }
 }
 
@@ -2335,7 +2420,7 @@ function clearRosterCompare() {
     localStorage.removeItem('wwe_roster_compare_fighter_b');
     
     updateRosterCompareDatalists();
-    filterRosterByComparison([]);
+    applyCombinedRosterFilters();
 }
 
 function getWinRate(fighter) {
@@ -2416,18 +2501,11 @@ function setupLiveSearchEngine() {
 }
 
 window.filterRosterCards = function() {
-    const query = document.getElementById('rosterSearchInput')?.value.toLowerCase() || '';
-    
-    // Save search query to localStorage
-    localStorage.setItem('wwe_roster_search_query', query.toLowerCase());
-    
-    document.querySelectorAll('#rosterGrid > div').forEach(card => {
-        const nameEl = card.querySelector('.fighter-name-target');
-        if (nameEl) {
-            const nameText = nameEl.textContent.toLowerCase();
-            card.style.display = nameText.includes(query) ? 'flex' : 'none';
-        }
-    });
+    const input = document.getElementById('rosterSearchInput');
+    const query = (input ? input.value : '').trim().toLowerCase();
+
+    localStorage.setItem('wwe_roster_search_query', query);
+    applyCombinedRosterFilters();
 };
 
 window.toggleBulkImporter = function() {

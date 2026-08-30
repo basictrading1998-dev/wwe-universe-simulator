@@ -52,6 +52,14 @@
         .fighter-meta-item strong { color: #f8fafc; font-weight: 800; }
         .fighter-card-focused { border-color: #38bdf8; box-shadow: 0 0 0 4px rgba(56,189,248,0.18); transition: box-shadow 0.3s ease, border-color 0.3s ease; }
         .empty-state { padding: 40px 20px; text-align: center; color: #94a3b8; border: 1px dashed #334155; border-radius: 16px; }
+        .analytics-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin: 0 0 20px 0; }
+        .analytics-field { flex: 1 1 220px; min-width: 220px; }
+        .analytics-label { display: block; margin-bottom: 6px; font-size: 0.72rem; font-weight: 800; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.08em; }
+        .analytics-input { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: #f8fafc; font-size: 0.95rem; }
+        .analytics-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .analytics-btn { border: none; border-radius: 10px; padding: 10px 16px; font-weight: 800; cursor: pointer; }
+        .analytics-btn.primary { background: #38bdf8; color: #082f49; }
+        .analytics-btn.secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
         @media (max-width: 960px) { .chart-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -83,6 +91,26 @@
 
         <section class="chart-panel">
             <h2>Fighter Analytics</h2>
+            <div class="analytics-toolbar">
+                <div class="analytics-field">
+                    <label class="analytics-label" for="rosterAnalyticsSearch">Search</label>
+                    <input id="rosterAnalyticsSearch" class="analytics-input" type="text" placeholder="Search fighter name..." value="">
+                </div>
+                <div class="analytics-field">
+                    <label class="analytics-label" for="compareAnalyticsFighterA">Compare A</label>
+                    <input id="compareAnalyticsFighterA" class="analytics-input" list="analyticsCompareNamesA" type="text" placeholder="First fighter" value="">
+                </div>
+                <div class="analytics-field">
+                    <label class="analytics-label" for="compareAnalyticsFighterB">Compare B</label>
+                    <input id="compareAnalyticsFighterB" class="analytics-input" list="analyticsCompareNamesB" type="text" placeholder="Second fighter" value="">
+                </div>
+                <div class="analytics-actions">
+                    <button id="compareAnalyticsBtn" class="analytics-btn primary" type="button">Compare</button>
+                    <button id="clearAnalyticsCompareBtn" class="analytics-btn secondary" type="button">Clear</button>
+                </div>
+            </div>
+            <datalist id="analyticsCompareNamesA"></datalist>
+            <datalist id="analyticsCompareNamesB"></datalist>
             <p>Each wrestler in your roster gets a card with win/loss trend data, recent results, and performance details.</p>
             <div id="fighterAnalyticsGrid" class="fighter-grid"></div>
         </section>
@@ -215,6 +243,45 @@
                 }
                 return streak;
             });
+        }
+
+        function getAnalyticsCompareNames() {
+            const a = document.getElementById('compareAnalyticsFighterA')?.value.trim() || '';
+            const b = document.getElementById('compareAnalyticsFighterB')?.value.trim() || '';
+            return { a, b };
+        }
+
+        function applyAnalyticsFilters() {
+            const cards = document.querySelectorAll('#fighterAnalyticsGrid .fighter-card');
+            const search = document.getElementById('rosterAnalyticsSearch')?.value.trim().toLowerCase() || '';
+            const { a, b } = getAnalyticsCompareNames();
+            const compareA = a.toLowerCase();
+            const compareB = b.toLowerCase();
+            const selectedCompareNames = [compareA, compareB].filter(Boolean);
+
+            cards.forEach(card => {
+                const name = (card.dataset.fighterName || '').trim();
+                const normalizedName = name.toLowerCase();
+                const matchesSearch = !search || normalizedName.includes(search);
+
+                let matchesCompare = true;
+                if (selectedCompareNames.length === 2) {
+                    matchesCompare = selectedCompareNames.includes(normalizedName);
+                } else if (selectedCompareNames.length === 1) {
+                    matchesCompare = normalizedName === selectedCompareNames[0];
+                }
+
+                card.style.display = matchesSearch && matchesCompare ? '' : 'none';
+            });
+        }
+
+        function updateAnalyticsCompareDatalists() {
+            const names = loadRosterFighters().map(f => f.name).filter(Boolean).sort((a, b) => a.localeCompare(b));
+            const listA = document.getElementById('analyticsCompareNamesA');
+            const listB = document.getElementById('analyticsCompareNamesB');
+            if (!listA || !listB) return;
+            listA.innerHTML = names.map(name => `<option value="${name}"></option>`).join('');
+            listB.innerHTML = names.map(name => `<option value="${name}"></option>`).join('');
         }
 
         function renderFighterAnalytics(fighters, championships) {
@@ -407,7 +474,75 @@
             });
         }
 
-        document.addEventListener('DOMContentLoaded', buildCharts);
+        function initRosterAnalyticsFilters() {
+            const searchEl = document.getElementById('rosterAnalyticsSearch');
+            const compareAEl = document.getElementById('compareAnalyticsFighterA');
+            const compareBEl = document.getElementById('compareAnalyticsFighterB');
+            const compareBtn = document.getElementById('compareAnalyticsBtn');
+            const clearBtn = document.getElementById('clearAnalyticsCompareBtn');
+
+            const savedSearch = localStorage.getItem('wwe_roster_analytics_search') || '';
+            const savedA = localStorage.getItem('wwe_roster_compare_fighter_a') || localStorage.getItem('wwe_roster_analytics_compare_a') || '';
+            const savedB = localStorage.getItem('wwe_roster_compare_fighter_b') || localStorage.getItem('wwe_roster_analytics_compare_b') || '';
+
+            if (searchEl) {
+                searchEl.value = savedSearch;
+                searchEl.addEventListener('input', () => {
+                    localStorage.setItem('wwe_roster_analytics_search', searchEl.value.trim());
+                    applyAnalyticsFilters();
+                });
+            }
+            if (compareAEl) {
+                compareAEl.value = savedA;
+                compareAEl.addEventListener('input', () => {
+                    const nextValue = compareAEl.value.trim();
+                    localStorage.setItem('wwe_roster_compare_fighter_a', nextValue);
+                    localStorage.setItem('wwe_roster_analytics_compare_a', nextValue);
+                    applyAnalyticsFilters();
+                });
+            }
+            if (compareBEl) {
+                compareBEl.value = savedB;
+                compareBEl.addEventListener('input', () => {
+                    const nextValue = compareBEl.value.trim();
+                    localStorage.setItem('wwe_roster_compare_fighter_b', nextValue);
+                    localStorage.setItem('wwe_roster_analytics_compare_b', nextValue);
+                    applyAnalyticsFilters();
+                });
+            }
+            if (compareBtn) {
+                compareBtn.addEventListener('click', () => {
+                    const nameA = compareAEl?.value.trim() || '';
+                    const nameB = compareBEl?.value.trim() || '';
+                    if (!nameA && !nameB) {
+                        applyAnalyticsFilters();
+                        return;
+                    }
+                    if (nameA && nameB && nameA.toLowerCase() === nameB.toLowerCase()) {
+                        return;
+                    }
+                    if (nameA) localStorage.setItem('wwe_roster_compare_fighter_a', nameA);
+                    if (nameB) localStorage.setItem('wwe_roster_compare_fighter_b', nameB);
+                    applyAnalyticsFilters();
+                });
+            }
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    if (searchEl) { searchEl.value = ''; localStorage.removeItem('wwe_roster_analytics_search'); }
+                    if (compareAEl) { compareAEl.value = ''; localStorage.removeItem('wwe_roster_compare_fighter_a'); localStorage.removeItem('wwe_roster_analytics_compare_a'); }
+                    if (compareBEl) { compareBEl.value = ''; localStorage.removeItem('wwe_roster_compare_fighter_b'); localStorage.removeItem('wwe_roster_analytics_compare_b'); }
+                    applyAnalyticsFilters();
+                });
+            }
+
+            updateAnalyticsCompareDatalists();
+            applyAnalyticsFilters();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            buildCharts();
+            initRosterAnalyticsFilters();
+        });
     </script>
 </body>
 </html>

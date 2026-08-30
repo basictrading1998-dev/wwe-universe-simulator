@@ -390,12 +390,15 @@ function customPrompt(message, defaultValue, callback, title = 'Input') {
 }
 
 // Betting system removed, but some legacy UI still calls these hooks.
-window.updateBettingMoney = function(amount) {
+var updateBettingMoney = function(amount) {
     return Number(amount || 0);
 };
-window.resetBettingMoney = function() {
+window.updateBettingMoney = updateBettingMoney;
+
+var resetBettingMoney = function() {
     return 0;
 };
+window.resetBettingMoney = resetBettingMoney;
 
 fighters = loadFightersFromStorage();
 window.fighters = fighters;
