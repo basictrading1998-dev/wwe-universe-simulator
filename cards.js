@@ -664,6 +664,7 @@ async function refreshFightCardPortraits() {
             const slot = input.closest('.fighter-slot');
             const row = input.closest('.match-row');
             if (!slot || !row) return;
+            if (row.dataset.rematchPending === 'true') return;
 
             const slotType = slot.id.endsWith('-slot1') ? 'slot1' : 'slot2';
             const fighterId = input.getAttribute('data-fighter-id');
@@ -1270,6 +1271,7 @@ window.triggerSearchFill = function(uId, slotType) {
         }
         item.onclick = function() {
             input.value = f.name;
+            hydrateFighterPhotos().catch(() => {});
             input.setAttribute('data-fighter-id', f.id);
             panel.style.display = 'none';
             
@@ -1631,6 +1633,7 @@ function checkExistingFightRematch(matchRowId, changedSlot) {
     }
 
     setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, priorCount);
+    if (matchRow) matchRow.dataset.rematchPending = 'true';
     showRematchWarning(matchRowId, fighter1, fighter2, historySummary, changedSlot);
 
     return false; // Rematch detected: return false to prevent further actions and let user interact with warning
@@ -1672,6 +1675,8 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
             } else {
                 clearCardFighterSlot(matchRowId, changedSlot || 'slot2');
             }
+            const matchRow = document.getElementById(matchRowId);
+            if (matchRow) delete matchRow.dataset.rematchPending;
             hideRematchWarning(matchRowId);
         };
     }
@@ -1689,6 +1694,7 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
             }
             setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, history.priorCount);
             saveCurrentCardDraft();
+            if (matchRow) delete matchRow.dataset.rematchPending;
             hideRematchWarning(matchRowId);
         };
     }
