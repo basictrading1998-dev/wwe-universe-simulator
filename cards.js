@@ -1300,6 +1300,7 @@ document.addEventListener('input', (e) => {
     if (fighter) {
         input.setAttribute('data-fighter-id', fighter.id);
         updateFighterRecordDisplay(matchRow.id, slotType, fighter);
+        hydrateFighterPhotos().catch(() => {});
     } else {
         input.setAttribute('data-fighter-id', '');
         updateFighterRecordDisplay(matchRow.id, slotType, null);
