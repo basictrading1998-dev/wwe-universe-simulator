@@ -1274,6 +1274,7 @@ window.triggerSearchFill = function(uId, slotType) {
             item.className += ' is-already-booked';
         }
         item.onclick = function() {
+            clearRematchWarningForInput(uId);
             input.value = f.name;
             hydrateFighterPhotos().catch(() => {});
             input.setAttribute('data-fighter-id', f.id);
@@ -1317,6 +1318,7 @@ document.addEventListener('input', (e) => {
     const matchRow = input.closest('.match-row');
     if (!matchRow) return;
     const slotType = input.closest('.fighter-slot')?.id?.endsWith('-slot1') ? 'slot1' : 'slot2';
+    clearRematchWarningForInput(matchRow.id);
     const fighter = getFighterByIdOrName(input.value.trim());
     if (fighter) {
         input.setAttribute('data-fighter-id', fighter.id);
@@ -1447,6 +1449,11 @@ function clearCardFighterSlot(matchRowId, slotType) {
     hideRematchWarning(matchRowId);
     updateWinnerDropdown(matchRowId);
     saveCurrentCardDraft();
+}
+
+function clearRematchWarningForInput(matchRowId) {
+    resetMatchRowRematchState(matchRowId);
+    hideRematchWarning(matchRowId);
 }
 
 function applyMatchRowTitleGlow(matchRow) {
