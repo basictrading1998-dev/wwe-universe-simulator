@@ -248,6 +248,21 @@ const hydrateFighterPhotos = async function() {
     }));
 };
 
+async function hydrateSelectedFighterPortrait(input) {
+    if (!input) return;
+    await hydrateFighterPhotos();
+
+    const slot = input.closest('.fighter-slot');
+    const fighter = getFighterByIdOrName(input.value.trim());
+    const avatar = slot?.querySelector('.avatar-box');
+    if (!fighter || !avatar) return;
+
+    const photo = getEffectivePhotoFor(fighter);
+    avatar.innerHTML = photo
+        ? `<img src="${photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
+        : (fighter.name || 'F').charAt(0);
+}
+
 function getEffectivePhotoFor(fighter) {
     if (!fighter || typeof fighter !== 'object') return '';
     if (typeof fighter.photo === 'string' && fighter.photo) return fighter.photo;
@@ -913,7 +928,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!associatedFighter) return;
         if (target.getAttribute('data-fighter-id') !== associatedFighter.id) return;
 
-        hydrateFighterPhotos().catch(() => {});
+        hydrateSelectedFighterPortrait(target).catch(() => {});
         saveCurrentCardDraft();
     });
 
@@ -1276,7 +1291,7 @@ window.triggerSearchFill = function(uId, slotType) {
             checkExistingFightRematch(uId, slotType);
             checkDuplicateOnCard(uId, slotType);
             refreshTitleFightState(uId);
-            hydrateFighterPhotos().catch(() => {});
+            hydrateSelectedFighterPortrait(input).catch(() => {});
             saveCurrentCardDraft();
         };
         panel.appendChild(item);
@@ -1300,7 +1315,7 @@ document.addEventListener('input', (e) => {
     if (fighter) {
         input.setAttribute('data-fighter-id', fighter.id);
         updateFighterRecordDisplay(matchRow.id, slotType, fighter);
-        hydrateFighterPhotos().catch(() => {});
+        hydrateSelectedFighterPortrait(input).catch(() => {});
     } else {
         input.setAttribute('data-fighter-id', '');
         updateFighterRecordDisplay(matchRow.id, slotType, null);
