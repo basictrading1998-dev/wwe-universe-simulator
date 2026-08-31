@@ -1366,6 +1366,8 @@ function populateDropdownGenders(matchRowId, genderVariant) {
         slot2.querySelector('.fighter-search-input').setAttribute('data-fighter-id', '');
         updateFighterRecordDisplay(matchRowId, 'slot1', null);
         updateFighterRecordDisplay(matchRowId, 'slot2', null);
+        resetMatchRowRematchState(matchRowId);
+        hideRematchWarning(matchRowId);
         refreshTitleFightState(matchRowId);
     }
 }
@@ -1528,7 +1530,10 @@ function resetMatchRowRematchState(matchRowId) {
         delete matchRow.dataset.rematchF1;
         delete matchRow.dataset.rematchF2;
         delete matchRow.dataset.rematchCount;
+        delete matchRow.dataset.rematchPending;
     }
+    delete activeRematchWarnings[matchRowId];
+    sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
 }
 
 window.setMatchRowRematchAccepted = function(matchRowId, fighter1Id, fighter2Id, count) {
