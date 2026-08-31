@@ -1,3 +1,5 @@
+const activeRematchWarnings = {};
+
 function loadFightersFromStorage() {
     const raw = localStorage.getItem('wwe_fighters') || localStorage.getItem('fighters');
     if (!raw) return [];
@@ -1633,6 +1635,10 @@ function checkExistingFightRematch(matchRowId, changedSlot) {
     }
 
     setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, priorCount);
+    activeRematchWarnings[matchRowId] = {
+        fighter1: fighter1.name,
+        fighter2: fighter2.name
+    };
     if (matchRow) matchRow.dataset.rematchPending = 'true';
     showRematchWarning(matchRowId, fighter1, fighter2, historySummary, changedSlot);
 
@@ -1677,6 +1683,7 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
             }
             const matchRow = document.getElementById(matchRowId);
             if (matchRow) delete matchRow.dataset.rematchPending;
+            delete activeRematchWarnings[matchRowId];
             hideRematchWarning(matchRowId);
         };
     }
@@ -1695,9 +1702,39 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
             setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, history.priorCount);
             saveCurrentCardDraft();
             if (matchRow) delete matchRow.dataset.rematchPending;
+            delete activeRematchWarnings[matchRowId];
             hideRematchWarning(matchRowId);
         };
     }
+}
+
+function restoreActiveRematchWarnings() {
+    Object.entries(activeRematchWarnings).forEach(([matchRowId, warning]) => {
+        const matchRow = document.getElementById(matchRowId);
+        const fighter1 = getFighterByIdOrName(warning.fighter1);
+        const fighter2 = getFighterByIdOrName(warning.fighter2);
+        if (!matchRow || !fighter1 || !fighter2) return;
+
+        let container = document.getElementById(`${matchRowId}-rematch-warning`);
+        if (!container) {
+            container = document.createElement('div');
+            container.id = `${matchRowId}-rematch-warning`;
+            container.style.cssText = 'display:none; width:100%; background:#fef3c7; border:1px solid #fde68a; border-radius:10px; padding:12px; color:#92400e; box-sizing:border-box;';
+            container.innerHTML = `<div id="${matchRowId}-rematch-warning-text" style="font-size:0.78rem; line-height:1.4; margin-bottom:10px;"></div><div style="display:flex; justify-content:flex-end; gap:8px;"><button id="${matchRowId}-rematch-cancel" type="button" style="background:#ef4444; border:none; color:white; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.75rem;">Cancel</button><button id="${matchRowId}-rematch-allow" type="button" style="background:#15803d; border:none; color:white; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.75rem;">Allow Rematch</button></div>`;
+            matchRow.appendChild(container);
+        }
+
+        const historyEntries = getFightHistoryBetween(fighter1, fighter2);
+        if (!historyEntries.length) return;
+        const priorCount = getNextRematchNumberForPair(fighter1, fighter2);
+        showRematchWarning(matchRowId, fighter1, fighter2, {
+            priorCount,
+            lastWinner: historyEntries[historyEntries.length - 1]?.winner || fighter1.name,
+            showName: historyEntries[historyEntries.length - 1]?.showName || 'Previous show',
+            methodLabel: historyEntries[historyEntries.length - 1]?.method || 'Previous result',
+            fightNumber: priorCount + 1
+        }, 'both');
+    });
 }
 
 function hideRematchWarning(matchRowId) {
@@ -3829,6 +3866,7 @@ function restoreCurrentCardDraft() {
         }
         refreshTitleFightState(id);
     });
+    restoreActiveRematchWarnings();
 }
 
 window.changeMatchGender = function(matchRowId, gender) {
