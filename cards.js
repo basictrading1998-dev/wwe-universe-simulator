@@ -938,6 +938,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('pagehide', (event) => {
         if (!window.skipDraftSaveOnUnload) saveCurrentCardDraft(event);
     });
+    restoreSessionRematchWarnings();
+    window.addEventListener('focus', restoreSessionRematchWarnings);
 });
 
 
@@ -1639,6 +1641,10 @@ function checkExistingFightRematch(matchRowId, changedSlot) {
         fighter1: fighter1.name,
         fighter2: fighter2.name
     };
+    sessionStorage.setItem(`rematch_pending_match${matchRowId}`, JSON.stringify({
+        fighter1: fighter1.name,
+        fighter2: fighter2.name
+    }));
     if (matchRow) matchRow.dataset.rematchPending = 'true';
     showRematchWarning(matchRowId, fighter1, fighter2, historySummary, changedSlot);
 
@@ -1684,6 +1690,7 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
             const matchRow = document.getElementById(matchRowId);
             if (matchRow) delete matchRow.dataset.rematchPending;
             delete activeRematchWarnings[matchRowId];
+            sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
             hideRematchWarning(matchRowId);
         };
     }
@@ -1703,6 +1710,7 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
             saveCurrentCardDraft();
             if (matchRow) delete matchRow.dataset.rematchPending;
             delete activeRematchWarnings[matchRowId];
+            sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
             hideRematchWarning(matchRowId);
         };
     }
@@ -1735,6 +1743,21 @@ function restoreActiveRematchWarnings() {
             fightNumber: priorCount + 1
         }, 'both');
     });
+}
+
+function restoreSessionRematchWarnings() {
+    document.querySelectorAll('.match-row').forEach(matchRow => {
+        const stored = sessionStorage.getItem(`rematch_pending_match${matchRow.id}`);
+        if (!stored) return;
+        try {
+            const warning = JSON.parse(stored);
+            if (!warning || !warning.fighter1 || !warning.fighter2) return;
+            activeRematchWarnings[matchRow.id] = warning;
+        } catch (error) {
+            return;
+        }
+    });
+    restoreActiveRematchWarnings();
 }
 
 function hideRematchWarning(matchRowId) {
