@@ -913,6 +913,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const matchRow = e.target.closest('.match-row');
             if (matchRow) {
                 const id = matchRow.id;
+                if (matchRow.dataset.validationBatch === 'true') return;
                 const slot1Input = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input');
                 const slot2Input = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input');
                 const slotType = e.target.closest('.fighter-slot')?.id?.replace(`${id}-`, '') || '';
@@ -1524,6 +1525,12 @@ function recheckMatchValidation(matchRowId, changedSlot = 'both') {
     const rematchValid = checkExistingFightRematch(matchRowId, changedSlot);
     const duplicateValid = checkDuplicateOnCard(matchRowId, changedSlot);
     return rematchValid && duplicateValid;
+}
+
+function notifyFighterInputChanged(input) {
+    if (!input) return;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
 function applyMatchRowTitleGlow(matchRow) {
@@ -2638,10 +2645,12 @@ window.randomizeEntireShow = function() {
             
             if (slot1 && slot2) {
                 resetMatchValidationState(matchId);
+                row.dataset.validationBatch = 'true';
                 // Slot 1
                 const input1 = slot1.querySelector('.fighter-search-input');
                 input1.value = fighter1.name;
                 input1.setAttribute('data-fighter-id', fighter1.id);
+                notifyFighterInputChanged(input1);
                 const av1 = slot1.querySelector('.avatar-box');
                 const _eff1 = getEffectivePhotoFor(fighter1);
                 av1.innerHTML = _eff1 ? `<img src="${_eff1}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter1.name.charAt(0);
@@ -2653,6 +2662,8 @@ window.randomizeEntireShow = function() {
                 const input2 = slot2.querySelector('.fighter-search-input');
                 input2.value = fighter2.name;
                 input2.setAttribute('data-fighter-id', fighter2.id);
+                notifyFighterInputChanged(input2);
+                delete row.dataset.validationBatch;
                 const av2 = slot2.querySelector('.avatar-box');
                 const _eff2 = getEffectivePhotoFor(fighter2);
                 av2.innerHTML = _eff2 ? `<img src="${_eff2}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter2.name.charAt(0);
@@ -2789,11 +2800,13 @@ window.randomizeMatchup = function(matchId) {
 
         const [fighter1, fighter2] = chosenPair;
         resetMatchValidationState(matchId);
+        row.dataset.validationBatch = 'true';
         
         // Populate slot 1
         const input1 = slot1.querySelector('.fighter-search-input');
         input1.value = fighter1.name;
         input1.setAttribute('data-fighter-id', fighter1.id);
+        notifyFighterInputChanged(input1);
         const av1 = slot1.querySelector('.avatar-box');
         let content1 = '';
         if (fighter1.photo) {
@@ -2809,6 +2822,8 @@ window.randomizeMatchup = function(matchId) {
         const input2 = slot2.querySelector('.fighter-search-input');
         input2.value = fighter2.name;
         input2.setAttribute('data-fighter-id', fighter2.id);
+        notifyFighterInputChanged(input2);
+        delete row.dataset.validationBatch;
         const av2 = slot2.querySelector('.avatar-box');
         let content2 = '';
         if (fighter2.photo) {
@@ -2975,13 +2990,17 @@ window.suggestOpponent = function(id) {
 
 window.bookSuggested = function(fId) {
     if (!activeMatchId) return;
+    const row = document.getElementById(activeMatchId);
     const slot2 = document.getElementById(`${activeMatchId}-slot2`);
     const input2 = slot2.querySelector('.fighter-search-input');
     const f2 = fighters.find(f => f.id === fId);
     if (input2 && f2) {
         resetMatchValidationState(activeMatchId);
+        row.dataset.validationBatch = 'true';
         input2.value = f2.name;
         input2.setAttribute('data-fighter-id', f2.id);
+        notifyFighterInputChanged(input2);
+        delete row.dataset.validationBatch;
         const av = slot2.querySelector('.avatar-box');
         let avatarContent = '';
         if (f2.photo) {
