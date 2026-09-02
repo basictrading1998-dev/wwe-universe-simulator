@@ -186,6 +186,50 @@ function normalizeLookupKey(value) {
         .toLowerCase();
 }
 
+function getWarningStorageKey(matchRowId) {
+    return `warning_match_${matchRowId}`;
+}
+
+function getWarningMatchState(matchRowId) {
+    try {
+        const stored = sessionStorage.getItem(getWarningStorageKey(matchRowId));
+        const state = stored ? JSON.parse(stored) : null;
+        if (!state || (state.showId && state.showId !== activeShowId)) return null;
+        return state;
+    } catch (error) {
+        return null;
+    }
+}
+
+function setWarningMatchState(matchRowId, type, details = {}) {
+    const state = getWarningMatchState(matchRowId) || {};
+    state.showId = activeShowId || '';
+    state[type] = { ...details };
+    sessionStorage.setItem(getWarningStorageKey(matchRowId), JSON.stringify(state));
+}
+
+function clearWarningMatchState(matchRowId, type) {
+    const state = getWarningMatchState(matchRowId);
+    if (!state) return;
+    if (type) delete state[type];
+    else {
+        delete state.sameName;
+        delete state.rematch;
+        sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
+    }
+    if (type === 'rematch') sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
+    if (!state.sameName && !state.rematch) {
+        sessionStorage.removeItem(getWarningStorageKey(matchRowId));
+    } else {
+        sessionStorage.setItem(getWarningStorageKey(matchRowId), JSON.stringify(state));
+    }
+}
+
+function isUnfinalizedWarningRow(matchRowId) {
+    const row = document.getElementById(matchRowId);
+    return !!row && !completedMatches[matchRowId] && !isShowCompleted(activeShowId);
+}
+
 const rosterPortraitMap = (typeof window !== 'undefined' && window.wwe2k24PortraitMap) ? window.wwe2k24PortraitMap : {};
 const rosterPortraitMapNormalized = (typeof window !== 'undefined' && window.wwe2k24PortraitMapNormalized) ? window.wwe2k24PortraitMapNormalized : Object.keys(rosterPortraitMap).reduce((acc, name) => {
     acc[normalizeLookupKey(name)] = rosterPortraitMap[name];
@@ -938,8 +982,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('pagehide', (event) => {
         if (!window.skipDraftSaveOnUnload) saveCurrentCardDraft(event);
     });
-    restoreSessionRematchWarnings();
-    window.addEventListener('focus', restoreSessionRematchWarnings);
+    restoreSessionWarnings();
+    window.addEventListener('focus', restoreSessionWarnings);
 });
 
 
@@ -1540,7 +1584,6 @@ function resetMatchRowRematchState(matchRowId) {
         delete matchRow.dataset.rematchPending;
     }
     delete activeRematchWarnings[matchRowId];
-    sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
 }
 
 window.setMatchRowRematchAccepted = function(matchRowId, fighter1Id, fighter2Id, count) {
@@ -1649,6 +1692,10 @@ function checkExistingFightRematch(matchRowId, changedSlot) {
     }
 
     setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, priorCount);
+    setWarningMatchState(matchRowId, 'rematch', {
+        fighter1: fighter1.name,
+        fighter2: fighter2.name
+    });
     activeRematchWarnings[matchRowId] = {
         fighter1: fighter1.name,
         fighter2: fighter2.name
@@ -1702,6 +1749,7 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
             const matchRow = document.getElementById(matchRowId);
             if (matchRow) delete matchRow.dataset.rematchPending;
             delete activeRematchWarnings[matchRowId];
+            clearWarningMatchState(matchRowId, 'rematch');
             sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
             hideRematchWarning(matchRowId);
         };
@@ -1722,6 +1770,7 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
             saveCurrentCardDraft();
             if (matchRow) delete matchRow.dataset.rematchPending;
             delete activeRematchWarnings[matchRowId];
+            clearWarningMatchState(matchRowId, 'rematch');
             sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
             hideRematchWarning(matchRowId);
         };
@@ -1759,12 +1808,15 @@ function restoreActiveRematchWarnings() {
 
 function restoreSessionRematchWarnings() {
     document.querySelectorAll('.match-row').forEach(matchRow => {
+        const state = getWarningMatchState(matchRow.id);
         const stored = sessionStorage.getItem(`rematch_pending_match${matchRow.id}`);
+        if (state?.rematch) activeRematchWarnings[matchRow.id] = state.rematch;
         if (!stored) return;
         try {
             const warning = JSON.parse(stored);
             if (!warning || !warning.fighter1 || !warning.fighter2) return;
             activeRematchWarnings[matchRow.id] = warning;
+            setWarningMatchState(matchRow.id, 'rematch', warning);
         } catch (error) {
             return;
         }
@@ -1772,7 +1824,19 @@ function restoreSessionRematchWarnings() {
     restoreActiveRematchWarnings();
 }
 
+function restoreSessionWarnings() {
+    restoreSessionRematchWarnings();
+    document.querySelectorAll('.match-row').forEach(matchRow => {
+        if (!isUnfinalizedWarningRow(matchRow.id)) return;
+        const sameName = getWarningMatchState(matchRow.id)?.sameName;
+        if (sameName) {
+            showDuplicateWarning(matchRow.id, sameName.changedSlot, sameName.existingName, sameName.newName, false);
+        }
+    });
+}
+
 function hideRematchWarning(matchRowId) {
+    if (isUnfinalizedWarningRow(matchRowId) && getWarningMatchState(matchRowId)?.rematch) return;
     const container = document.getElementById(`${matchRowId}-rematch-warning`);
     if (container) container.style.display = 'none';
     // Re-enable result controls
@@ -1823,7 +1887,8 @@ function baseFighterName(name) {
 function findSimilarNameOnCard(name, excludeInput) {
     const normalized = normalizeFighterName(name);
     const base = baseFighterName(name);
-    if (!normalized) return null;
+    const lookupKey = normalizeLookupKey(name);
+    if (!normalized || !lookupKey) return null;
     const inputs = Array.from(document.querySelectorAll('.fighter-search-input'));
     for (let inp of inputs) {
         if (inp === excludeInput) continue;
@@ -1831,7 +1896,11 @@ function findSimilarNameOnCard(name, excludeInput) {
         if (!val) continue;
         const normVal = normalizeFighterName(val);
         const baseVal = baseFighterName(val);
+        const lookupVal = normalizeLookupKey(val);
         if (!normVal) continue;
+        if (lookupKey === lookupVal) {
+            return { input: inp, name: val };
+        }
         // exact normalized match or one contains the other
         if (normVal === normalized || normVal.includes(normalized) || normalized.includes(normVal)) {
             return { input: inp, name: val };
@@ -1844,10 +1913,13 @@ function findSimilarNameOnCard(name, excludeInput) {
     return null;
 }
 
-function showDuplicateWarning(matchRowId, changedSlot, existingName, newName) {
+function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, persist = true) {
     const container = document.getElementById(`${matchRowId}-duplicate-warning`);
     const text = document.getElementById(`${matchRowId}-duplicate-warning-text`);
     if (!container || !text) return;
+    if (persist) {
+        setWarningMatchState(matchRowId, 'sameName', { changedSlot, existingName, newName });
+    }
     text.innerHTML = `⚠️ <strong>${newName}</strong> looks similar to <strong>${existingName}</strong> already on this card.`;
     container.style.display = 'block';
 
@@ -1857,10 +1929,12 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName) {
 
     if (cancelBtn) cancelBtn.onclick = function() {
         clearCardFighterSlot(matchRowId, changedSlot || 'slot2');
+        clearWarningMatchState(matchRowId, 'sameName');
         hideDuplicateWarning(matchRowId);
     };
     if (allowBtn) allowBtn.onclick = function() {
         // simply allow; hide warning
+        clearWarningMatchState(matchRowId, 'sameName');
         hideDuplicateWarning(matchRowId);
     };
     if (replaceBtn) replaceBtn.onclick = function() {
@@ -1912,11 +1986,13 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName) {
             updateWinnerDropdown(matchRowId);
             saveCurrentCardDraft();
         }
+        clearWarningMatchState(matchRowId, 'sameName');
         hideDuplicateWarning(matchRowId);
     };
 }
 
 function hideDuplicateWarning(matchRowId) {
+    if (isUnfinalizedWarningRow(matchRowId) && getWarningMatchState(matchRowId)?.sameName) return;
     const container = document.getElementById(`${matchRowId}-duplicate-warning`);
     if (container) container.style.display = 'none';
 }
@@ -3586,6 +3662,8 @@ window.finalizeFullEventCard = function() {
         customAlert(`Archive Blocked!\nYou must finish saving at least one valid result before completing the event.\n\nCurrent Progress: ${completeRows}/${Math.max(1, totalLogged)}`, 'Finalize Event');
         return;
     }
+
+    allMatchRows.forEach(row => clearWarningMatchState(row.id));
 
     // Award event archive bonus once per completed show. Legacy hook kept as a no-op when betting is disabled.
     if (typeof window.updateBettingMoney === 'function') {

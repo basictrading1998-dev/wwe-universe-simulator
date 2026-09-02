@@ -20,8 +20,9 @@
         .nav-active { background-color: #dc2626; color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
         main { max-width: 56rem; margin: 32px auto 0 auto; padding: 0 16px; display: grid; grid-template-columns: 1fr; gap: 32px; position: relative; z-index: 1; overflow: visible; }
         @media (min-width: 768px) { main { grid-template-columns: 1fr 2fr; } }
-        #rosterComparePanel, #rosterComparePanel * { position: relative; z-index: 25; pointer-events: auto !important; }
-        #rosterComparePanel input, #rosterComparePanel button { pointer-events: auto !important; cursor: pointer; }
+        #rosterComparePanel, #rosterComparePanel * { position: relative; z-index: 25; }
+        #rosterComparePanel input { cursor: text; }
+        #rosterComparePanel button { cursor: pointer; }
         .form-section { background-color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #bae6fd; box-shadow: 0 1px 3px rgba(0,0,0,0.05); height: max-content; }
         h2 { font-size: 1.25rem; font-weight: 700; margin-top: 0; margin-bottom: 16px; color: #0c4a6e; border-bottom: 2px solid #f0f9ff; padding-bottom: 8px; }
         .form-group { margin-bottom: 16px; }

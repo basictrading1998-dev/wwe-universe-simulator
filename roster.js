@@ -1845,7 +1845,7 @@ function renderRosterGrid() {
             <div onclick="uploadFighterPhoto('${f.id}')" style="width: 44px; height: 44px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
             <button class="fighter-history-btn" onclick='openFighterHistory(${JSON.stringify(f.name)})' title="View history" aria-label="View history">📊</button>
             <button class="fighter-analytics-btn" onclick='openFighterAnalytics(${JSON.stringify(f.name)})' title="Open analytics" aria-label="Open analytics">📈</button>
-            <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a;">${f.name}</h4>
+            <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a; cursor: text; user-select: text; -webkit-user-select: text;">${f.name}</h4>
             <span style="font-size: 0.65rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 2px;">${f.division} • ${f.gender}</span>
             
             <div style="margin-top: 2px; display: flex; flex-direction: row; gap: 6px; align-items: center; justify-content: center;">${goldBadgesHtml}</div>
@@ -2060,7 +2060,7 @@ function renderRosterGridWithoutReload() {
             <div onclick="uploadFighterPhoto('${f.id}')" style="width: 44px; height: 44px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
             <button class="fighter-history-btn" onclick='openFighterHistory(${JSON.stringify(f.name)})' title="View history" aria-label="View history">📊</button>
             <button class="fighter-analytics-btn" onclick='openFighterAnalytics(${JSON.stringify(f.name)})' title="Open analytics" aria-label="Open analytics">📈</button>
-            <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a;">${f.name}</h4>
+            <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a; cursor: text; user-select: text; -webkit-user-select: text;">${f.name}</h4>
             <span style="font-size: 0.65rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 2px;">${f.division} • ${f.gender}</span>
             
             <div style="margin-top: 2px; display: flex; flex-direction: row; gap: 6px; align-items: center; justify-content: center;">${goldBadgesHtml}</div>
@@ -2191,20 +2191,20 @@ function buildRosterComparePanel() {
 
     const comparePanel = document.createElement('div');
     comparePanel.id = 'rosterComparePanel';
-    comparePanel.style.cssText = 'background: white; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); position: relative; z-index: 25; pointer-events: auto; overflow: visible; isolation: isolate;';
+    comparePanel.style.cssText = 'background: white; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); position: relative; z-index: 25; overflow: visible; isolation: isolate;';
     comparePanel.innerHTML = `
         <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end;">
             <div style="flex: 1 1 220px; min-width: 220px;">
                 <label style="display: block; margin-bottom: 6px; font-size: 0.75rem; font-weight: 700; color: #0c4a6e; text-transform: uppercase;">Fighter A</label>
-                <input id="compareFighterA" list="compareNamesA" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterA}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem; position: relative; z-index: 21; pointer-events: auto;">
+                <input id="compareFighterA" list="compareNamesA" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterA}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem; position: relative; z-index: 21; cursor: text;">
             </div>
             <div style="flex: 1 1 220px; min-width: 220px;">
                 <label style="display: block; margin-bottom: 6px; font-size: 0.75rem; font-weight: 700; color: #0c4a6e; text-transform: uppercase;">Fighter B</label>
-                <input id="compareFighterB" list="compareNamesB" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterB}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem; position: relative; z-index: 21; pointer-events: auto;">
+                <input id="compareFighterB" list="compareNamesB" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterB}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem; position: relative; z-index: 21; cursor: text;">
             </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; position: relative; z-index: 21; pointer-events: auto;">
-                <button onclick="compareRosterFighters()" style="background: #0284c7; color: white; border: none; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer; pointer-events: auto;">Compare</button>
-                <button onclick="clearRosterCompare()" style="background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer; pointer-events: auto;">Clear</button>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; position: relative; z-index: 21;">
+                <button onclick="compareRosterFighters()" style="background: #0284c7; color: white; border: none; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer;">Compare</button>
+                <button onclick="clearRosterCompare()" style="background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer;">Clear</button>
             </div>
         </div>
     `;
@@ -2833,6 +2833,17 @@ window.sortRosterByMetric = function(metricType) {
             const fightsA = (Number(a.wins) || 0) + (Number(a.losses) || 0);
             const fightsB = (Number(b.wins) || 0) + (Number(b.losses) || 0);
             return fightsB - fightsA || b.wins - a.wins;
+        });
+    } else if (metricType === 'defenses') {
+        const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+        fighters.sort((a, b) => {
+            const defensesA = championships
+                .filter(championship => championship.championId === a.id)
+                .reduce((total, championship) => total + (Number(championship.defenses) || 0), 0);
+            const defensesB = championships
+                .filter(championship => championship.championId === b.id)
+                .reduce((total, championship) => total + (Number(championship.defenses) || 0), 0);
+            return defensesB - defensesA || b.wins - a.wins;
         });
     } else {
         fighters.sort((a, b) => (b[metricType] || 0) - (a[metricType] || 0));
