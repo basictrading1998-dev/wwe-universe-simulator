@@ -1731,66 +1731,12 @@ window.openFighterAnalytics = function(fighterName) {
     window.location.href = 'charts.html';
 };
 
-// Re-apply compare/filter state when the page becomes visible again (back/forward, tab switch)
-window.addEventListener('pageshow', () => {
-    // When returning to the page, reload roster from storage then render and restore inputs
-    (async () => {
-        try {
-            // ensure photo cache is preloaded so avatar rendering can use it immediately
-            if (typeof preloadPhotoCache === 'function') await preloadPhotoCache();
-            console.debug('pageshow: loading fighters from storage, keys:', {
-                fightersKey: localStorage.getItem('wwe_fighters') ? 'present' : 'missing',
-                compareA: localStorage.getItem('wwe_roster_compare_fighter_a') || null,
-                compareB: localStorage.getItem('wwe_roster_compare_fighter_b') || null
-            });
-            await ensureFightersLoaded();
-            console.debug('pageshow: fighters loaded (post-ensure), count=', fighters.length);
-            scheduleRenderRosterGrid();
-            rehydrateRosterCompareInputs(40);
-        } catch (e) {
-            // fallback: try render with current in-memory fighters
-            try { scheduleRenderRosterGrid(); rehydrateRosterCompareInputs(40); } catch (_) {}
-        }
-    })();
-});
-
-// Also listen for visibility/focus in case the browser keeps the page alive
-window.addEventListener('visibilitychange', () => {
-    if (!document.hidden) rehydrateRosterCompareInputs(60);
-});
-window.addEventListener('focus', () => rehydrateRosterCompareInputs(30));
-
-// Also refresh the cache when the page regains focus/visibility so later renders use cached blobs
-window.addEventListener('focus', async () => { if (typeof preloadPhotoCache === 'function') await preloadPhotoCache(); });
-window.addEventListener('visibilitychange', async () => { if (!document.hidden && typeof preloadPhotoCache === 'function') await preloadPhotoCache(); });
-
 function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
 
-    // If photo cache hasn't finished loading yet, preload then re-run render to avoid flashes
-    if (!window._fighterPhotoCacheLoaded) {
-        if (typeof preloadPhotoCache === 'function') {
-            preloadPhotoCache().then(() => {
-                try { scheduleRenderRosterGrid(); } catch (e) {}
-            });
-            return;
-        }
-    }
-
     ensureMissingPortraits(fighters);
-
-    
-
-    const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
-    if (missingPhotos) {
-        hydrateRosterFighterPhotos().then(loaded => {
-            if (loaded) scheduleRenderRosterGrid();
-        }).catch(() => {
-            // ignore hydration failures and render any available images
-        });
-    }
 
     // Use the already-loaded fighter list so hydrated photo data is preserved.
     refreshFighterNameDatalist();
@@ -1960,15 +1906,6 @@ function renderRosterGridWithoutReload() {
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
 
-    if (!window._fighterPhotoCacheLoaded) {
-        if (typeof preloadPhotoCache === 'function') {
-            preloadPhotoCache().then(() => {
-                try { renderRosterGridWithoutReload(); } catch (e) {}
-            });
-            return;
-        }
-    }
-
     ensureMissingPortraits(fighters);
 
     
@@ -1999,15 +1936,6 @@ function renderRosterGridWithoutReload() {
                 if (pending.length) Promise.allSettled(pending).then(() => { try { saveFighters(fighters); } catch (e) {} });
             }
         } catch (e) { /* ignore */ }
-
-    const missingPhotos = fighters.some(f => !f.photo && f.photo_key);
-    if (missingPhotos) {
-        hydrateRosterFighterPhotos().then(loaded => {
-            if (loaded) renderRosterGridWithoutReload();
-        }).catch(() => {
-            // ignore hydration failures and continue rendering current state
-        });
-    }
 
     const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
 
@@ -2216,7 +2144,7 @@ function buildRosterComparePanel() {
     // Avoid calling `compareRosterFighters()` here because it can show alerts when the
     // roster isn't fully loaded (causing the modal you saw). Defer to `applySavedCompareFilter`
     // which silently applies the filter when both fighters exist. If the roster isn't ready,
-    // rehydrateRosterCompareInputs() will handle applying once data is available.
+    // Comparison values are restored directly while the panel is built.
     if (savedFighterA && savedFighterB && Array.isArray(fighters) && fighters.length > 0) {
         applySavedCompareFilter();
     }
@@ -2282,20 +2210,6 @@ function updateRosterCompareDatalists() {
         optionB.value = name;
         listB.appendChild(optionB);
     });
-}
-
-function rehydrateRosterCompareInputs(delay = 50) {
-    setTimeout(() => {
-        try {
-            const a = localStorage.getItem('wwe_roster_compare_fighter_a') || '';
-            const b = localStorage.getItem('wwe_roster_compare_fighter_b') || '';
-            const elA = document.getElementById('compareFighterA');
-            const elB = document.getElementById('compareFighterB');
-            if (elA && a) elA.value = a;
-            if (elB && b) elB.value = b;
-            if ((a && b) && (elA || elB)) applySavedCompareFilter();
-        } catch (e) {}
-    }, delay);
 }
 
 function getRosterSearchQuery() {
