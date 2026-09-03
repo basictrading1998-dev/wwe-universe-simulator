@@ -7,8 +7,65 @@ const reactiveCommentTemplates = [
     'Match of the year energy!',
     'Can\'t wait to see the rematch!',
     'The whole division is watching this rivalry.',
-    'Respectfully, I saw that finish coming.'
+    'Respectfully, I saw that finish coming.',
+    'Somebody check on the locker room after that one.',
+    'That rivalry just got a lot more interesting.',
+    'No shortcuts, just a statement win.',
+    'The next chapter is going to be must-see.',
+    'I need a front-row seat for the fallout.'
 ];
+
+const relationshipCommentTemplates = [
+    'Standing with you all the way!',
+    'That was a beautiful show of support.',
+    'The whole division is behind this team.',
+    'Respect to both fighters tonight.',
+    'Love seeing the loyalty in this universe.',
+    'A powerful moment for the people closest to the action.',
+    'The bond is stronger than one night in the ring.',
+    'That is the kind of support every fighter needs.',
+    'A classy reaction after an unforgettable match.',
+    'The locker room will be talking about this one.',
+    'No doubt that connection made tonight special.',
+    'That is what a united universe looks like.'
+];
+
+const majorUpsetHeadlineTemplates = [
+    'UNBELIEVABLE UPSET! [Winner] has just snapped [Loser]\'s incredible [Streak]-fight win streak on Fight Card [CardNum]! No one saw this coming!',
+    'SHOCKING RESULT! [Winner] toppled [Loser] and ended a [Streak]-fight run on Fight Card [CardNum]!',
+    'The streak is over! [Winner] stunned [Loser], who entered Fight Card [CardNum] with a [Streak]-fight win streak and a [LoserRecord] record.'
+];
+
+const majorUpsetCommentTemplates = [
+    'Absolutely stunned right now. I thought [Loser] was completely untouchable.',
+    'Nobody had [Loser] losing tonight. What an unbelievable shock!',
+    'The streak is dead and the entire division just changed.',
+    '[Winner] just became the streak-killer everyone will be talking about.',
+    'I need to see the replay again. That result was impossible to predict.',
+    'A giant has fallen, and [Winner] just made a massive statement.',
+    'That was the upset of the year. The next chapter starts now.',
+    'The locker room is in disbelief after that finish.'
+];
+
+const coldStreakCommentTemplates = [
+    '[Loser] has officially lost it. That is [Streak] losses in a row. Absolutely embarrassing.',
+    'Time to go home and be a family man. [Loser] does not belong in this ring anymore.',
+    'Can we talk about how washed up [Loser] is right now? Zero momentum.',
+    '[Streak] straight losses is not a slump. [Loser] needs a complete reset.',
+    'Someone in [Loser]\'s corner needs to tell them the truth. This is painful to watch.',
+    'The confidence is gone, the results are brutal, and [Loser] keeps showing up anyway.',
+    'That was another collapse. How many more losses can [Loser] take?',
+    'The division smells weakness. [Loser] has to find an answer immediately.'
+];
+
+const coldStreakFighterPostTemplates = [
+    'I do not know what is happening right now... I am giving everything and nothing is working. I need to rethink everything.',
+    'This streak is eating me alive. I am angry, exhausted, and nowhere near finished.',
+    'I refuse to pretend [Streak] straight losses is acceptable. Something has to change, starting now.',
+    'The excuses are over. I need answers, I need momentum, and I need to fight my way back.'
+];
+
+let activeCommentTemplateUsage = null;
 
 const reporterHeadlineTemplates = [
     '[Winner] absolutely dominated [Loser] to secure a victory via [Method] on Fight Card [CardNum]!',
@@ -185,27 +242,57 @@ function getNewsWireFighterPool() {
     }
 }
 
-function createRandomCommentData(fighterPool, postAuthor) {
+function getOfficialPortrait(fighterName, fighter) {
+    const normalize = window.normalizeLookupKey || (value => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' '));
+    const lookupKey = normalize(fighterName);
+    const portraitMap = window.wwe2k24PortraitMap || {};
+    const normalizedMap = window.wwe2k24PortraitMapNormalized || {};
+    return normalizedMap[lookupKey] || portraitMap[lookupKey] || portraitMap[fighterName] || fighter?.photo || '';
+}
+
+function shuffledItems(items) {
+    return (items || []).slice().sort(() => Math.random() - 0.5);
+}
+
+function createRandomCommentData(fighterPool, postAuthor, isRelationshipPost = false, usedTemplates = null, upsetContext = null, coldStreakContext = null) {
     const availableFighters = (fighterPool || []).filter(fighter => fighter?.name && fighter.name !== postAuthor);
     const commentCount = Math.min(Math.floor(Math.random() * 3) + 1, availableFighters.length);
-    const selectedFighters = [];
-    while (selectedFighters.length < commentCount) {
-        const fighter = chooseRandom(availableFighters);
-        if (!fighter || selectedFighters.some(selected => selected.id === fighter.id)) break;
-        selectedFighters.push(fighter);
-    }
-    return selectedFighters.map(fighter => ({
+    const selectedFighters = shuffledItems(availableFighters).slice(0, commentCount);
+    const baseTemplates = coldStreakContext
+        ? coldStreakCommentTemplates
+        : upsetContext
+        ? majorUpsetCommentTemplates
+        : isRelationshipPost ? relationshipCommentTemplates : reactiveCommentTemplates;
+    const availableTemplates = shuffledItems(baseTemplates)
+        .filter(template => !usedTemplates || !usedTemplates.has(template));
+    const templatePool = availableTemplates.length ? availableTemplates : shuffledItems(baseTemplates);
+    return selectedFighters.slice(0, templatePool.length).map((fighter, index) => ({
         id: `comment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         author: fighter.name,
-        authorPhoto: fighter.photo || '',
-        text: chooseRandom(reactiveCommentTemplates),
+        authorPhoto: getOfficialPortrait(fighter.name, fighter),
+        text: templatePool[index % templatePool.length]
+            .replaceAll('[Winner]', coldStreakContext?.winner || upsetContext?.winner || '')
+            .replaceAll('[Loser]', coldStreakContext?.loser || upsetContext?.loser || '')
+            .replaceAll('[Streak]', String(coldStreakContext?.losingStreak || upsetContext?.streak || '')),
         likes: randomLikeCount()
-    }));
+    })).map(comment => {
+        if (usedTemplates) usedTemplates.add(comment.text);
+        return comment;
+    });
 }
 
 function generateRandomComments(postElement, fighterPool) {
     if (!postElement) return [];
-    const comments = postElement.newsWireComments || createRandomCommentData(fighterPool, postElement.dataset.postAuthor || '');
+    const comments = postElement.newsWireComments || createRandomCommentData(
+        fighterPool,
+        postElement.dataset.postAuthor || '',
+        postElement.dataset.relationshipPost === 'true',
+        null,
+        null,
+        postElement.dataset.coldStreakCrash === 'true'
+            ? { loser: postElement.dataset.coldStreakLoser || '', losingStreak: postElement.dataset.coldStreak || 0 }
+            : null
+    );
     postElement.newsWireComments = comments;
     postElement.querySelector('.post-comments')?.remove();
 
@@ -222,9 +309,10 @@ function generateRandomComments(postElement, fighterPool) {
         const avatar = document.createElement('div');
         avatar.className = 'comment-avatar';
         avatar.textContent = (comment.author || '?').charAt(0).toUpperCase();
-        if (comment.authorPhoto) {
+        const commentPortrait = getOfficialPortrait(comment.author, { photo: comment.authorPhoto });
+        if (commentPortrait) {
             const image = document.createElement('img');
-            image.src = comment.authorPhoto;
+            image.src = commentPortrait;
             image.alt = `${comment.author} portrait`;
             image.onerror = () => image.remove();
             avatar.replaceChildren(image);
@@ -280,7 +368,19 @@ function addEngagementDefaults(entries) {
             changed = true;
         }
         if (entry.type === 'social' && !Array.isArray(entry.comments)) {
-            entry.comments = createRandomCommentData(fighterPool, entry.author || '');
+            entry.comments = createRandomCommentData(
+                fighterPool,
+                entry.author || '',
+                entry.relationshipPost === true,
+                null,
+                entry.upsetContext || null,
+                entry.coldStreakContext || null
+            );
+            entry.commentContext = entry.relationshipPost === true ? 'relationship' : 'standard';
+            changed = true;
+        } else if (entry.type === 'social' && entry.relationshipPost === true && entry.commentContext !== 'relationship') {
+            entry.comments = createRandomCommentData(fighterPool, entry.author || '', true);
+            entry.commentContext = 'relationship';
             changed = true;
         }
     });
@@ -296,25 +396,37 @@ function addNewsWireEntry(entry) {
         likes: randomLikeCount()
     };
     if (newEntry.type === 'social') {
-        newEntry.comments = createRandomCommentData(getNewsWireFighterPool(), newEntry.author || '');
+        newEntry.comments = createRandomCommentData(
+            getNewsWireFighterPool(),
+            newEntry.author || '',
+            newEntry.relationshipPost === true,
+            activeCommentTemplateUsage,
+            newEntry.upsetContext || null,
+            newEntry.coldStreakContext || null
+        );
+        newEntry.commentContext = newEntry.relationshipPost === true ? 'relationship' : 'standard';
     }
     entries.unshift(newEntry);
     saveNewsWireEntries(entries.slice(0, 250));
     renderNewsWireFeeds();
 }
 
-function generateReporterHeadline(winner, loser, method, cardNum) {
+function generateReporterHeadline(winner, loser, method, cardNum, upsetContext = null) {
     const winnerDetails = getFighterDetails(winner);
     const loserDetails = getFighterDetails(loser);
     const team = sharedTeamFor(winnerDetails, loserDetails);
-    const headlineTemplate = team
+    const headlineTemplate = upsetContext?.loserWinStreak >= 3
+        ? chooseRandom(majorUpsetHeadlineTemplates)
+        : team
         ? `Civil War erupts in ${team} as [Winner] defeats teammate [Loser] via [Method] on Fight Card [CardNum]!`
         : chooseRandom(reporterHeadlineTemplates);
     const headline = headlineTemplate
         .replaceAll('[Winner]', winnerDetails.name)
         .replaceAll('[Loser]', loserDetails.name)
         .replaceAll('[Method]', method || 'a decisive finish')
-        .replaceAll('[CardNum]', cardNum || 'the latest card');
+        .replaceAll('[CardNum]', cardNum || 'the latest card')
+        .replaceAll('[Streak]', String(upsetContext?.loserWinStreak || 0))
+        .replaceAll('[LoserRecord]', upsetContext?.loserRecord || `${loserDetails.wins}-${loserDetails.losses}`);
 
     addNewsWireEntry({
         type: 'reporter',
@@ -323,12 +435,21 @@ function generateReporterHeadline(winner, loser, method, cardNum) {
     });
 }
 
-function generateFighterTrashTalk(winner, loser, gender, cardNum) {
+function generateFighterTrashTalk(winner, loser, gender, cardNum, upsetContext = null) {
     const winnerDetails = getFighterDetails(winner);
     const loserDetails = getFighterDetails(loser);
     const team = sharedTeamFor(winnerDetails, loserDetails);
     const previousFeud = findPendingFeud(winnerDetails, loserDetails) || findPendingFeud(loserDetails, winnerDetails);
-    const templates = previousFeud
+    const coldStreakCrash = upsetContext?.loserLosingStreak >= 3;
+    const templates = coldStreakCrash
+        ? coldStreakFighterPostTemplates.map(text => ({ role: 'loser', text }))
+        : upsetContext?.loserWinStreak >= 3
+        ? [
+            { role: 'winner', text: 'Told you all I was a streak-killer! [Loser] had a [Streak]-fight run, but I just changed the record book.' },
+            { role: 'winner', text: 'The [LoserRecord] record looked untouchable until I arrived. Giant status: revoked.' },
+            { role: 'loser', text: 'I am still processing this. [Winner] ended my [Streak]-fight streak, but this story is not finished.' }
+        ]
+        : previousFeud
         ? feudFollowupTemplates
         : team
         ? teammateTrashTalkTemplates
@@ -343,39 +464,59 @@ function generateFighterTrashTalk(winner, loser, gender, cardNum) {
         .replaceAll('[Loser]', loserDetails.name);
     const followupText = text
         .replaceAll('[Target]', target.name)
-        .replaceAll('[TargetRecord]', previousFeud?.targetRecord || `${Number(target.wins || 0)}-${Number(target.losses || 0)}`);
+        .replaceAll('[TargetRecord]', previousFeud?.targetRecord || `${Number(target.wins || 0)}-${Number(target.losses || 0)}`)
+        .replaceAll('[Streak]', String(upsetContext?.loserWinStreak || 0))
+        .replaceAll('[LoserRecord]', upsetContext?.loserRecord || `${loserDetails.wins}-${loserDetails.losses}`)
+        .replaceAll('[Streak]', String(upsetContext?.loserLosingStreak || upsetContext?.loserWinStreak || 0));
 
-    addNewsWireEntry({
-        type: 'social',
-        author: author.name,
-        authorPhoto: author.photo,
-        authorGender: author.gender,
-        text: followupText
-    });
-    recordFeudMemory(author, target, followupText, cardNum);
-
-    const winnerPartner = winnerDetails.partner ? findRosterFighter(winnerDetails.partner) : null;
-    if (winnerPartner) {
+    activeCommentTemplateUsage = new Set();
+    try {
         addNewsWireEntry({
             type: 'social',
-            author: winnerPartner.name,
-            authorPhoto: winnerPartner.photo || '',
-            authorGender: winnerPartner.gender || 'male',
-            text: `So incredibly proud of ${winnerDetails.name} taking care of business tonight on Fight Card ${cardNum || 'tonight'}!`,
-            relationship: 'supportive-partner'
+            author: author.name,
+            authorPhoto: getOfficialPortrait(author.name, author),
+            authorGender: author.gender,
+            text: followupText,
+            upsetContext: upsetContext?.loserWinStreak >= 3 ? {
+                winner: winnerDetails.name,
+                loser: loserDetails.name
+            } : null,
+            coldStreakContext: coldStreakCrash ? {
+                winner: winnerDetails.name,
+                loser: loserDetails.name,
+                losingStreak: upsetContext.loserLosingStreak,
+                coldStreakCrash: true
+            } : null
         });
-    }
+        recordFeudMemory(author, target, followupText, cardNum);
 
-    const loserPartner = loserDetails.partner ? findRosterFighter(loserDetails.partner) : null;
-    if (loserPartner) {
-        addNewsWireEntry({
-            type: 'social',
-            author: loserPartner.name,
-            authorPhoto: loserPartner.photo || '',
-            authorGender: loserPartner.gender || 'male',
-            text: `${loserDetails.name} is not alone. ${winnerDetails.name}, you will answer for what happened on Fight Card ${cardNum || 'tonight'}.`,
-            relationship: 'retaliatory-partner'
-        });
+        const winnerPartner = winnerDetails.partner ? findRosterFighter(winnerDetails.partner) : null;
+        if (winnerPartner) {
+            addNewsWireEntry({
+                type: 'social',
+                author: winnerPartner.name,
+                authorPhoto: getOfficialPortrait(winnerPartner.name, winnerPartner),
+                authorGender: winnerPartner.gender || 'male',
+                text: `So incredibly proud of ${winnerDetails.name} taking care of business tonight on Fight Card ${cardNum || 'tonight'}!`,
+                relationship: 'supportive-partner',
+                relationshipPost: true
+            });
+        }
+
+        const loserPartner = loserDetails.partner ? findRosterFighter(loserDetails.partner) : null;
+        if (loserPartner) {
+            addNewsWireEntry({
+                type: 'social',
+                author: loserPartner.name,
+                authorPhoto: getOfficialPortrait(loserPartner.name, loserPartner),
+                authorGender: loserPartner.gender || 'male',
+                text: `${loserDetails.name} is not alone. ${winnerDetails.name}, you will answer for what happened on Fight Card ${cardNum || 'tonight'}.`,
+                relationship: 'retaliatory-partner',
+                relationshipPost: true
+            });
+        }
+    } finally {
+        activeCommentTemplateUsage = null;
     }
 }
 
@@ -458,9 +599,10 @@ function createSocialPost(entry) {
     const avatar = document.createElement('div');
     avatar.className = 'social-avatar';
     avatar.textContent = (entry.author || '?').charAt(0).toUpperCase();
-    if (entry.authorPhoto) {
+    const authorPortrait = getOfficialPortrait(entry.author, { photo: entry.authorPhoto });
+    if (authorPortrait) {
         const image = document.createElement('img');
-        image.src = entry.authorPhoto;
+        image.src = authorPortrait;
         image.alt = `${entry.author} portrait`;
         image.onerror = () => image.remove();
         avatar.replaceChildren(image);
@@ -480,6 +622,10 @@ function createSocialPost(entry) {
     content.append(header, text, time, createLikeControl(entry.id, entry.likes));
     article.dataset.postId = entry.id;
     article.dataset.postAuthor = entry.author || '';
+    article.dataset.relationshipPost = entry.relationshipPost === true ? 'true' : 'false';
+    article.dataset.coldStreakCrash = entry.coldStreakContext ? 'true' : 'false';
+    article.dataset.coldStreakLoser = entry.coldStreakContext?.loser || '';
+    article.dataset.coldStreak = entry.coldStreakContext?.losingStreak || '';
     article.newsWireComments = entry.comments || [];
     article.append(avatar, content);
     generateRandomComments(article, getNewsWireFighterPool());

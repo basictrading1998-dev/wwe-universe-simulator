@@ -3024,6 +3024,26 @@ window.bookSuggested = function(fId) {
     }
     window.closeSuggestionModal();
 };
+function getPreMatchWinStreak(fighter) {
+    const history = fighter?.compiled_history_deck || fighter?.history_deck || fighter?.history || [];
+    let streak = 0;
+    for (let index = history.length - 1; index >= 0; index--) {
+        if (String(history[index]?.outcome || '').toLowerCase() !== 'win') break;
+        streak++;
+    }
+    return streak;
+}
+
+function getActiveLosingStreak(fighter) {
+    const history = fighter?.compiled_history_deck || fighter?.history_deck || fighter?.history || [];
+    let streak = 0;
+    for (let index = history.length - 1; index >= 0; index--) {
+        if (String(history[index]?.outcome || '').toLowerCase() !== 'loss') break;
+        streak++;
+    }
+    return streak;
+}
+
 window.logMatchResult = function(id) {
     if (!activeShowId || !futureShows.find(s => s.id === activeShowId)) {
         ensureActiveShowSelected();
@@ -3066,6 +3086,9 @@ window.logMatchResult = function(id) {
     if (!w || !l) return customAlert('Please choose a valid winner before logging the result.', 'Log Match Result');
     if (typeof w[methodSelect.value] === 'undefined') return customAlert('The selected win method is invalid.', 'Log Match Result');
 
+    const loserWinStreakBeforeMatch = getPreMatchWinStreak(l);
+    const loserRecordBeforeMatch = `${Number(l.wins || 0)}-${Number(l.losses || 0)}`;
+
     w.wins++; 
     w[methodSelect.value]++; 
     l.losses++;
@@ -3099,6 +3122,8 @@ window.logMatchResult = function(id) {
 
     if (!winnerAlreadyLogged) w.compiled_history_deck.push(winnerHistoryEntry);
     if (!loserAlreadyLogged) l.compiled_history_deck.push(loserHistoryEntry);
+
+    const loserLosingStreakAfterMatch = getActiveLosingStreak(l);
 
     saveFighters(fighters);
     updateFighterRecordDisplay(id, 'slot1', f1);
@@ -3195,10 +3220,18 @@ window.logMatchResult = function(id) {
     }
 
     if (typeof window.generateReporterHeadline === 'function') {
-        window.generateReporterHeadline(w, l, methodName, showName);
+        window.generateReporterHeadline(w, l, methodName, showName, {
+            loserWinStreak: loserWinStreakBeforeMatch,
+            loserRecord: loserRecordBeforeMatch,
+            loserLosingStreak: loserLosingStreakAfterMatch
+        });
     }
     if (typeof window.generateFighterTrashTalk === 'function') {
-        window.generateFighterTrashTalk(w, l, w.gender, showName);
+        window.generateFighterTrashTalk(w, l, w.gender, showName, {
+            loserWinStreak: loserWinStreakBeforeMatch,
+            loserRecord: loserRecordBeforeMatch,
+            loserLosingStreak: loserLosingStreakAfterMatch
+        });
     }
     if (typeof window.generateReporterSuggestions === 'function') {
         window.generateReporterSuggestions();
