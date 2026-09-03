@@ -31,9 +31,9 @@ const relationshipCommentTemplates = [
 ];
 
 const majorUpsetHeadlineTemplates = [
-    'UNBELIEVABLE UPSET! [Winner] has just snapped [Loser]\'s incredible [Streak]-fight win streak on Fight Card [CardNum]! No one saw this coming!',
-    'SHOCKING RESULT! [Winner] toppled [Loser] and ended a [Streak]-fight run on Fight Card [CardNum]!',
-    'The streak is over! [Winner] stunned [Loser], who entered Fight Card [CardNum] with a [Streak]-fight win streak and a [LoserRecord] record.'
+    'UNBELIEVABLE UPSET! [Winner] has just snapped [Loser]\'s incredible [Streak]-fight win streak on [CardNum]! No one saw this coming!',
+    'SHOCKING RESULT! [Winner] toppled [Loser] and ended a [Streak]-fight run on [CardNum]!',
+    'The streak is over! [Winner] stunned [Loser], who entered [CardNum] with a [Streak]-fight win streak and a [LoserRecord] record.'
 ];
 
 const majorUpsetCommentTemplates = [
@@ -68,10 +68,10 @@ const coldStreakFighterPostTemplates = [
 let activeCommentTemplateUsage = null;
 
 const reporterHeadlineTemplates = [
-    '[Winner] absolutely dominated [Loser] to secure a victory via [Method] on Fight Card [CardNum]!',
-    'Breaking: [Winner] outlasted [Loser] by [Method] in a hard-fought Fight Card [CardNum] showdown.',
-    '[Winner] has the whole division talking after defeating [Loser] via [Method] on Fight Card [CardNum].',
-    'Upset alert! [Winner] stopped [Loser] with [Method] and changed the conversation on Fight Card [CardNum].'
+    '[Winner] absolutely dominated [Loser] to secure a victory via [Method] on [CardNum]!',
+    'Breaking: [Winner] outlasted [Loser] by [Method] in a hard-fought [CardNum] showdown.',
+    '[Winner] has the whole division talking after defeating [Loser] via [Method] on [CardNum].',
+    'Upset alert! [Winner] stopped [Loser] with [Method] and changed the conversation on [CardNum].'
 ];
 
 const maleTrashTalkTemplates = [
@@ -247,7 +247,7 @@ function getOfficialPortrait(fighterName, fighter) {
     const lookupKey = normalize(fighterName);
     const portraitMap = window.wwe2k24PortraitMap || {};
     const normalizedMap = window.wwe2k24PortraitMapNormalized || {};
-    return normalizedMap[lookupKey] || portraitMap[lookupKey] || portraitMap[fighterName] || fighter?.photo || '';
+    return portraitMap[lookupKey] || normalizedMap[lookupKey] || portraitMap[fighterName] || fighter?.photo || '';
 }
 
 function shuffledItems(items) {
@@ -418,7 +418,7 @@ function generateReporterHeadline(winner, loser, method, cardNum, upsetContext =
     const headlineTemplate = upsetContext?.loserWinStreak >= 3
         ? chooseRandom(majorUpsetHeadlineTemplates)
         : team
-        ? `Civil War erupts in ${team} as [Winner] defeats teammate [Loser] via [Method] on Fight Card [CardNum]!`
+        ? `Civil War erupts in ${team} as [Winner] defeats teammate [Loser] via [Method] on [CardNum]!`
         : chooseRandom(reporterHeadlineTemplates);
     const headline = headlineTemplate
         .replaceAll('[Winner]', winnerDetails.name)
@@ -497,7 +497,7 @@ function generateFighterTrashTalk(winner, loser, gender, cardNum, upsetContext =
                 author: winnerPartner.name,
                 authorPhoto: getOfficialPortrait(winnerPartner.name, winnerPartner),
                 authorGender: winnerPartner.gender || 'male',
-                text: `So incredibly proud of ${winnerDetails.name} taking care of business tonight on Fight Card ${cardNum || 'tonight'}!`,
+                text: `So incredibly proud of ${winnerDetails.name} taking care of business tonight on ${cardNum || 'tonight'}!`,
                 relationship: 'supportive-partner',
                 relationshipPost: true
             });
@@ -510,7 +510,7 @@ function generateFighterTrashTalk(winner, loser, gender, cardNum, upsetContext =
                 author: loserPartner.name,
                 authorPhoto: getOfficialPortrait(loserPartner.name, loserPartner),
                 authorGender: loserPartner.gender || 'male',
-                text: `${loserDetails.name} is not alone. ${winnerDetails.name}, you will answer for what happened on Fight Card ${cardNum || 'tonight'}.`,
+                text: `${loserDetails.name} is not alone. ${winnerDetails.name}, you will answer for what happened on ${cardNum || 'tonight'}.`,
                 relationship: 'retaliatory-partner',
                 relationshipPost: true
             });
