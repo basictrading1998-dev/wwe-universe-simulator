@@ -18,6 +18,9 @@ function loadFightersFromStorage() {
             win_pinfall: Number(f.win_pinfall || 0),
             win_ko: Number(f.win_ko || 0),
             win_submission: Number(f.win_submission || 0),
+            team: typeof f.team === 'string' ? f.team.trim() : '',
+            partner: typeof f.partner === 'string' ? f.partner.trim() : '',
+            family: typeof f.family === 'string' ? f.family.trim() : '',
             photo: f.photo || '',
             photo_key: f.photo_key || '',
             compiled_history_deck: Array.isArray(f.compiled_history_deck) ? f.compiled_history_deck : Array.isArray(f.history_deck) ? f.history_deck : Array.isArray(f.history) ? f.history : [],
@@ -3178,6 +3181,27 @@ window.logMatchResult = function(id) {
     const storageKey = getActiveShowMatchesStorageKey();
     if (storageKey) {
         localStorage.setItem(storageKey, JSON.stringify(completedMatches));
+    }
+
+    if (typeof window.recordMatchForNewsWire === 'function') {
+        window.recordMatchForNewsWire({
+            winner: w.name,
+            loser: l.name,
+            winnerName: w.name,
+            loserName: l.name,
+            method: methodName,
+            showName
+        });
+    }
+
+    if (typeof window.generateReporterHeadline === 'function') {
+        window.generateReporterHeadline(w, l, methodName, showName);
+    }
+    if (typeof window.generateFighterTrashTalk === 'function') {
+        window.generateFighterTrashTalk(w, l, w.gender, showName);
+    }
+    if (typeof window.generateReporterSuggestions === 'function') {
+        window.generateReporterSuggestions();
     }
     
     clearMatchWinnerBadges(id);

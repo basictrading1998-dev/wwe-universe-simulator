@@ -1130,6 +1130,9 @@ function normalizeFighterRecord(fighter) {
     normalized.win_pinfall = Number(normalized.win_pinfall || 0);
     normalized.win_ko = Number(normalized.win_ko || 0);
     normalized.win_submission = Number(normalized.win_submission || 0);
+    normalized.team = typeof normalized.team === 'string' ? normalized.team.trim() : '';
+    normalized.partner = typeof normalized.partner === 'string' ? normalized.partner.trim() : '';
+    normalized.family = typeof normalized.family === 'string' ? normalized.family.trim() : '';
     normalized.photo_key = normalized.photo_key || normalized.photoKey || '';
     normalized.photo = sanitizeStoredPhoto(normalized.photo, normalized.name);
     return normalized;
@@ -1677,6 +1680,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     refreshFighterNameDatalist();
     scheduleRenderRosterGrid();
     setupSidebarFormEngine();
+    setupRelationshipManager();
     setupLiveSearchEngine();
     window.addEventListener('beforeunload', () => saveFighters(fighters));
 });
@@ -2397,6 +2401,7 @@ function setupSidebarFormEngine() {
                 name: nameValue,
                 gender: genderSelect ? genderSelect.value.toLowerCase() : 'male',
                 division: normalizeDivisionName((divisionInput && divisionInput.value.trim()) ? divisionInput.value.trim() : 'HeavyWeight'),
+                team: '', partner: '',
                 wins: 0, losses: 0, defenses: 0, title_fights: 0, win_pinfall: 0, win_ko: 0, win_submission: 0
             };
 
@@ -2413,6 +2418,67 @@ function setupSidebarFormEngine() {
         };
     }
 }
+
+function populateRelationshipManager() {
+    const fighterSelect = document.getElementById('relationshipFighterSelect');
+    const targetSelect = document.getElementById('relationshipTargetSelect');
+    if (!fighterSelect || !targetSelect) return;
+
+    const previousFighter = fighterSelect.value;
+    const roster = (fighters || []).filter(fighter => fighter && fighter.name);
+    fighterSelect.replaceChildren(new Option('Select Fighter', ''));
+    roster.forEach(fighter => fighterSelect.add(new Option(fighter.name, fighter.id)));
+    if (roster.some(fighter => fighter.id === previousFighter)) fighterSelect.value = previousFighter;
+
+    const previousTarget = targetSelect.value;
+    targetSelect.replaceChildren(new Option('Target Relation', ''));
+    roster.filter(fighter => fighter.id !== fighterSelect.value)
+        .forEach(fighter => targetSelect.add(new Option(fighter.name, fighter.id)));
+    if (roster.some(fighter => fighter.id === previousTarget && fighter.id !== fighterSelect.value)) targetSelect.value = previousTarget;
+}
+
+function saveFighterRelationship() {
+    const fighterSelect = document.getElementById('relationshipFighterSelect');
+    const typeSelect = document.getElementById('relationshipTypeSelect');
+    const targetSelect = document.getElementById('relationshipTargetSelect');
+    const status = document.getElementById('relationshipManagerStatus');
+    const fighter = fighters.find(item => item.id === fighterSelect?.value);
+    const target = fighters.find(item => item.id === targetSelect?.value);
+    if (!fighter || !target || fighter.id === target.id) {
+        if (status) status.textContent = 'Select two different fighters first.';
+        return;
+    }
+
+    const relationshipType = typeSelect?.value;
+    if (relationshipType === 'teammate') {
+        const teamName = fighter.team || target.team || `${fighter.name} & ${target.name}`;
+        fighter.team = teamName;
+        target.team = teamName;
+    } else if (relationshipType === 'couple') {
+        fighter.partner = target.name;
+        target.partner = fighter.name;
+    } else if (relationshipType === 'family') {
+        const familyName = fighter.family || target.family || `${fighter.name} Family`;
+        fighter.family = familyName;
+        target.family = familyName;
+    } else {
+        if (status) status.textContent = 'Choose a relationship type first.';
+        return;
+    }
+
+    saveFighters(fighters);
+    populateRelationshipManager();
+    if (status) status.textContent = `${fighter.name} and ${target.name} saved as ${typeSelect.options[typeSelect.selectedIndex].text}.`;
+}
+
+function setupRelationshipManager() {
+    const fighterSelect = document.getElementById('relationshipFighterSelect');
+    if (!fighterSelect) return;
+    fighterSelect.addEventListener('change', populateRelationshipManager);
+    populateRelationshipManager();
+}
+
+window.saveFighterRelationship = saveFighterRelationship;
 
 function setupLiveSearchEngine() {
     const searchBar = document.querySelector('input[placeholder*="Search"]') || document.querySelector('input[id*="Search"]') || document.querySelector('input[type="text"]:nth-of-type(2)');

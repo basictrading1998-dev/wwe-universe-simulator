@@ -20,6 +20,9 @@
         .nav-active { background-color: #dc2626; color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
         main { max-width: 56rem; margin: 32px auto 0 auto; padding: 0 16px; display: grid; grid-template-columns: 1fr; gap: 32px; position: relative; z-index: 1; overflow: visible; }
         @media (min-width: 768px) { main { grid-template-columns: 1fr 2fr; } }
+        .admin-controls-wrapper { display: flex; gap: 20px; align-items: flex-start; width: 100%; }
+        .admin-controls-wrapper > .form-section { flex: 1 1 0; max-width: none !important; }
+        @media (max-width: 768px) { .admin-controls-wrapper { flex-direction: column; } .admin-controls-wrapper > .form-section { width: 100%; } }
         #rosterComparePanel, #rosterComparePanel * { position: relative; z-index: 25; }
         #rosterComparePanel input { cursor: text; }
         #rosterComparePanel button { cursor: pointer; }
@@ -96,7 +99,7 @@ body::before { content: ''; position: fixed; inset: 0; background: transparent; 
             <a href="fighter-history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fighter History</a>
             <a href="lineage.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Championship Lineage</a>
             <a href="charts.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Roster Analytics</a>
-            <a href="royal-rumble.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Royal Rumble</a>
+            <a href="news-wire.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">News Wire</a>
         </div>
 
         <div style="flex: 0 0 420px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
@@ -120,6 +123,7 @@ body::before { content: ''; position: fixed; inset: 0; background: transparent; 
     <!-- Clear All Fighter Records (removed) -->
 </div>
 
+        <div class="admin-controls-wrapper">
         <section class="form-section" style="margin-bottom: 30px; max-width: 600px;">
             <h2>Add New Fighter</h2>
             <form id="fighterForm">
@@ -148,6 +152,31 @@ body::before { content: ''; position: fixed; inset: 0; background: transparent; 
                 </div>
             </form>
         </section>
+
+        <section class="form-section" id="relationshipManager" style="margin-bottom: 30px; max-width: 600px; background: #f8fafc; border: 1px solid #7dd3fc;">
+            <h2 style="color: #075985;">Roster Relationship Manager</h2>
+            <p style="margin: -8px 0 16px; color: #64748b; font-size: 0.8rem;">Connect roster members for future News Wire storylines.</p>
+            <div class="form-group">
+                <label for="relationshipFighterSelect">Select Fighter</label>
+                <select id="relationshipFighterSelect" style="width:100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; background: white;"><option value="">Select Fighter</option></select>
+            </div>
+            <div class="form-group">
+                <label for="relationshipTypeSelect">Relationship Type</label>
+                <select id="relationshipTypeSelect" style="width:100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; background: white;">
+                    <option value="">Choose relationship type</option>
+                    <option value="teammate">Teammate</option>
+                    <option value="couple">Married/Couple</option>
+                    <option value="family">Family</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="relationshipTargetSelect">Target Relation</label>
+                <select id="relationshipTargetSelect" style="width:100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; background: white;"><option value="">Target Relation</option></select>
+            </div>
+            <button type="button" onclick="saveFighterRelationship()" style="width:100%; background:#075985; color:white; border:none; border-radius:8px; padding:10px; font-weight:700; cursor:pointer; text-transform:uppercase;">Save Relationship</button>
+            <p id="relationshipManagerStatus" aria-live="polite" style="min-height: 1em; margin: 10px 0 0; color: #0369a1; font-size: 0.75rem; font-weight: 700;"></p>
+        </section>
+        </div>
 
 <div id="bulkImporterWrapper" style="display: none; margin-bottom: 20px;">
     <section class="form-section" style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #bae6fd; box-shadow: 0 1px 3px rgba(0,0,0,0.05); max-width: 600px;">
