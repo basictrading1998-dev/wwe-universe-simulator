@@ -18,6 +18,7 @@ function loadFightersFromStorage() {
             win_pinfall: Number(f.win_pinfall || 0),
             win_ko: Number(f.win_ko || 0),
             win_submission: Number(f.win_submission || 0),
+            win_streak: Number(f.win_streak || 0),
             retired: f.retired === true,
             photo: f.photo || '',
             photo_key: f.photo_key || '',
@@ -254,6 +255,31 @@ if (typeof window !== 'undefined') {
     };
 }
 
+function getActiveWinStreakForPortrait(fighter) {
+    const wins = Number(fighter?.wins || 0);
+    const losses = Number(fighter?.losses || 0);
+    return losses === 0 ? wins : Number(fighter?.win_streak || 0);
+}
+
+function getStreakClass(fighter) {
+    const calculatedStreak = getActiveWinStreakForPortrait(fighter);
+    if (calculatedStreak >= 10) return 'border-tier-4';
+    if (calculatedStreak >= 7) return 'border-tier-3';
+    if (calculatedStreak >= 5) return 'border-tier-2';
+    if (calculatedStreak >= 3) return 'border-tier-1';
+    return '';
+}
+
+function applyStreakPortraitClass(frame, fighter) {
+    if (!frame) return;
+    frame.classList.add('portrait-frame-base');
+    frame.classList.remove('streak-purple', 'streak-green', 'streak-blue', 'streak-rainbow-diamond', 'border-tier-1', 'border-tier-2', 'border-tier-3', 'border-tier-4');
+    const streakClass = getStreakClass(fighter);
+    if (streakClass) frame.classList.add(streakClass);
+}
+
+window.getStreakClass = getStreakClass;
+
 const hydrateFighterPhotos = async function() {
     await Promise.all(fighters.map(async (fighter) => {
         if (!fighter || typeof fighter !== 'object' || fighter.photo || !fighter.photo_key) return;
@@ -310,6 +336,7 @@ async function hydrateSelectedFighterPortrait(input) {
     const fighter = getFighterByIdOrName(input.value.trim());
     const avatar = slot?.querySelector('.avatar-box');
     if (!fighter || !avatar) return;
+    applyStreakPortraitClass(slot.querySelector('.avatar-frame'), fighter);
 
     const photo = getEffectivePhotoFor(fighter);
     avatar.innerHTML = photo
@@ -730,11 +757,13 @@ async function refreshFightCardPortraits() {
                 const photo = getEffectivePhotoFor(fighter);
                 avatar.innerHTML = photo ? `<img src="${photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : (fighter.name || 'F').charAt(0);
                 avatar.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+                applyStreakPortraitClass(slot.querySelector('.avatar-frame'), fighter);
                 if (fighter.id) input.setAttribute('data-fighter-id', fighter.id);
                 updateFighterRecordDisplay(row.id, slotType, fighter);
             } else {
                 avatar.innerHTML = '👤';
                 avatar.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; cursor:pointer; overflow:hidden;";
+                applyStreakPortraitClass(slot.querySelector('.avatar-frame'), null);
             }
         });
     } catch (err) {
@@ -1178,8 +1207,8 @@ function renderCardRows(box, num, tierId, isMain) {
                 
                 <div class="fighter-slot" id="${uId}-slot1" data-gender="male" style="width:38%; display:flex; align-items:center; gap:8px; position:relative; transition: box-shadow 0.25s ease, transform 0.25s ease;">
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
-                        <div class="avatar-frame" style="position:relative; width:36px; height:36px;">
-                            <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
+                        <div class="avatar-frame portrait-frame-base" style="position:relative; width:60px; height:60px;">
+                            <div class="avatar-box" style="width:60px; height:60px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
                             <div class="win-badge" style="display:none; position:absolute; right:-2px; bottom:-2px; width:14px; height:14px; border-radius:50%; background:#16a34a; color:white; border:1px solid white; display:flex; align-items:center; justify-content:center; font-size:0.65rem; box-shadow:none;">✓</div>
                         </div>
                         <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
@@ -1200,8 +1229,8 @@ function renderCardRows(box, num, tierId, isMain) {
 
                 <div class="fighter-slot" id="${uId}-slot2" data-gender="male" style="width:38%; text-align:right; display:flex; flex-direction:row-reverse; align-items:center; gap:8px; position:relative; min-width:0; transition: box-shadow 0.25s ease, transform 0.25s ease;">
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
-                        <div class="avatar-frame" style="position:relative; width:36px; height:36px;">
-                            <div class="avatar-box" style="width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
+                        <div class="avatar-frame portrait-frame-base" style="position:relative; width:60px; height:60px;">
+                            <div class="avatar-box" style="width:60px; height:60px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
                             <div class="win-badge" style="display:none; position:absolute; right:-2px; bottom:-2px; width:14px; height:14px; border-radius:50%; background:#16a34a; color:white; border:1px solid white; display:flex; align-items:center; justify-content:center; font-size:0.65rem; box-shadow:none;">✓</div>
                         </div>
                         <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
@@ -3069,9 +3098,11 @@ window.logMatchResult = function(id) {
     if (!w || !l) return customAlert('Please choose a valid winner before logging the result.', 'Log Match Result');
     if (typeof w[methodSelect.value] === 'undefined') return customAlert('The selected win method is invalid.', 'Log Match Result');
 
-    w.wins++; 
+    w.wins++;
+    w.win_streak = Number(w.win_streak || 0) + 1;
     w[methodSelect.value]++; 
     l.losses++;
+    l.win_streak = 0;
 
     const methodName = methodSelect.options[methodSelect.selectedIndex].text;
     const currentShow = futureShows.find(s => s.id === activeShowId);
@@ -3220,6 +3251,23 @@ window.logMatchResult = function(id) {
     updateRandomizerState();
 };
 
+function restoreWinStreakAfterUnlog(fighter) {
+    if (!fighter) return;
+    const losses = Number(fighter.losses || 0);
+    if (losses === 0) {
+        fighter.win_streak = Number(fighter.wins || 0);
+        return;
+    }
+
+    const history = fighter.compiled_history_deck || fighter.history_deck || fighter.history || [];
+    let streak = 0;
+    for (let index = history.length - 1; index >= 0; index--) {
+        if (String(history[index]?.outcome || '').toLowerCase() !== 'win') break;
+        streak++;
+    }
+    fighter.win_streak = streak;
+}
+
 window.unlogMatchResult = function(id) {
     if (!activeShowId || !futureShows.find(s => s.id === activeShowId)) {
         ensureActiveShowSelected();
@@ -3243,6 +3291,11 @@ window.unlogMatchResult = function(id) {
             winner.compiled_history_deck = winner.compiled_history_deck.filter(entry => {
                 return !(entry.outcome === 'win' && entry.opponent === savedMatch.loserName && entry.showName === savedMatch.showName && entry.method === savedMatch.methodName && entry.rematchNumber === savedMatch.rematchNumber);
             });
+            winner.win_streak = 0;
+            for (let index = winner.compiled_history_deck.length - 1; index >= 0; index--) {
+                if (winner.compiled_history_deck[index].outcome !== 'win') break;
+                winner.win_streak++;
+            }
         }
     }
     if (loser) {
@@ -3252,6 +3305,7 @@ window.unlogMatchResult = function(id) {
                 return !(entry.outcome === 'loss' && entry.opponent === savedMatch.winnerName && entry.showName === savedMatch.showName && entry.method === savedMatch.methodName && entry.rematchNumber === savedMatch.rematchNumber);
             });
         }
+        restoreWinStreakAfterUnlog(loser);
     }
 
     if (winner) refreshFighterRecordDisplaysForId(winner.id);
@@ -3314,6 +3368,8 @@ window.unlogMatchResult = function(id) {
         if (methodSelect) methodSelect.value = '';
         updateWinnerDropdown(id);
     }
+
+    refreshFightCardPortraits().catch(() => {});
 
     updateFinalizeButtonState();
     updateRandomizerState();
@@ -3669,6 +3725,11 @@ function showMatchWinnerBadge(matchId, slotType, methodText) {
     const label = slot.querySelector('.win-method-label');
     const avatar = slot.querySelector('.avatar-box');
     if (!slotInput || !slotInput.value?.trim()) return;
+    applyStreakPortraitClass(slot.querySelector('.avatar-frame'), getFighterByIdOrName(slotInput.value.trim()));
+    const otherSlotType = slotType === 'slot1' ? 'slot2' : 'slot1';
+    const otherSlot = document.getElementById(`${matchId}-${otherSlotType}`);
+    const otherInput = otherSlot?.querySelector('.fighter-search-input');
+    applyStreakPortraitClass(otherSlot?.querySelector('.avatar-frame'), otherInput ? getFighterByIdOrName(otherInput.value.trim()) : null);
     if (badge) {
         badge.style.display = 'flex';
         badge.style.opacity = '1';

@@ -43,6 +43,18 @@
         .fighter-history-row:nth-of-type(even) { background: #161e2e; }
         .fighter-profile-block { display: flex; align-items: center; gap: 12px; }
         .avatar-circle { width: 36px; height: 36px; background: #1e293b; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; overflow: hidden; }
+        .portrait-frame-base { position: relative; display: inline-flex !important; width: 60px; height: 60px; border-radius: 50%; justify-content: center !important; align-items: center !important; text-align: center !important; vertical-align: middle; box-sizing: border-box; margin-right: 10px; transition: all 0.3s ease-in-out; }
+        .fighter-portrait-img, .portrait-frame-base > img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+        .portrait-frame-base > .win-badge { position: absolute !important; }
+        .streak-purple { border: 4px solid #8a2be2 !important; box-shadow: 0 0 8px #8a2be2; }
+        .streak-green { border: 4px solid #00ff7f !important; box-shadow: 0 0 12px #00ff7f; }
+        .streak-blue { border: 4px solid #00bfff !important; box-shadow: 0 0 12px #00bfff; }
+        .streak-rainbow-diamond { border: 4px solid transparent !important; background: linear-gradient(45deg, #ff007f, #7f00ff, #00bfff, #00ff7f, #ffea00, #ff007f) border-box; -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0); -webkit-mask-composite: destination-out; mask-composite: exclude; box-shadow: 0 0 18px rgba(0, 191, 255, 0.7); animation: rainbowCamo 4s linear infinite; }
+        @keyframes rainbowCamo { 0% { filter: hue-rotate(0deg); } 100% { filter: hue-rotate(360deg); } }
+        .border-tier-1 { box-sizing: border-box; border: 4px solid #8a2be2 !important; box-shadow: 0 0 8px #8a2be2; }
+        .border-tier-2 { box-sizing: border-box; border: 4px solid #00ff7f !important; box-shadow: 0 0 12px #00ff7f; }
+        .border-tier-3 { box-sizing: border-box; border: 4px solid #00bfff !important; box-shadow: 0 0 12px #00bfff; }
+        .border-tier-4 { border: 4px solid transparent !important; box-sizing: border-box; background: linear-gradient(45deg, #ff007f, #7f00ff, #00bfff, #00ff7f, #ffea00, #ff007f) border-box; box-shadow: 0 0 18px rgba(0, 191, 255, 0.7); animation: rainbowCamo 4s linear infinite; }
         .avatar-circle img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .fighter-name { font-size: 0.85rem; font-weight: 800; margin: 0; color: white; }
         .record-subtext { font-size: 0.68rem; font-weight: 800; color: #64748b; margin-top: 2px; text-transform: uppercase; }
@@ -305,6 +317,17 @@
         window.addEventListener('visibilitychange', () => { if (!document.hidden) rehydrateHistoryCompareInputs(60); });
         window.addEventListener('focus', () => rehydrateHistoryCompareInputs(30));
 
+        function getStreakClass(fighter) {
+            const wins = Number(fighter?.wins || 0);
+            const losses = Number(fighter?.losses || 0);
+            const calculatedStreak = losses === 0 ? wins : Number(fighter?.win_streak || 0);
+            if (calculatedStreak >= 10) return 'border-tier-4';
+            if (calculatedStreak >= 7) return 'border-tier-3';
+            if (calculatedStreak >= 5) return 'border-tier-2';
+            if (calculatedStreak >= 3) return 'border-tier-1';
+            return '';
+        }
+
         function renderWidescreenHistoryMatrix() {
             const container = document.getElementById('historyMasterLogContainer');
             const totalBadge = document.getElementById('historyTotalCount');
@@ -317,9 +340,11 @@
                 const row = document.createElement('div');
                 row.className = 'fighter-history-row';
 
-                let avatarHtml = '<div class="avatar-circle">👤</div>';
+                const streakClass = getStreakClass(f);
+                const portraitClasses = `avatar-circle portrait-frame-base ${streakClass}`.trim();
+                let avatarHtml = `<div class="${portraitClasses}">👤</div>`;
                 if (f.photo) {
-                    avatarHtml = `<div class="avatar-circle"><img src="${f.photo}" alt="${f.name}" onerror="this.onerror=null; this.parentNode.innerHTML='👤'"></div>`;
+                    avatarHtml = `<div class="${portraitClasses}"><img src="${f.photo}" alt="${f.name}" onerror="this.onerror=null; this.parentNode.innerHTML='👤'"></div>`;
                 }
 
                 let leftProfileHtml = `

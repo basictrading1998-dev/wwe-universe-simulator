@@ -1130,6 +1130,7 @@ function normalizeFighterRecord(fighter) {
     normalized.win_pinfall = Number(normalized.win_pinfall || 0);
     normalized.win_ko = Number(normalized.win_ko || 0);
     normalized.win_submission = Number(normalized.win_submission || 0);
+    normalized.win_streak = Number(normalized.win_streak || 0);
     normalized.retired = normalized.retired === true;
     delete normalized.team;
     delete normalized.partner;
@@ -1739,6 +1740,31 @@ window.openFighterAnalytics = function(fighterName) {
     window.location.href = 'charts.html';
 };
 
+function getRosterWinStreak(fighter) {
+    const wins = Number(fighter?.wins || 0);
+    const losses = Number(fighter?.losses || 0);
+    return losses === 0 ? wins : Number(fighter?.win_streak || 0);
+}
+
+function getStreakClass(fighter) {
+    const calculatedStreak = getRosterWinStreak(fighter);
+    if (calculatedStreak >= 10) return 'border-tier-4';
+    if (calculatedStreak >= 7) return 'border-tier-3';
+    if (calculatedStreak >= 5) return 'border-tier-2';
+    if (calculatedStreak >= 3) return 'border-tier-1';
+    return '';
+}
+
+function applyRosterStreakPortraitClass(frame, fighter) {
+    if (!frame) return;
+    frame.classList.add('portrait-frame-base');
+    frame.classList.remove('streak-purple', 'streak-green', 'streak-blue', 'streak-rainbow-diamond', 'border-tier-1', 'border-tier-2', 'border-tier-3', 'border-tier-4');
+    const streakClass = getStreakClass(fighter);
+    if (streakClass) frame.classList.add(streakClass);
+}
+
+window.getStreakClass = getStreakClass;
+
 function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
     const showRetired = document.getElementById('showRetiredLegends');
@@ -1797,7 +1823,7 @@ function renderRosterGrid() {
 
         card.innerHTML = `
             <div style="position:absolute; left:10px; top:10px; background:#e0f2fe; color:#075985; border:1px solid #bae6fd; border-radius:999px; font-size:0.58rem; font-weight:800; letter-spacing:0.06em; padding:3px 7px; line-height:1.2; box-shadow:0 1px 2px rgba(14,116,144,0.12); text-transform:uppercase;">Fights ${totalFights}</div>
-            <div onclick="uploadFighterPhoto('${f.id}')" style="width: 44px; height: 44px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
+            <div class="roster-portrait-frame portrait-frame-base" onclick="uploadFighterPhoto('${f.id}')" style="width: 60px; height: 60px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
             <button class="fighter-history-btn" onclick='openFighterHistory(${JSON.stringify(f.name)})' title="View history" aria-label="View history">📊</button>
             <button class="fighter-analytics-btn" onclick='openFighterAnalytics(${JSON.stringify(f.name)})' title="Open analytics" aria-label="Open analytics">📈</button>
             <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a; cursor: text; user-select: text; -webkit-user-select: text;">${f.name}</h4>
@@ -1832,6 +1858,7 @@ function renderRosterGrid() {
                 ${f.retired ? 'Retired Legend' : 'Retire Fighter'}
             </label>
         `;
+        applyRosterStreakPortraitClass(card.querySelector('.roster-portrait-frame'), f);
         if (f.retired) {
             card.classList.add('retired-legend-card');
             card.style.boxShadow = '';
@@ -2027,7 +2054,7 @@ function renderRosterGridWithoutReload() {
 
         card.innerHTML = `
             <div style="position:absolute; left:10px; top:10px; background:#e0f2fe; color:#075985; border:1px solid #bae6fd; border-radius:999px; font-size:0.58rem; font-weight:800; letter-spacing:0.06em; padding:3px 7px; line-height:1.2; box-shadow:0 1px 2px rgba(14,116,144,0.12); text-transform:uppercase;">Fights ${totalFights}</div>
-            <div onclick="uploadFighterPhoto('${f.id}')" style="width: 44px; height: 44px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
+            <div class="roster-portrait-frame portrait-frame-base" onclick="uploadFighterPhoto('${f.id}')" style="width: 60px; height: 60px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
             <button class="fighter-history-btn" onclick='openFighterHistory(${JSON.stringify(f.name)})' title="View history" aria-label="View history">📊</button>
             <button class="fighter-analytics-btn" onclick='openFighterAnalytics(${JSON.stringify(f.name)})' title="Open analytics" aria-label="Open analytics">📈</button>
             <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a; cursor: text; user-select: text; -webkit-user-select: text;">${f.name}</h4>
@@ -2062,6 +2089,7 @@ function renderRosterGridWithoutReload() {
                 ${f.retired ? 'Retired Legend' : 'Retire Fighter'}
             </label>
         `;
+        applyRosterStreakPortraitClass(card.querySelector('.roster-portrait-frame'), f);
         if (f.retired) {
             card.classList.add('retired-legend-card');
             card.style.boxShadow = '';
