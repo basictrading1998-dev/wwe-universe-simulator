@@ -18,9 +18,7 @@ function loadFightersFromStorage() {
             win_pinfall: Number(f.win_pinfall || 0),
             win_ko: Number(f.win_ko || 0),
             win_submission: Number(f.win_submission || 0),
-            team: typeof f.team === 'string' ? f.team.trim() : '',
-            partner: typeof f.partner === 'string' ? f.partner.trim() : '',
-            family: typeof f.family === 'string' ? f.family.trim() : '',
+            retired: f.retired === true,
             photo: f.photo || '',
             photo_key: f.photo_key || '',
             compiled_history_deck: Array.isArray(f.compiled_history_deck) ? f.compiled_history_deck : Array.isArray(f.history_deck) ? f.history_deck : Array.isArray(f.history) ? f.history : [],
@@ -73,6 +71,9 @@ function saveFighters(list = fighters) {
         normalized.win_pinfall = Number(normalized.win_pinfall || 0);
         normalized.win_ko = Number(normalized.win_ko || 0);
         normalized.win_submission = Number(normalized.win_submission || 0);
+        delete normalized.team;
+        delete normalized.partner;
+        delete normalized.family;
         normalized.photo_key = normalized.photo_key || '';
         normalized.photo = typeof normalized.photo === 'string' ? normalized.photo.trim() : '';
         // Preserve fight history and other deck properties
@@ -1309,7 +1310,7 @@ window.triggerSearchFill = function(uId, slotType) {
 
 
     panel.innerHTML = '';
-    const matchingFighters = fighters.filter(f => f.gender === gender && f.name.toLowerCase().includes(filter));
+    const matchingFighters = fighters.filter(f => f.retired !== true && f.gender === gender && f.name.toLowerCase().includes(filter));
 
     if(matchingFighters.length === 0) {
         panel.style.display = 'none';
@@ -1995,6 +1996,7 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
         // find candidate fighters
         const bookedIds = Array.from(document.querySelectorAll('.fighter-search-input')).map(i => i.getAttribute('data-fighter-id')).filter(Boolean);
         let candidates = fighters.filter(f => {
+            if (f.retired === true) return false;
             if (bookedIds.includes(f.id)) return false;
             if (targetGender && (f.gender || 'male') !== targetGender) return false;
             if (targetDivision && (f.division || f.weightClass || '').toLowerCase() !== (targetDivision || '').toLowerCase()) return false;
@@ -2575,7 +2577,7 @@ window.randomizeEntireShow = function() {
             
             // Filter available fighters by gender and division groups
             const reservedPairs = new Set(getReservedOpponentPairsFromOtherShows());
-            const availableFighters = fighters.filter(f => !bookedFighterIds.includes(f.id));
+            const availableFighters = fighters.filter(f => f.retired !== true && !bookedFighterIds.includes(f.id));
             const fightersByGenderAndDivision = {};
             availableFighters.forEach(f => {
                 const gender = (f.gender || 'male').toLowerCase();
@@ -2737,7 +2739,7 @@ window.randomizeMatchup = function(matchId) {
         
         // Filter available fighters: same gender, not booked, have a valid division
         const availableFighters = fighters.filter(f => 
-            !bookedFighterIds.includes(f.id)
+            f.retired !== true && !bookedFighterIds.includes(f.id)
         );
         
         const fightersByGenderAndDivision = {};
@@ -2890,6 +2892,7 @@ window.suggestOpponent = function(id) {
 
     fighters.forEach(c => {
         if (c.id === f1.id) return; // never suggest the same fighter
+        if (c.retired === true) return;
 
         // Check if fighter is already booked in another match (unless they're the current opponent)
         const isBookedElsewhere = bookedFighterIds.includes(c.id);
@@ -3024,26 +3027,6 @@ window.bookSuggested = function(fId) {
     }
     window.closeSuggestionModal();
 };
-function getPreMatchWinStreak(fighter) {
-    const history = fighter?.compiled_history_deck || fighter?.history_deck || fighter?.history || [];
-    let streak = 0;
-    for (let index = history.length - 1; index >= 0; index--) {
-        if (String(history[index]?.outcome || '').toLowerCase() !== 'win') break;
-        streak++;
-    }
-    return streak;
-}
-
-function getActiveLosingStreak(fighter) {
-    const history = fighter?.compiled_history_deck || fighter?.history_deck || fighter?.history || [];
-    let streak = 0;
-    for (let index = history.length - 1; index >= 0; index--) {
-        if (String(history[index]?.outcome || '').toLowerCase() !== 'loss') break;
-        streak++;
-    }
-    return streak;
-}
-
 window.logMatchResult = function(id) {
     if (!activeShowId || !futureShows.find(s => s.id === activeShowId)) {
         ensureActiveShowSelected();
@@ -3086,9 +3069,6 @@ window.logMatchResult = function(id) {
     if (!w || !l) return customAlert('Please choose a valid winner before logging the result.', 'Log Match Result');
     if (typeof w[methodSelect.value] === 'undefined') return customAlert('The selected win method is invalid.', 'Log Match Result');
 
-    const loserWinStreakBeforeMatch = getPreMatchWinStreak(l);
-    const loserRecordBeforeMatch = `${Number(l.wins || 0)}-${Number(l.losses || 0)}`;
-
     w.wins++; 
     w[methodSelect.value]++; 
     l.losses++;
@@ -3122,8 +3102,6 @@ window.logMatchResult = function(id) {
 
     if (!winnerAlreadyLogged) w.compiled_history_deck.push(winnerHistoryEntry);
     if (!loserAlreadyLogged) l.compiled_history_deck.push(loserHistoryEntry);
-
-    const loserLosingStreakAfterMatch = getActiveLosingStreak(l);
 
     saveFighters(fighters);
     updateFighterRecordDisplay(id, 'slot1', f1);
@@ -3208,35 +3186,6 @@ window.logMatchResult = function(id) {
         localStorage.setItem(storageKey, JSON.stringify(completedMatches));
     }
 
-    if (typeof window.recordMatchForNewsWire === 'function') {
-        window.recordMatchForNewsWire({
-            winner: w.name,
-            loser: l.name,
-            winnerName: w.name,
-            loserName: l.name,
-            method: methodName,
-            showName
-        });
-    }
-
-    if (typeof window.generateReporterHeadline === 'function') {
-        window.generateReporterHeadline(w, l, methodName, showName, {
-            loserWinStreak: loserWinStreakBeforeMatch,
-            loserRecord: loserRecordBeforeMatch,
-            loserLosingStreak: loserLosingStreakAfterMatch
-        });
-    }
-    if (typeof window.generateFighterTrashTalk === 'function') {
-        window.generateFighterTrashTalk(w, l, w.gender, showName, {
-            loserWinStreak: loserWinStreakBeforeMatch,
-            loserRecord: loserRecordBeforeMatch,
-            loserLosingStreak: loserLosingStreakAfterMatch
-        });
-    }
-    if (typeof window.generateReporterSuggestions === 'function') {
-        window.generateReporterSuggestions();
-    }
-    
     clearMatchWinnerBadges(id);
     const winningSlot = winSelect.value === '1' ? 'slot1' : 'slot2';
     showMatchWinnerBadge(id, winningSlot, methodName);

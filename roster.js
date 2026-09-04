@@ -1130,9 +1130,10 @@ function normalizeFighterRecord(fighter) {
     normalized.win_pinfall = Number(normalized.win_pinfall || 0);
     normalized.win_ko = Number(normalized.win_ko || 0);
     normalized.win_submission = Number(normalized.win_submission || 0);
-    normalized.team = typeof normalized.team === 'string' ? normalized.team.trim() : '';
-    normalized.partner = typeof normalized.partner === 'string' ? normalized.partner.trim() : '';
-    normalized.family = typeof normalized.family === 'string' ? normalized.family.trim() : '';
+    normalized.retired = normalized.retired === true;
+    delete normalized.team;
+    delete normalized.partner;
+    delete normalized.family;
     normalized.photo_key = normalized.photo_key || normalized.photoKey || '';
     normalized.photo = sanitizeStoredPhoto(normalized.photo, normalized.name);
     return normalized;
@@ -1678,9 +1679,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearInjectedWWE2K24Portraits(fighters);
     ensureFighterHistoryButtonStyles();
     refreshFighterNameDatalist();
+    const showRetiredLegends = document.getElementById('showRetiredLegends');
+    if (showRetiredLegends) {
+        showRetiredLegends.checked = localStorage.getItem('showRetiredLegendsState') === 'true';
+    }
     scheduleRenderRosterGrid();
     setupSidebarFormEngine();
-    setupRelationshipManager();
     setupLiveSearchEngine();
     window.addEventListener('beforeunload', () => saveFighters(fighters));
 });
@@ -1737,6 +1741,7 @@ window.openFighterAnalytics = function(fighterName) {
 
 function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
+    const showRetired = document.getElementById('showRetiredLegends');
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
 
@@ -1750,7 +1755,7 @@ function renderRosterGrid() {
     buildRosterComparePanel();
 
     grid.innerHTML = '';
-    if (countBadge) countBadge.textContent = `${fighters.length} Superstars`;
+    if (countBadge) countBadge.textContent = `${fighters.filter(fighter => !fighter.retired).length} Superstars`;
 
     if (fighters.length === 0) {
         grid.innerHTML = `<div style="grid-column: span 4; background: white; border: 1px dashed #cbd5e1; padding: 40px; text-align: center; font-weight: bold; color: #64748b; border-radius: 12px;">Your locker room is empty. Use the roster form to add your very first wrestler!</div>`;
@@ -1822,8 +1827,18 @@ function renderRosterGrid() {
                 <button onclick="editSuperstar('${f.id}')" style="flex: 1; background: #f1f5f9; border: none; padding: 4px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #475569; cursor: pointer;">✏️ Edit</button>
                 <button onclick="fireSuperstar('${f.id}')" style="background: #fee2e2; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #ef4444; cursor: pointer;">✕</button>
             </div>
+            <label style="display:flex; align-items:center; gap:6px; margin-top:10px; color:${f.retired ? '#92400e' : '#475569'}; font-size:0.68rem; font-weight:800; cursor:pointer;">
+                <input type="checkbox" ${f.retired ? 'checked' : ''} ${f.wins < 10 && !f.retired ? 'disabled' : ''} onchange="toggleFighterRetirement('${f.id}', this)" style="width:auto;">
+                ${f.retired ? 'Retired Legend' : 'Retire Fighter'}
+            </label>
         `;
-        grid.appendChild(card);
+        if (f.retired) {
+            card.classList.add('retired-legend-card');
+            card.style.boxShadow = '';
+        }
+        if (!f.retired || showRetired?.checked) {
+            grid.appendChild(card);
+        }
     });
 
     // Re-apply any saved roster comparison filter after cards are recreated
@@ -1855,6 +1870,28 @@ function renderRosterGrid() {
         }, 50);
     }
 }
+
+window.toggleRetiredLegends = function() {
+    const checkbox = document.getElementById('showRetiredLegends');
+    if (checkbox) {
+        localStorage.setItem('showRetiredLegendsState', String(checkbox.checked));
+        renderRosterGrid();
+    }
+};
+
+window.toggleFighterRetirement = function(id, checkbox) {
+    const fighter = fighters.find(item => item.id === id);
+    if (!fighter) return;
+    if (Number(fighter.wins || 0) < 10) {
+        checkbox.checked = false;
+        checkbox.disabled = true;
+        alert('Fighter must have at least 10 wins to retire.');
+        return;
+    }
+    fighter.retired = checkbox.checked;
+    saveFighters(fighters);
+    scheduleRenderRosterGrid();
+};
 
 // Debounced scheduler to avoid rapid consecutive renders which cause visual glitches
 window._renderRosterTimer = window._renderRosterTimer || null;
@@ -1907,6 +1944,7 @@ window.renderRoster = function() {
     } catch (e) { /* ignore */ }
 function renderRosterGridWithoutReload() {
     const grid = document.getElementById('rosterGrid');
+    const showRetired = document.getElementById('showRetiredLegends');
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
 
@@ -1947,7 +1985,7 @@ function renderRosterGridWithoutReload() {
     buildRosterComparePanel();
 
     grid.innerHTML = '';
-    if (countBadge) countBadge.textContent = `${fighters.length} Superstars`;
+    if (countBadge) countBadge.textContent = `${fighters.filter(fighter => !fighter.retired).length} Superstars`;
 
     if (fighters.length === 0) {
         grid.innerHTML = `<div style="grid-column: span 4; background: white; border: 1px dashed #cbd5e1; padding: 40px; text-align: center; font-weight: bold; color: #64748b; border-radius: 12px;">Your locker room is empty. Use the roster form to add your very first wrestler!</div>`;
@@ -2019,8 +2057,18 @@ function renderRosterGridWithoutReload() {
                 <button onclick="editSuperstar('${f.id}')" style="flex: 1; background: #f1f5f9; border: none; padding: 4px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #475569; cursor: pointer;">✏️ Edit</button>
                 <button onclick="fireSuperstar('${f.id}')" style="background: #fee2e2; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #ef4444; cursor: pointer;">✕</button>
             </div>
+            <label style="display:flex; align-items:center; gap:6px; margin-top:8px; color:${f.retired ? '#92400e' : '#475569'}; font-size:0.68rem; font-weight:800; cursor:${f.wins < 10 ? 'not-allowed' : 'pointer'};">
+                <input type="checkbox" ${f.retired ? 'checked' : ''} ${f.wins < 10 && !f.retired ? 'disabled' : ''} onchange="toggleFighterRetirement('${f.id}', this)" style="width:auto;">
+                ${f.retired ? 'Retired Legend' : 'Retire Fighter'}
+            </label>
         `;
-        grid.appendChild(card);
+        if (f.retired) {
+            card.classList.add('retired-legend-card');
+            card.style.boxShadow = '';
+        }
+        if (!f.retired || showRetired?.checked) {
+            grid.appendChild(card);
+        }
     });
 
     // Re-apply any saved roster comparison filter after cards are recreated
@@ -2401,7 +2449,6 @@ function setupSidebarFormEngine() {
                 name: nameValue,
                 gender: genderSelect ? genderSelect.value.toLowerCase() : 'male',
                 division: normalizeDivisionName((divisionInput && divisionInput.value.trim()) ? divisionInput.value.trim() : 'HeavyWeight'),
-                team: '', partner: '',
                 wins: 0, losses: 0, defenses: 0, title_fights: 0, win_pinfall: 0, win_ko: 0, win_submission: 0
             };
 
@@ -2418,67 +2465,6 @@ function setupSidebarFormEngine() {
         };
     }
 }
-
-function populateRelationshipManager() {
-    const fighterSelect = document.getElementById('relationshipFighterSelect');
-    const targetSelect = document.getElementById('relationshipTargetSelect');
-    if (!fighterSelect || !targetSelect) return;
-
-    const previousFighter = fighterSelect.value;
-    const roster = (fighters || []).filter(fighter => fighter && fighter.name);
-    fighterSelect.replaceChildren(new Option('Select Fighter', ''));
-    roster.forEach(fighter => fighterSelect.add(new Option(fighter.name, fighter.id)));
-    if (roster.some(fighter => fighter.id === previousFighter)) fighterSelect.value = previousFighter;
-
-    const previousTarget = targetSelect.value;
-    targetSelect.replaceChildren(new Option('Target Relation', ''));
-    roster.filter(fighter => fighter.id !== fighterSelect.value)
-        .forEach(fighter => targetSelect.add(new Option(fighter.name, fighter.id)));
-    if (roster.some(fighter => fighter.id === previousTarget && fighter.id !== fighterSelect.value)) targetSelect.value = previousTarget;
-}
-
-function saveFighterRelationship() {
-    const fighterSelect = document.getElementById('relationshipFighterSelect');
-    const typeSelect = document.getElementById('relationshipTypeSelect');
-    const targetSelect = document.getElementById('relationshipTargetSelect');
-    const status = document.getElementById('relationshipManagerStatus');
-    const fighter = fighters.find(item => item.id === fighterSelect?.value);
-    const target = fighters.find(item => item.id === targetSelect?.value);
-    if (!fighter || !target || fighter.id === target.id) {
-        if (status) status.textContent = 'Select two different fighters first.';
-        return;
-    }
-
-    const relationshipType = typeSelect?.value;
-    if (relationshipType === 'teammate') {
-        const teamName = fighter.team || target.team || `${fighter.name} & ${target.name}`;
-        fighter.team = teamName;
-        target.team = teamName;
-    } else if (relationshipType === 'couple') {
-        fighter.partner = target.name;
-        target.partner = fighter.name;
-    } else if (relationshipType === 'family') {
-        const familyName = fighter.family || target.family || `${fighter.name} Family`;
-        fighter.family = familyName;
-        target.family = familyName;
-    } else {
-        if (status) status.textContent = 'Choose a relationship type first.';
-        return;
-    }
-
-    saveFighters(fighters);
-    populateRelationshipManager();
-    if (status) status.textContent = `${fighter.name} and ${target.name} saved as ${typeSelect.options[typeSelect.selectedIndex].text}.`;
-}
-
-function setupRelationshipManager() {
-    const fighterSelect = document.getElementById('relationshipFighterSelect');
-    if (!fighterSelect) return;
-    fighterSelect.addEventListener('change', populateRelationshipManager);
-    populateRelationshipManager();
-}
-
-window.saveFighterRelationship = saveFighterRelationship;
 
 function setupLiveSearchEngine() {
     const searchBar = document.querySelector('input[placeholder*="Search"]') || document.querySelector('input[id*="Search"]') || document.querySelector('input[type="text"]:nth-of-type(2)');
@@ -2835,7 +2821,7 @@ window.sortRosterByMetric = function(metricType) {
             window._renderRosterTimer = null;
         }
     } catch (e) {}
-    renderRosterGridWithoutReload();
+    renderRosterGrid();
 };
 
 window.fireSuperstar = function(id) {
