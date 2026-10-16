@@ -64,11 +64,15 @@
         .title-early-prelims { color: #7c3aed; border-color: #f3e8ff; }
         .match-row { background-color: #f8fafc; border: 1px solid #f1f5f9; border-radius: 12px; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
         .fighter-slot { display: flex; align-items: center; gap: 12px; }
+        .fighter-schedule-locator { flex: 1 1 240px; min-width: 220px; }
+        .fighter-schedule-locator input { box-sizing: border-box; width: 100%; padding: 7px 9px; border: 1px solid #94a3b8; border-radius: 4px; color: #0f172a; font-weight: 600; }
+        #fighterScheduleResults { min-height: 1em; margin-top: 4px; color: #334155; font-size: 0.75rem; font-weight: 600; }
     .dropdown-search-container { position: relative; width: 85%; }
 .search-results-floating-panel { position: absolute; top: 100%; left: 0; width: 100%; max-height: 180px; overflow-y: auto; background: white; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 9999; }
 .search-result-item-row { padding: 8px 12px; cursor: pointer; font-size: 0.8rem; color: #1e293b; font-weight: bold; text-align: left; }
 .search-result-item-row:hover { background: #f0f9ff; color: #0284c7; }
 .search-result-item-row.is-already-booked { background: #f1f5f9; color: #94a3b8 !important; cursor: not-allowed; text-decoration: line-through; }#backgroundSettingsButton { background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
+    .dropdown-card-finalized { color: #00ff7f !important; font-weight: bold; }
 #backgroundSettingsButton:hover { background: rgba(255,255,255,0.28); }
 #backgroundSettingsModal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(2, 6, 23, 0.82); backdrop-filter: blur(8px); z-index: 2000; }
 #backgroundSettingsPanel { width: min(640px, 100%); background: linear-gradient(135deg, #071426, #111827 55%, #0f172a); border: 1px solid rgba(125, 211, 252, 0.35); border-radius: 18px; box-shadow: 0 20px 55px rgba(2, 6, 23, 0.45); padding: 22px; color: white; }
@@ -135,6 +139,14 @@ body::before { content: ''; position: fixed; inset: 0; background: linear-gradie
    
 
     <main>
+
+    <template id="fighterScheduleLocatorTemplate">
+        <div class="fighter-schedule-locator">
+            <input type="text" id="fighterScheduleLocatorInput" list="fighterRosterOptions" placeholder="Locate Scheduled Fighter..." autocomplete="off">
+            <datalist id="fighterRosterOptions"></datalist>
+            <div id="fighterScheduleResults" aria-live="polite"></div>
+        </div>
+    </template>
         <!-- MASTER EVENT COMPLETION AND ARCHIVE PANEL (moved to top for quick access) -->
         <section style="background: #0f172a; color: white; padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #1e293b; text-align: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); width: 100%; box-sizing: border-box;">
             <h3 style="margin-top: 0; color: #38bdf8; font-size: 1.15rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">🎬 Complete & Archive Live Show</h3>

@@ -651,6 +651,26 @@ function isShowCompleted(showId) {
     return Boolean(show && show.completed);
 }
 
+function getFinalizedShowIds() {
+    const finalizedIds = new Set(futureShows.filter(show => show.completed).map(show => show.id));
+    try {
+        const archivedEvents = JSON.parse(localStorage.getItem('wwe_event_history')) || [];
+        archivedEvents.forEach(event => {
+            if (event && event.showId) finalizedIds.add(event.showId);
+        });
+    } catch (error) {}
+    return finalizedIds;
+}
+
+function updateFinalizedShowDropdownStyles() {
+    const selector = document.getElementById('activeShowSelector');
+    if (!selector) return;
+    const finalizedIds = getFinalizedShowIds();
+    Array.from(selector.options).forEach(option => {
+        option.classList.toggle('dropdown-card-finalized', finalizedIds.has(option.value));
+    });
+}
+
 function setShowCompleted(showId, value) {
     refreshShowStateFromStorage();
     const show = futureShows.find(s => s.id === showId);
@@ -771,6 +791,56 @@ async function refreshFightCardPortraits() {
     }
 }
 
+function updateFighterScheduleLocator(selectedName) {
+    const searchInput = document.getElementById('fighterScheduleLocatorInput');
+    const results = document.getElementById('fighterScheduleResults');
+    if (!results) return;
+
+    const fighterName = (typeof selectedName === 'string' ? selectedName : searchInput?.value || '').trim();
+    if (!fighterName) {
+        results.textContent = '';
+        return;
+    }
+
+    refreshShowStateFromStorage();
+    const finalizedShowIds = new Set(futureShows.filter(show => show.completed).map(show => show.id));
+    const normalizedName = fighterName.toLocaleLowerCase();
+    const scheduledCards = new Set();
+
+    futureShows.forEach(show => {
+        if (!show.id || finalizedShowIds.has(show.id)) return;
+
+        let cardEntries = [];
+        if (show.id === activeShowId) {
+            cardEntries = Array.from(document.querySelectorAll('.match-row')).map(row => ({
+                f1Name: row.querySelector('.fighter-slot[id$="-slot1"] .fighter-search-input')?.value || '',
+                f2Name: row.querySelector('.fighter-slot[id$="-slot2"] .fighter-search-input')?.value || ''
+            }));
+        } else {
+            try {
+                cardEntries = Object.values(JSON.parse(localStorage.getItem(`wwe_draft_${show.id}`)) || {});
+            } catch (error) {
+                cardEntries = [];
+            }
+        }
+
+        const isScheduled = cardEntries.some(entry => {
+            const fighterA = (entry?.f1Name || '').trim().toLocaleLowerCase();
+            const fighterB = (entry?.f2Name || '').trim().toLocaleLowerCase();
+            return fighterA === normalizedName || fighterB === normalizedName;
+        });
+
+        if (isScheduled) {
+            const numberMatch = (show.name || '').match(/^FIGHT CARD\s*(\d+)$/i);
+            scheduledCards.add(numberMatch ? `Fight Card ${Number(numberMatch[1])}` : (show.name || 'Unnamed Card'));
+        }
+    });
+
+    results.textContent = scheduledCards.size
+        ? `${fighterName} is currently scheduled to fight on: ${Array.from(scheduledCards).join(', ')}`
+        : `No active bookings found for ${fighterName}`;
+}
+
 function buildShowSchedulerHeader() {
     if (document.getElementById('schedulerControlRow')) return;
     
@@ -781,10 +851,12 @@ function buildShowSchedulerHeader() {
     const select = document.createElement('select');
     select.id = 'activeShowSelector';
     select.style.cssText = 'padding:6px 10px; border:1px solid #cbd5e1; border-radius:4px; background:white; font-weight:bold; cursor:pointer;';
+    const finalizedShowIds = getFinalizedShowIds();
     futureShows.forEach(show => {
         const option = document.createElement('option');
         option.value = show.id;
         option.textContent = show.name;
+        if (finalizedShowIds.has(show.id)) option.classList.add('dropdown-card-finalized');
         if (show.id === activeShowId) option.selected = true;
         select.appendChild(option);
     });
@@ -857,7 +929,22 @@ function buildShowSchedulerHeader() {
     editBtn.style.cssText = 'background:#4b5563; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold;';
     editBtn.addEventListener('click', window.editCurrentShowName);
     headerRow.appendChild(editBtn);
-    
+
+    const locatorTemplate = document.getElementById('fighterScheduleLocatorTemplate');
+    const locatorFragment = locatorTemplate?.content.cloneNode(true);
+    if (locatorFragment) {
+        const rosterOptions = locatorFragment.querySelector('#fighterRosterOptions');
+        getFighterList().forEach(fighter => {
+            if (!fighter?.name) return;
+            const option = document.createElement('option');
+            option.value = fighter.name;
+            rosterOptions.appendChild(option);
+        });
+        const locatorInput = locatorFragment.querySelector('#fighterScheduleLocatorInput');
+        locatorInput.addEventListener('input', () => updateFighterScheduleLocator(locatorInput.value));
+        locatorInput.addEventListener('change', () => updateFighterScheduleLocator(locatorInput.value));
+        headerRow.appendChild(locatorFragment);
+    }
     const randomBtn = document.createElement('button');
     randomBtn.textContent = 'RANDOMIZE ALL';
     randomBtn.style.cssText = 'background:#7c3aed; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold;';
@@ -886,6 +973,7 @@ function buildShowSchedulerHeader() {
     if (main && firstSection) {
         firstSection.parentNode.insertBefore(section, firstSection.nextSibling);
     }
+    updateFighterScheduleLocator();
 }
 
 function insertCompletedShowNotice() {
@@ -943,6 +1031,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.addEventListener('input', (e) => {
         if (e.target.classList.contains('fighter-search-input')) {
+            updateFighterScheduleLocator();
             const matchRow = e.target.closest('.match-row');
             if (matchRow) {
                 const id = matchRow.id;
@@ -1450,6 +1539,7 @@ function populateDropdownGenders(matchRowId, genderVariant) {
         updateFighterRecordDisplay(matchRowId, 'slot2', null);
         resetMatchValidationState(matchRowId);
         refreshTitleFightState(matchRowId);
+        updateFighterScheduleLocator();
     }
 }
 
@@ -1529,6 +1619,7 @@ function clearCardFighterSlot(matchRowId, slotType) {
     hideRematchWarning(matchRowId);
     updateWinnerDropdown(matchRowId);
     saveCurrentCardDraft();
+    updateFighterScheduleLocator();
 }
 
 function clearRematchWarningForInput(matchRowId) {
@@ -2719,6 +2810,7 @@ window.randomizeEntireShow = function() {
         
         // Save draft
         saveCurrentCardDraft();
+        updateFighterScheduleLocator();
         
         const message = failCount > 0 
             ? `🎲 Randomized ${successCount} match${successCount !== 1 ? 'es' : ''}!\n\n⚠️ Could not randomize ${failCount} match${failCount !== 1 ? 'es' : ''} - not enough available fighters.`
@@ -2883,6 +2975,7 @@ window.randomizeMatchup = function(matchId) {
         
         // Save draft
         saveCurrentCardDraft();
+        updateFighterScheduleLocator();
         
         // Show confirmation
         const divisionDisplay = selectedDivision.charAt(0).toUpperCase() + selectedDivision.slice(1);
@@ -3865,6 +3958,7 @@ window.finalizeFullEventCard = function() {
     });
     localStorage.setItem("wwe_event_history", JSON.stringify(eventHistoryCalendar));
     setShowCompleted(activeShowId, true);
+    updateFinalizedShowDropdownStyles();
     updateFinalizeButtonState();
 
     eventMatchesCompiled.forEach(m => {
@@ -4135,6 +4229,7 @@ window.resetActiveShowDraft = function() {
             }
         });
         document.querySelectorAll('.search-results-floating-panel').forEach(panel => panel.style.display = 'none');
+        updateFighterScheduleLocator();
 
         window.skipDraftSaveOnUnload = true;
         customAlert("Active card layout has been completely reset back to its clean draft state!", 'Draft Reset', function() {
