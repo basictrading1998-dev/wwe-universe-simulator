@@ -72,6 +72,7 @@
         .lineage-belt-row:hover { background: rgba(255,255,255,0.02); }
         .lineage-belt-row:nth-of-type(even) { background: #161e2e; }
         .lineage-belt-row:nth-of-type(even):hover { background: rgba(255,255,255,0.02); }
+        .lineage-belt-row > div:last-child { min-width: 0; }
 
         /* LEFT SIDE BELT DESCRIPTOR PACK GRID */
         .belt-profile-block { display: flex; align-items: center; gap: 12px; }
@@ -81,12 +82,28 @@
         .reigning-champ-subtext { font-size: 0.68rem; font-weight: 800; color: #94a3b8; margin-top: 2px; }
 
         /* RIGHT SIDE HORIZONTAL DECK REIGN SLIDER TRACKS */
-        .reigns-slider-deck { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; box-sizing: border-box; width: 100%; }
-        .reigns-slider-deck::-webkit-scrollbar { height: 4px; }
-        .reigns-slider-deck::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        .lineage-history-slider {
+            display: flex !important;
+            flex-direction: row !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            gap: 15px;
+            padding-bottom: 10px;
+            scroll-behavior: smooth;
+            white-space: nowrap;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+        }
+        .lineage-history-slider::-webkit-scrollbar { height: 6px; }
+        .lineage-history-slider::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.05); border-radius: 4px; }
+        .lineage-history-slider::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 4px; }
+        .lineage-history-slider::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.4); }
+        .lineage-history-slider > div,
+        .lineage-history-slider .champion-card { flex: 0 0 auto !important; }
 
         /* HORIZONTAL TIMELINE BRICKS */
-        .reign-badge-brick { flex: 0 0 130px; background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.15); border-left: 3px solid #eab308; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; gap: 1px; font-family: sans-serif; box-sizing: border-box; }
+        .reign-badge-brick { width: 130px; flex: 0 0 130px; background: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.15); border-left: 3px solid #eab308; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; gap: 1px; font-family: sans-serif; box-sizing: border-box; }
         .reign-badge-brick.newest-holder { background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.2); border-left-color: #10b981; }
 
         .brick-status-lbl { font-size: 0.52rem; font-weight: 900; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.02em; }
@@ -219,7 +236,7 @@
                         </div>
                     </div>`;
 
-                let rightDeckHtml = '<div class="reigns-slider-deck">';
+                let rightDeckHtml = '<div class="lineage-history-slider">';
 
                 if (historyLog.length === 0) {
                     rightDeckHtml += `<span class="empty-lineage-text">No lineage data recorded yet</span>`;

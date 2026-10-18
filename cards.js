@@ -1035,6 +1035,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const matchRow = e.target.closest('.match-row');
             if (matchRow) {
                 const id = matchRow.id;
+                sessionStorage.removeItem(`allow_duplicate_match_${id}`);
                 if (matchRow.dataset.validationBatch === 'true') return;
                 const slot1Input = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input');
                 const slot2Input = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input');
@@ -1985,6 +1986,11 @@ function restoreSessionWarnings() {
     restoreSessionRematchWarnings();
     document.querySelectorAll('.match-row').forEach(matchRow => {
         if (!isUnfinalizedWarningRow(matchRow.id)) return;
+        if (sessionStorage.getItem(`allow_duplicate_match_${matchRow.id}`) === 'true') {
+            const container = document.getElementById(`${matchRow.id}-duplicate-warning`);
+            if (container) container.style.display = 'none';
+            return;
+        }
         const sameName = getWarningMatchState(matchRow.id)?.sameName;
         if (sameName) {
             showDuplicateWarning(matchRow.id, sameName.changedSlot, sameName.existingName, sameName.newName, false);
@@ -2074,6 +2080,10 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
     const container = document.getElementById(`${matchRowId}-duplicate-warning`);
     const text = document.getElementById(`${matchRowId}-duplicate-warning-text`);
     if (!container || !text) return;
+    if (sessionStorage.getItem(`allow_duplicate_match_${matchRowId}`) === 'true') {
+        container.style.display = 'none';
+        return;
+    }
     if (persist) {
         setWarningMatchState(matchRowId, 'sameName', { changedSlot, existingName, newName });
     }
@@ -2090,6 +2100,7 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
         hideDuplicateWarning(matchRowId);
     };
     if (allowBtn) allowBtn.onclick = function() {
+        sessionStorage.setItem(`allow_duplicate_match_${matchRowId}`, 'true');
         // simply allow; hide warning
         clearWarningMatchState(matchRowId, 'sameName');
         hideDuplicateWarning(matchRowId);
@@ -2176,6 +2187,11 @@ function findDuplicatePairInMatchRow(matchRowId) {
 }
 
 function checkDuplicateOnCard(matchRowId, changedSlot) {
+    if (sessionStorage.getItem(`allow_duplicate_match_${matchRowId}`) === 'true') {
+        const container = document.getElementById(`${matchRowId}-duplicate-warning`);
+        if (container) container.style.display = 'none';
+        return true;
+    }
     const duplicatePair = findDuplicatePairInMatchRow(matchRowId);
     if (duplicatePair) {
         showDuplicateWarning(matchRowId, duplicatePair.slotType, duplicatePair.similar.name, duplicatePair.value);
@@ -4291,5 +4307,3 @@ window.importAppBackup = function() {
     };
     input.click();
 };
-
-
