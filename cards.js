@@ -1035,7 +1035,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const matchRow = e.target.closest('.match-row');
             if (matchRow) {
                 const id = matchRow.id;
-                sessionStorage.removeItem(`allow_duplicate_match_${id}`);
+                clearDuplicateApprovalForChangedInput(id);
                 if (matchRow.dataset.validationBatch === 'true') return;
                 const slot1Input = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input');
                 const slot2Input = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input');
@@ -1536,6 +1536,7 @@ function populateDropdownGenders(matchRowId, genderVariant) {
         slot2.querySelector('.fighter-search-input').value = '';
         slot1.querySelector('.fighter-search-input').setAttribute('data-fighter-id', '');
         slot2.querySelector('.fighter-search-input').setAttribute('data-fighter-id', '');
+        clearDuplicateApproval(matchRowId);
         updateFighterRecordDisplay(matchRowId, 'slot1', null);
         updateFighterRecordDisplay(matchRowId, 'slot2', null);
         resetMatchValidationState(matchRowId);
@@ -1583,6 +1584,7 @@ function clearCardFighterSlot(matchRowId, slotType) {
         input.value = '';
         input.setAttribute('data-fighter-id', '');
     }
+    clearDuplicateApproval(matchRowId);
     if (av) {
         av.innerHTML = '👤';
         av.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; cursor:pointer; overflow:hidden;";
@@ -1986,7 +1988,7 @@ function restoreSessionWarnings() {
     restoreSessionRematchWarnings();
     document.querySelectorAll('.match-row').forEach(matchRow => {
         if (!isUnfinalizedWarningRow(matchRow.id)) return;
-        if (sessionStorage.getItem(`allow_duplicate_match_${matchRow.id}`) === 'true') {
+        if (sessionStorage.getItem(getDuplicateApprovalKey(matchRow.id)) === 'true') {
             const container = document.getElementById(`${matchRow.id}-duplicate-warning`);
             if (container) container.style.display = 'none';
             return;
@@ -2078,12 +2080,15 @@ function findSimilarNameOnCard(name, excludeInput) {
 
 function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, persist = true) {
     const container = document.getElementById(`${matchRowId}-duplicate-warning`);
-    const text = document.getElementById(`${matchRowId}-duplicate-warning-text`);
-    if (!container || !text) return;
-    if (sessionStorage.getItem(`allow_duplicate_match_${matchRowId}`) === 'true') {
+    if (!container) return;
+    if (sessionStorage.getItem(getDuplicateApprovalKey(matchRowId)) === 'true') {
         container.style.display = 'none';
         return;
     }
+    if (!container.dataset.warningMarkup) container.dataset.warningMarkup = container.innerHTML;
+    if (!container.innerHTML.trim()) container.innerHTML = container.dataset.warningMarkup;
+    const text = document.getElementById(`${matchRowId}-duplicate-warning-text`);
+    if (!text) return;
     if (persist) {
         setWarningMatchState(matchRowId, 'sameName', { changedSlot, existingName, newName });
     }
@@ -2100,10 +2105,14 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
         hideDuplicateWarning(matchRowId);
     };
     if (allowBtn) allowBtn.onclick = function() {
-        sessionStorage.setItem(`allow_duplicate_match_${matchRowId}`, 'true');
-        // simply allow; hide warning
+        const approvalKey = getDuplicateApprovalKey(matchRowId);
+        const fighterNames = getMatchFighterNames(matchRowId);
+        sessionStorage.setItem(approvalKey, 'true');
+        sessionStorage.setItem(`${approvalKey}_fighters`, JSON.stringify(fighterNames));
         clearWarningMatchState(matchRowId, 'sameName');
-        hideDuplicateWarning(matchRowId);
+        container.style.display = 'none';
+        if (!container.dataset.warningMarkup) container.dataset.warningMarkup = container.innerHTML;
+        container.innerHTML = '';
     };
     if (replaceBtn) replaceBtn.onclick = function() {
         // try to find replacement in same weight class/gender for the newName
@@ -2187,7 +2196,7 @@ function findDuplicatePairInMatchRow(matchRowId) {
 }
 
 function checkDuplicateOnCard(matchRowId, changedSlot) {
-    if (sessionStorage.getItem(`allow_duplicate_match_${matchRowId}`) === 'true') {
+    if (sessionStorage.getItem(getDuplicateApprovalKey(matchRowId)) === 'true') {
         const container = document.getElementById(`${matchRowId}-duplicate-warning`);
         if (container) container.style.display = 'none';
         return true;
@@ -2199,6 +2208,53 @@ function checkDuplicateOnCard(matchRowId, changedSlot) {
     }
     hideDuplicateWarning(matchRowId);
     return true;
+}
+
+function getDuplicateApprovalKey(matchRowId) {
+    return `match_${matchRowId}_duplicate_allowed`;
+}
+
+function getMatchFighterNames(matchRowId) {
+    return {
+        slot1: document.getElementById(`${matchRowId}-slot1`)?.querySelector('.fighter-search-input')?.value.trim() || '',
+        slot2: document.getElementById(`${matchRowId}-slot2`)?.querySelector('.fighter-search-input')?.value.trim() || ''
+    };
+}
+
+function clearDuplicateApprovalForChangedInput(matchRowId) {
+    const approvalKey = getDuplicateApprovalKey(matchRowId);
+    if (sessionStorage.getItem(approvalKey) !== 'true') return;
+
+    const approvedNames = sessionStorage.getItem(`${approvalKey}_fighters`);
+    if (!approvedNames) {
+        sessionStorage.removeItem(approvalKey);
+        sessionStorage.removeItem(`${approvalKey}_fighters`);
+        return;
+    }
+
+    let approvedPair;
+    try {
+        approvedPair = JSON.parse(approvedNames);
+    } catch (error) {
+        clearDuplicateApproval(matchRowId);
+        return;
+    }
+
+    if (!approvedPair || typeof approvedPair.slot1 !== 'string' || typeof approvedPair.slot2 !== 'string') {
+        clearDuplicateApproval(matchRowId);
+        return;
+    }
+
+    const currentPair = getMatchFighterNames(matchRowId);
+    if (currentPair.slot1 !== approvedPair.slot1 || currentPair.slot2 !== approvedPair.slot2) {
+        clearDuplicateApproval(matchRowId);
+    }
+}
+
+function clearDuplicateApproval(matchRowId) {
+    const approvalKey = getDuplicateApprovalKey(matchRowId);
+    sessionStorage.removeItem(approvalKey);
+    sessionStorage.removeItem(`${approvalKey}_fighters`);
 }
 
 window.toggleRematchCounter = function(id, cb) {
