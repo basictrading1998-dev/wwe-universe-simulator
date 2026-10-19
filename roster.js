@@ -1514,6 +1514,50 @@ function auditTitleDefenses() {
     const normalize = value => String(value || '').trim().toLowerCase();
     const fighterByName = new Map(fighters.map(fighter => [normalize(fighter.name), fighter]));
     const fighterById = new Map(fighters.map(fighter => [fighter.id, fighter]));
+    const titleFightTotals = new Map(fighters.map(fighter => [fighter.id, 0]));
+    const archivedShowIds = new Set();
+    const archivedShowNames = new Set();
+    const resolveFighter = (id, name) => (id && fighterById.get(id)) || fighterByName.get(normalize(name || ''));
+    const countTitleMatchAppearances = match => {
+        if (!match || match.isTitle !== true) return;
+        const fighter1 = resolveFighter(
+            match.slot1Id || match.fighter1Id || match.winnerId,
+            match.slot1Name || match.fighter1Name || match.winner || match.winnerName
+        );
+        const fighter2 = resolveFighter(
+            match.slot2Id || match.fighter2Id || match.loserId,
+            match.slot2Name || match.fighter2Name || match.loser || match.loserName
+        );
+        if (fighter1) titleFightTotals.set(fighter1.id, (titleFightTotals.get(fighter1.id) || 0) + 1);
+        if (fighter2 && fighter2.id !== fighter1?.id) {
+            titleFightTotals.set(fighter2.id, (titleFightTotals.get(fighter2.id) || 0) + 1);
+        }
+    };
+    eventHistory.forEach(event => {
+        if (!event || !Array.isArray(event.matches)) return;
+        if (event.showId) archivedShowIds.add(String(event.showId));
+        const showName = normalize(event.showTitle || event.name);
+        if (showName) archivedShowNames.add(showName);
+        event.matches.forEach(countTitleMatchAppearances);
+    });
+    Object.keys(localStorage).forEach(key => {
+        if (!key.startsWith('wwe_matches_')) return;
+        const showId = key.slice('wwe_matches_'.length);
+        if (archivedShowIds.has(showId)) return;
+        let savedMatches;
+        try {
+            savedMatches = JSON.parse(localStorage.getItem(key) || '{}');
+        } catch (error) {
+            console.error(`Unable to read saved match results for title-fight audit (${key}).`, error);
+            return;
+        }
+        if (!savedMatches || typeof savedMatches !== 'object' || Array.isArray(savedMatches)) return;
+        Object.values(savedMatches).forEach(match => {
+            const showName = normalize(match?.showName || match?.showTitle);
+            if (showName && archivedShowNames.has(showName)) return;
+            countTitleMatchAppearances(match);
+        });
+    });
     const titleStates = new Map();
     const defenseTotals = new Map();
     const lifetimeDefenseTotals = new Map();
@@ -1617,6 +1661,15 @@ function auditTitleDefenses() {
     });
 
     let fighterStatsChanged = false;
+    fighters.forEach(fighter => {
+        const auditedTitleFights = titleFightTotals.get(fighter.id) || 0;
+        if (Number(fighter.total_title_fights || 0) !== auditedTitleFights ||
+            Number(fighter.title_fights || 0) !== auditedTitleFights) {
+            fighter.total_title_fights = auditedTitleFights;
+            fighter.title_fights = auditedTitleFights;
+            fighterStatsChanged = true;
+        }
+    });
     const allDefenseFighterIds = new Set([...defenseTotals.keys(), ...lifetimeDefenseTotals.keys()]);
     fighters.forEach(fighter => allDefenseFighterIds.add(fighter.id));
     allDefenseFighterIds.forEach(fighterId => {
