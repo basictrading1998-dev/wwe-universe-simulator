@@ -14,7 +14,9 @@ function loadFightersFromStorage() {
             wins: Number(f.wins || 0),
             losses: Number(f.losses || 0),
             defenses: Number(f.defenses || 0),
+            lifetime_defenses: Number(f.lifetime_defenses || 0),
             title_fights: Number(f.title_fights || 0),
+            total_title_fights: Number(f.total_title_fights ?? f.title_fights ?? 0),
             win_pinfall: Number(f.win_pinfall || 0),
             win_ko: Number(f.win_ko || 0),
             win_submission: Number(f.win_submission || 0),
@@ -68,7 +70,9 @@ function saveFighters(list = fighters) {
         normalized.wins = Number(normalized.wins || 0);
         normalized.losses = Number(normalized.losses || 0);
         normalized.defenses = Number(normalized.defenses || 0);
+        normalized.lifetime_defenses = Number(normalized.lifetime_defenses || 0);
         normalized.title_fights = Number(normalized.title_fights || 0);
+        normalized.total_title_fights = Number(normalized.total_title_fights ?? normalized.title_fights ?? 0);
         normalized.win_pinfall = Number(normalized.win_pinfall || 0);
         normalized.win_ko = Number(normalized.win_ko || 0);
         normalized.win_submission = Number(normalized.win_submission || 0);
@@ -256,9 +260,11 @@ if (typeof window !== 'undefined') {
 }
 
 function getActiveWinStreakForPortrait(fighter) {
-    const wins = Number(fighter?.wins || 0);
-    const losses = Number(fighter?.losses || 0);
-    return losses === 0 ? wins : Number(fighter?.win_streak || 0);
+    if (!fighter) return 0;
+    const wins = Number(fighter.wins || 0);
+    const losses = Number(fighter.losses || 0);
+    const activeStreak = losses === 0 ? wins : (fighter.win_streak || 0);
+    return Number(activeStreak) || 0;
 }
 
 function getStreakClass(fighter) {
@@ -680,6 +686,129 @@ function auditPastRematchStates() {
 }
 
 auditPastRematchStates();
+
+function auditTitleFightAppearances() {
+    const auditKey = 'wwe_total_title_fights_audited_v1';
+    if (localStorage.getItem(auditKey) === 'true') return;
+
+    let eventHistory;
+    try {
+        eventHistory = JSON.parse(localStorage.getItem('wwe_event_history') || '[]');
+    } catch (error) {
+        console.error('Unable to read archived event history for title-fight audit.', error);
+        return;
+    }
+    if (!Array.isArray(eventHistory)) {
+        console.error('Archived event history is not a valid list; title-fight audit was not saved.');
+        return;
+    }
+
+    const counts = new Map(fighters.map(fighter => [fighter.id, 0]));
+    const unfinalizedMatchUpdates = new Map();
+    const fighterByName = new Map(fighters.map(fighter => [normalizeLookupKey(fighter.name), fighter]));
+    const resolveFighter = (id, name) => fighters.find(fighter => id && fighter.id === id) ||
+        fighterByName.get(normalizeLookupKey(name || ''));
+    const countTitleMatch = match => {
+        if (!match || match.isTitle !== true) return;
+        const fighter1 = resolveFighter(match.slot1Id || match.winnerId, match.slot1Name || match.winner || match.winnerName);
+        const fighter2 = resolveFighter(match.slot2Id || match.loserId, match.slot2Name || match.loser || match.loserName);
+        if (fighter1) counts.set(fighter1.id, (counts.get(fighter1.id) || 0) + 1);
+        if (fighter2 && fighter2.id !== fighter1?.id) counts.set(fighter2.id, (counts.get(fighter2.id) || 0) + 1);
+        match.totalTitleFightAppearanceCounted = true;
+    };
+
+    const archivedShowIds = new Set();
+    const archivedShowNames = new Set();
+    eventHistory.forEach(event => {
+        if (!event || !Array.isArray(event.matches)) return;
+        if (event.showId) archivedShowIds.add(event.showId);
+        const eventName = String(event.showTitle || event.name || '').trim().toLocaleLowerCase();
+        if (eventName) archivedShowNames.add(eventName);
+        event.matches.forEach(countTitleMatch);
+    });
+
+    futureShows.forEach(show => {
+        if (!show?.id || archivedShowIds.has(show.id) ||
+            archivedShowNames.has(String(show.name || '').trim().toLocaleLowerCase())) return;
+        let savedMatches;
+        try {
+            savedMatches = JSON.parse(localStorage.getItem(`wwe_matches_${show.id}`) || '{}');
+        } catch (error) {
+            console.error(`Unable to read match results for ${show.name || show.id} during title-fight audit.`, error);
+            return;
+        }
+        if (savedMatches && typeof savedMatches === 'object' && !Array.isArray(savedMatches)) {
+            Object.values(savedMatches).forEach(match => {
+                countTitleMatch(match);
+                if (match?.isTitle === true) match.totalTitleFightAppearanceCounted = true;
+            });
+            unfinalizedMatchUpdates.set(`wwe_matches_${show.id}`, savedMatches);
+        }
+    });
+
+    try {
+        fighters.forEach(fighter => {
+            const total = counts.get(fighter.id) || 0;
+            fighter.total_title_fights = total;
+            fighter.title_fights = total;
+        });
+        localStorage.setItem('wwe_event_history', JSON.stringify(eventHistory));
+        unfinalizedMatchUpdates.forEach((matches, key) => {
+            localStorage.setItem(key, JSON.stringify(matches));
+        });
+        saveFighters(fighters);
+        localStorage.setItem(auditKey, 'true');
+    } catch (error) {
+        console.error('Unable to save audited title-fight totals.', error);
+    }
+}
+
+auditTitleFightAppearances();
+
+function auditLifetimeTitleDefenses() {
+    const auditKey = 'wwe_lifetime_title_defenses_audit_v2';
+    if (localStorage.getItem(auditKey) === 'complete') return;
+
+    let eventHistory;
+    try {
+        eventHistory = JSON.parse(localStorage.getItem('wwe_event_history') || '[]');
+    } catch (error) {
+        console.error('Unable to read archived event history for lifetime-defense audit.', error);
+        return;
+    }
+    if (!Array.isArray(eventHistory)) {
+        console.error('Archived event history is not a valid list; lifetime-defense audit was not saved.');
+        return;
+    }
+
+    const totals = new Map(fighters.map(fighter => [fighter.id, 0]));
+    const fighterByName = new Map(fighters.map(fighter => [normalizeLookupKey(fighter.name), fighter]));
+    const getFighter = (id, name) => fighters.find(fighter => id && fighter.id === id) ||
+        fighterByName.get(normalizeLookupKey(name || ''));
+    eventHistory.forEach(event => {
+        if (!Array.isArray(event?.matches)) return;
+        event.matches.forEach(match => {
+            if (!match || match.isTitle !== true || (match.titleRetained !== true && match.lifetimeDefenseCounted !== true)) return;
+            const champion = getFighter(match.winnerId, match.winner || match.winnerName);
+            if (!champion) return;
+            totals.set(champion.id, (totals.get(champion.id) || 0) + 1);
+            match.lifetimeDefenseCounted = true;
+        });
+    });
+
+    try {
+        fighters.forEach(fighter => {
+            fighter.lifetime_defenses = totals.get(fighter.id) || 0;
+        });
+        saveFighters(fighters);
+        localStorage.setItem('wwe_event_history', JSON.stringify(eventHistory));
+        localStorage.setItem(auditKey, 'complete');
+    } catch (error) {
+        console.error('Unable to persist audited lifetime title defenses.', error);
+    }
+}
+
+auditLifetimeTitleDefenses();
 let completedMatches = loadCompletedMatchesForShow(activeShowId);
 let activeMatchId = null;
 window.skipDraftSaveOnUnload = false;
@@ -731,8 +860,9 @@ function loadCompletedMatchesForShow(showId) {
             titleId: match.titleId || '',
             titleName: match.customTitleName || '',
             isRematch: match.isRematch === true,
-            rematchNumber: Number(match.rematchNumber) || 0
-        };
+                rematchNumber: Number(match.rematchNumber) || 0,
+                titleFightAppearanceCounted: match.totalTitleFightAppearanceCounted === true
+            };
     });
 
     if (Object.keys(recovered).length > 0) {
@@ -957,9 +1087,8 @@ function renderBookingConflictWarning(matchRow, conflicts) {
         warning.setAttribute('role', 'alert');
         matchRow.appendChild(warning);
     }
-    warning.textContent = conflicts
-        .map(conflict => `${conflict.fighterName} is already scheduled to fight on ${conflict.cardName}`)
-        .join(' | ');
+    const cardNames = conflicts.map(conflict => conflict.cardName);
+    warning.textContent = `This matchup is already scheduled on ${cardNames.join(', ')}`;
     sessionStorage.setItem(getBookingConflictStorageKey(activeShowId, matchRow.id), JSON.stringify({
         showId: activeShowId,
         conflicts
@@ -984,49 +1113,70 @@ function checkFighterScheduleConflict(matchRow) {
         return;
     }
 
-    const selectedNames = Array.from(matchRow.querySelectorAll('.fighter-search-input'))
-        .map(input => input.value.trim())
-        .filter(Boolean);
-    const conflicts = new Map();
-    const normalizedSelectedNames = new Set(selectedNames.map(name => name.toLocaleLowerCase()));
+    const slot1Input = matchRow.querySelector('.fighter-slot[id$="-slot1"] .fighter-search-input');
+    const slot2Input = matchRow.querySelector('.fighter-slot[id$="-slot2"] .fighter-search-input');
+    const currentA = normalizeLookupKey(slot1Input?.value || '');
+    const currentB = normalizeLookupKey(slot2Input?.value || '');
+    if (!currentA || !currentB) {
+        renderBookingConflictWarning(matchRow, []);
+        return;
+    }
 
-    const recordConflict = (name, show) => {
-        const fighterName = String(name || '').trim();
-        if (!fighterName || !normalizedSelectedNames.has(fighterName.toLocaleLowerCase())) return;
-        const selectedInThisRow = Array.from(matchRow.querySelectorAll('.fighter-search-input'))
-            .some(input => input.value.trim().toLocaleLowerCase() === fighterName.toLocaleLowerCase());
-        if (!selectedInThisRow) return;
-        const cardName = show.name || 'Unnamed Card';
-        const key = `${fighterName.toLocaleLowerCase()}|${show.id}`;
-        conflicts.set(key, { fighterName, cardName });
+    const conflicts = new Map();
+    const matchesCurrentPair = (fighterA, fighterB) => {
+        const otherA = normalizeLookupKey(fighterA || '');
+        const otherB = normalizeLookupKey(fighterB || '');
+        if (!otherA || !otherB) return false;
+        return (currentA === otherA && currentB === otherB) ||
+            (currentA === otherB && currentB === otherA);
+    };
+    const recordConflict = (entries, show) => {
+        const isExactPairScheduled = entries.some(entry =>
+            entry && matchesCurrentPair(
+                entry.f1Name || entry.slot1Name || entry.winnerName || entry.winner,
+                entry.f2Name || entry.slot2Name || entry.loserName || entry.loser
+            )
+        );
+        if (!isExactPairScheduled) return;
+        const numberMatch = String(show.name || '').match(/^FIGHT\s*CARD\s*(\d+)$/i);
+        const cardName = numberMatch ? `Fight Card ${Number(numberMatch[1])}` : (show.name || 'Unnamed Card');
+        conflicts.set(show.id, { cardName });
     };
 
     futureShows.forEach(show => {
         if (!show?.id || finalizedShowIds.has(show.id)) return;
         if (show.id === activeShowId) {
+            const entries = [];
             document.querySelectorAll('.match-row').forEach(otherRow => {
                 if (otherRow === matchRow) return;
-                otherRow.querySelectorAll('.fighter-search-input').forEach(input => recordConflict(input.value, show));
+                entries.push({
+                    f1Name: otherRow.querySelector('.fighter-slot[id$="-slot1"] .fighter-search-input')?.value || '',
+                    f2Name: otherRow.querySelector('.fighter-slot[id$="-slot2"] .fighter-search-input')?.value || ''
+                });
             });
+            recordConflict(entries, show);
             return;
         }
 
-        const entries = [];
+        const entries = new Map();
         [ `wwe_draft_${show.id}`, `wwe_matches_${show.id}` ].forEach(storageKey => {
             try {
                 const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
                 if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
-                    entries.push(...Object.values(stored));
+                    Object.values(stored).forEach(entry => {
+                        if (!entry || typeof entry !== 'object') return;
+                        const nameA = entry.f1Name || entry.slot1Name || entry.winnerName || entry.winner || '';
+                        const nameB = entry.f2Name || entry.slot2Name || entry.loserName || entry.loser || '';
+                        if (matchesCurrentPair(nameA, nameB)) {
+                            entries.set(`${normalizeLookupKey(nameA)}|${normalizeLookupKey(nameB)}`, { f1Name: nameA, f2Name: nameB });
+                        }
+                    });
                 }
             } catch (error) {
                 console.warn(`Unable to read scheduled matches for ${show.name || show.id}.`, error);
             }
         });
-        entries.forEach(entry => {
-            if (!entry || typeof entry !== 'object') return;
-            recordConflict(entry.f1Name || entry.slot1Name, show);
-            recordConflict(entry.f2Name || entry.slot2Name, show);
-        });
+        recordConflict(Array.from(entries.values()), show);
     });
 
     renderBookingConflictWarning(matchRow, Array.from(conflicts.values()));
@@ -1203,6 +1353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderCardRows(box, num, id, id.includes('mainEvent'));
     });
     restoreCurrentCardDraft();
+    refreshFightCardPortraits().catch(error => console.warn('Unable to restore fight-card streak portraits.', error));
     buildShowSchedulerHeader();
     buildModalContainer();
     insertCompletedShowNotice();
@@ -1303,7 +1454,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!window.skipDraftSaveOnUnload) saveCurrentCardDraft(event);
     });
     restoreSessionWarnings();
-    window.addEventListener('focus', restoreSessionWarnings);
+    window.addEventListener('focus', () => {
+        restoreSessionWarnings();
+        refreshFightCardPortraits().catch(error => console.warn('Unable to refresh fight-card streak portraits on focus.', error));
+    });
+    window.addEventListener('pageshow', () => {
+        refreshFightCardPortraits().catch(error => console.warn('Unable to refresh fight-card streak portraits after page restore.', error));
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            refreshFightCardPortraits().catch(error => console.warn('Unable to refresh fight-card streak portraits after tab switch.', error));
+        }
+    });
 });
 
 
@@ -3507,6 +3669,16 @@ window.logMatchResult = function(id) {
     
     const titleCheck = document.getElementById(`${id}-title-check`);
     const titleInput = document.getElementById(`${id}-title-name-input`);
+    const isTitleMatch = !!titleCheck?.checked;
+    if (isTitleMatch) {
+        w.total_title_fights = Number(w.total_title_fights ?? w.title_fights) || 0;
+        l.total_title_fights = Number(l.total_title_fights ?? l.title_fights) || 0;
+        w.total_title_fights += 1;
+        l.total_title_fights += 1;
+        w.title_fights = Number(w.title_fights) + 1 || 1;
+        l.title_fights = Number(l.title_fights) + 1 || 1;
+        saveFighters(fighters);
+    }
     const rowGender = document.getElementById(`${id}-slot1`)?.getAttribute('data-gender') || document.getElementById(`${id}-slot2`)?.getAttribute('data-gender') || 'male';
     let matchSaveState = {
         winnerName: w.name,
@@ -3520,10 +3692,11 @@ window.logMatchResult = function(id) {
         methodId: methodSelect.value,
         methodName: methodSelect.options[methodSelect.selectedIndex].text,
         showName: showName,
-        isTitle: titleCheck ? titleCheck.checked : false,
+        isTitle: isTitleMatch,
         titleId: '',
         titleName: '',
         titleRetained: false,
+        totalTitleFightAppearanceCounted: isTitleMatch,
         isRematch,
         rematchNumber: rematchNumber
     };
@@ -3554,8 +3727,6 @@ window.logMatchResult = function(id) {
             const previousChampionId = targetBelt.championId;
             // Score title fight/defense stats for this specific belt
             try {
-                w.title_fights = (w.title_fights || 0) + 1;
-                l.title_fights = (l.title_fights || 0) + 1;
                 if (previousChampionId && previousChampionId === w.id) {
                     // winner was already champion -> increment defenses for this belt
                     targetBelt.defenses = (targetBelt.defenses || 0) + 1;
@@ -3668,6 +3839,10 @@ window.unlogMatchResult = function(id) {
                 winner.win_streak++;
             }
         }
+        if (savedMatch.lifetimeDefenseCounted === true && winner) {
+            winner.lifetime_defenses = Math.max(0, Number(winner.lifetime_defenses || 0) - 1);
+            savedMatch.lifetimeDefenseCounted = false;
+        }
     }
     if (loser) {
         loser.losses = Math.max(0, Number(loser.losses || 0) - 1);
@@ -3677,6 +3852,16 @@ window.unlogMatchResult = function(id) {
             });
         }
         restoreWinStreakAfterUnlog(loser);
+    }
+    if (savedMatch.isTitle && savedMatch.totalTitleFightAppearanceCounted === true) {
+        if (winner) {
+            winner.total_title_fights = Math.max(0, Number(winner.total_title_fights || 0) - 1);
+            winner.title_fights = Math.max(0, Number(winner.title_fights || 0) - 1);
+        }
+        if (loser) {
+            loser.total_title_fights = Math.max(0, Number(loser.total_title_fights || 0) - 1);
+            loser.title_fights = Math.max(0, Number(loser.title_fights || 0) - 1);
+        }
     }
 
     if (winner) refreshFighterRecordDisplaysForId(winner.id);
@@ -4000,7 +4185,10 @@ window.unfinalizeCurrentCard = function() {
                 if (methodId && typeof winner[methodId] !== 'undefined') {
                     winner[methodId] = Math.max(0, Number(winner[methodId] || 0) - 1);
                 }
-                if (match.isTitle) winner.title_fights = Math.max(0, Number(winner.title_fights || 0) - 1);
+                if (match.isTitle) {
+                    winner.total_title_fights = Math.max(0, Number(winner.total_title_fights || 0) - 1);
+                    winner.title_fights = Math.max(0, Number(winner.title_fights || 0) - 1);
+                }
                 matchHistoryRemovals.set(winner, (matchHistoryRemovals.get(winner) || []).concat({
                     outcome: 'win',
                     opponent: loserName,
@@ -4011,7 +4199,10 @@ window.unfinalizeCurrentCard = function() {
             }
             if (loser) {
                 loser.losses = Math.max(0, Number(loser.losses || 0) - 1);
-                if (match.isTitle) loser.title_fights = Math.max(0, Number(loser.title_fights || 0) - 1);
+                if (match.isTitle) {
+                    loser.total_title_fights = Math.max(0, Number(loser.total_title_fights || 0) - 1);
+                    loser.title_fights = Math.max(0, Number(loser.title_fights || 0) - 1);
+                }
                 matchHistoryRemovals.set(loser, (matchHistoryRemovals.get(loser) || []).concat({
                     outcome: 'loss',
                     opponent: winnerName,
@@ -4028,6 +4219,9 @@ window.unfinalizeCurrentCard = function() {
 
             if (match.titleRetained === true && winner) {
                 winner.defenses = Math.max(0, Number(winner.defenses || 0) - 1);
+            }
+            if (match.lifetimeDefenseCounted === true && winner) {
+                winner.lifetime_defenses = Math.max(0, Number(winner.lifetime_defenses || 0) - 1);
             }
 
             if (Array.isArray(title.history)) {
@@ -4073,6 +4267,13 @@ window.unfinalizeCurrentCard = function() {
         saveFighters(fighters);
         localStorage.setItem('wwe_titles', JSON.stringify(championshipsRegistry));
         localStorage.setItem('wwe_event_history', JSON.stringify(remainingEvents));
+        const savedMatches = JSON.parse(localStorage.getItem(`wwe_matches_${showId}`) || '{}');
+        archivedEvents.forEach(event => (Array.isArray(event.matches) ? event.matches : []).forEach(match => {
+            if (!match?.isTitle || !match.matchId || !savedMatches[match.matchId]) return;
+            savedMatches[match.matchId].totalTitleFightAppearanceCounted = false;
+            savedMatches[match.matchId].lifetimeDefenseCounted = false;
+        }));
+        localStorage.setItem(`wwe_matches_${showId}`, JSON.stringify(savedMatches));
         setShowCompleted(showId, false);
         updateFinalizedShowDropdownStyles();
         updateFinalizeButtonState();
@@ -4399,6 +4600,19 @@ window.finalizeFullEventCard = function() {
         const savedIsTitle = typeof savedState.isTitle !== 'undefined' ? savedState.isTitle : (titleCheck ? titleCheck.checked : false);
         const savedTitleId = savedState?.titleId || '';
         const savedTitleName = savedState?.titleName || (titleNameInp ? (titleNameInp.options[titleNameInp.selectedIndex]?.getAttribute('data-name') || titleNameInp.value.trim()) : '');
+        if (savedIsTitle && savedState.totalTitleFightAppearanceCounted !== true) {
+            const winner = fighters.find(fighter => fighter.id === savedState.winnerId || fighter.name === savedState.winnerName);
+            const loser = fighters.find(fighter => fighter.id === savedState.loserId || fighter.name === savedState.loserName);
+            if (winner) {
+                winner.total_title_fights = (Number(winner.total_title_fights ?? winner.title_fights) || 0) + 1;
+                winner.title_fights = Number(winner.title_fights || 0) + 1;
+            }
+            if (loser) {
+                loser.total_title_fights = (Number(loser.total_title_fights ?? loser.title_fights) || 0) + 1;
+                loser.title_fights = Number(loser.title_fights || 0) + 1;
+            }
+            savedState.totalTitleFightAppearanceCounted = true;
+        }
 
         return {
             matchId: row.id,
@@ -4411,10 +4625,16 @@ window.finalizeFullEventCard = function() {
             titleId: savedTitleId,
             customTitleName: savedTitleName,
             titleRetained: savedState.titleRetained === true,
+            winnerId: savedState.winnerId || '',
+            loserId: savedState.loserId || '',
             isRematch: savedState.isRematch === true,
-            rematchNumber: Number(savedState.rematchNumber) || 0
+            rematchNumber: Number(savedState.rematchNumber) || 0,
+            totalTitleFightAppearanceCounted: savedState.totalTitleFightAppearanceCounted === true,
+            lifetimeDefenseCounted: savedState.lifetimeDefenseCounted === true
         };
     });
+    const activeMatchesStorageKey = getActiveShowMatchesStorageKey();
+    if (activeMatchesStorageKey) localStorage.setItem(activeMatchesStorageKey, JSON.stringify(activeShowSavedData));
 
     let championshipsRegistry = JSON.parse(localStorage.getItem('wwe_titles')) || [];
 
@@ -4427,13 +4647,6 @@ window.finalizeFullEventCard = function() {
         const champWinnerObj = fighters.find(f => f.name === m.winner);
         const loserObj = fighters.find(f => f.name === m.loser);
         const beltName = m.customTitleName;
-
-        if (champWinnerObj) {
-            champWinnerObj.title_fights = (champWinnerObj.title_fights || 0) + 1;
-        }
-        if (loserObj) {
-            loserObj.title_fights = (loserObj.title_fights || 0) + 1;
-        }
 
         let targetBelt = championshipsRegistry.find(b => b.name.toLowerCase() === beltName.toLowerCase());
         if (!targetBelt) {
@@ -4469,6 +4682,23 @@ window.finalizeFullEventCard = function() {
         }
     });
 
+    eventMatchesCompiled.forEach(match => {
+        if (!match.isTitle || match.titleRetained !== true) return;
+        const savedState = activeShowSavedData[match.matchId];
+        if (!savedState) return;
+        if (savedState.lifetimeDefenseCounted === true || match.lifetimeDefenseCounted === true) {
+            savedState.lifetimeDefenseCounted = true;
+            match.lifetimeDefenseCounted = true;
+            return;
+        }
+        const champion = fighters.find(fighter => fighter.id === match.winnerId || fighter.name === match.winner);
+        if (!champion) return;
+        champion.lifetime_defenses = (Number(champion.lifetime_defenses) || 0) + 1;
+        savedState.lifetimeDefenseCounted = true;
+        match.lifetimeDefenseCounted = true;
+    });
+
+    if (activeMatchesStorageKey) localStorage.setItem(activeMatchesStorageKey, JSON.stringify(activeShowSavedData));
     localStorage.setItem('wwe_titles', JSON.stringify(championshipsRegistry));
 
     let eventHistoryCalendar = JSON.parse(localStorage.getItem("wwe_event_history")) || [];

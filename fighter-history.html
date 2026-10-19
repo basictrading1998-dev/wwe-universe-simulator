@@ -314,18 +314,43 @@
         });
 
         // Also restore on visibility/focus
-        window.addEventListener('visibilitychange', () => { if (!document.hidden) rehydrateHistoryCompareInputs(60); });
-        window.addEventListener('focus', () => rehydrateHistoryCompareInputs(30));
+        window.addEventListener('visibilitychange', () => {
+            if (document.hidden) return;
+            rehydrateHistoryCompareInputs(60);
+            refreshHistoryStreakPortraits();
+        });
+        window.addEventListener('focus', () => {
+            rehydrateHistoryCompareInputs(30);
+            refreshHistoryStreakPortraits();
+        });
 
         function getStreakClass(fighter) {
             const wins = Number(fighter?.wins || 0);
             const losses = Number(fighter?.losses || 0);
-            const calculatedStreak = losses === 0 ? wins : Number(fighter?.win_streak || 0);
+            const activeStreak = losses === 0 ? wins : (fighter?.win_streak || 0);
+            const calculatedStreak = Number(activeStreak) || 0;
             if (calculatedStreak >= 10) return 'border-tier-4';
             if (calculatedStreak >= 7) return 'border-tier-3';
             if (calculatedStreak >= 5) return 'border-tier-2';
             if (calculatedStreak >= 3) return 'border-tier-1';
             return '';
+        }
+
+        function applyHistoryStreakPortraitClass(portrait, fighter) {
+            if (!portrait) return;
+            portrait.classList.remove('streak-purple', 'streak-green', 'streak-blue', 'streak-rainbow-diamond', 'border-tier-1', 'border-tier-2', 'border-tier-3', 'border-tier-4');
+            const streakClass = getStreakClass(fighter);
+            if (streakClass) portrait.classList.add(streakClass);
+        }
+
+        function refreshHistoryStreakPortraits() {
+            const fightersByName = new Map(historyFighters.map(fighter => [fighter.name.toLowerCase(), fighter]));
+            document.querySelectorAll('#historyMasterLogContainer .avatar-circle').forEach(portrait => {
+                const name = portrait.closest('.fighter-history-row')?.querySelector('.fighter-name')?.textContent?.trim().toLowerCase();
+                applyHistoryStreakPortraitClass(portrait, name ? fightersByName.get(name) : null);
+            });
+            updateComparePortrait('A');
+            updateComparePortrait('B');
         }
 
         function renderWidescreenHistoryMatrix() {
@@ -517,6 +542,7 @@
             } else {
                 portraitEl.textContent = '👤';
             }
+            applyHistoryStreakPortraitClass(portraitEl, fighter);
         }
 
         function tryAutoCompareHistory() {

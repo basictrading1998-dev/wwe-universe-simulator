@@ -1126,7 +1126,9 @@ function normalizeFighterRecord(fighter) {
     normalized.wins = Number(normalized.wins || 0);
     normalized.losses = Number(normalized.losses || 0);
     normalized.defenses = Number(normalized.defenses || 0);
+    normalized.lifetime_defenses = Number(normalized.lifetime_defenses || 0);
     normalized.title_fights = Number(normalized.title_fights || 0);
+    normalized.total_title_fights = Number(normalized.total_title_fights ?? normalized.title_fights);
     normalized.win_pinfall = Number(normalized.win_pinfall || 0);
     normalized.win_ko = Number(normalized.win_ko || 0);
     normalized.win_submission = Number(normalized.win_submission || 0);
@@ -1491,7 +1493,8 @@ function saveFighters(list = fighters) {
 const TITLE_DEFENSE_AUDIT_KEY = 'wwe_title_defenses_audit_v1';
 
 function auditTitleDefenses() {
-    if (localStorage.getItem(TITLE_DEFENSE_AUDIT_KEY) === 'complete') return false;
+    const auditLifetimeKey = 'wwe_lifetime_title_defenses_audit_v1';
+    const auditAlreadyComplete = localStorage.getItem(TITLE_DEFENSE_AUDIT_KEY) === 'complete';
     if (!Array.isArray(fighters) || fighters.length === 0) return false;
 
     let eventHistory;
@@ -1513,6 +1516,7 @@ function auditTitleDefenses() {
     const fighterById = new Map(fighters.map(fighter => [fighter.id, fighter]));
     const titleStates = new Map();
     const defenseTotals = new Map();
+    const lifetimeDefenseTotals = new Map();
     const orderedEvents = eventHistory
         .map((event, index) => ({
             event,
@@ -1549,6 +1553,7 @@ function auditTitleDefenses() {
         });
     });
 
+    let eventHistoryChanged = false;
     orderedEvents.forEach(({ event }) => {
         const showName = event.showTitle || event.name || '';
         const normalizedShowName = normalize(showName);
@@ -1586,14 +1591,24 @@ function auditTitleDefenses() {
 
             if (match.titleRetained === true) {
                 defenseTotals.set(winner.id, (defenseTotals.get(winner.id) || 0) + 1);
+                lifetimeDefenseTotals.set(winner.id, (lifetimeDefenseTotals.get(winner.id) || 0) + 1);
                 state.activeReignDefenses += 1;
                 state.holderId = winner.id;
+                if (match.lifetimeDefenseCounted !== true) {
+                    match.lifetimeDefenseCounted = true;
+                    eventHistoryChanged = true;
+                }
             } else if (match.titleRetained === false || isRecordedTitleChange) {
                 state.holderId = winner.id;
                 state.activeReignDefenses = 0;
             } else if (state.holderId && state.holderId === winner.id) {
                 defenseTotals.set(winner.id, (defenseTotals.get(winner.id) || 0) + 1);
+                lifetimeDefenseTotals.set(winner.id, (lifetimeDefenseTotals.get(winner.id) || 0) + 1);
                 state.activeReignDefenses += 1;
+                if (match.lifetimeDefenseCounted !== true) {
+                    match.lifetimeDefenseCounted = true;
+                    eventHistoryChanged = true;
+                }
             } else if (state.holderId) {
                 state.holderId = winner.id;
                 state.activeReignDefenses = 0;
@@ -1602,12 +1617,20 @@ function auditTitleDefenses() {
     });
 
     let fighterStatsChanged = false;
-    defenseTotals.forEach((count, fighterId) => {
+    const allDefenseFighterIds = new Set([...defenseTotals.keys(), ...lifetimeDefenseTotals.keys()]);
+    fighters.forEach(fighter => allDefenseFighterIds.add(fighter.id));
+    allDefenseFighterIds.forEach(fighterId => {
         const fighter = fighterById.get(fighterId);
         if (!fighter) return;
         const currentDefenses = Number(fighter.defenses) || 0;
-        if (count > currentDefenses) {
-            fighter.defenses = count;
+        const auditedDefenses = defenseTotals.get(fighterId) || 0;
+        const auditedLifetimeDefenses = lifetimeDefenseTotals.get(fighterId) || 0;
+        if (!auditAlreadyComplete && auditedDefenses > currentDefenses) {
+            fighter.defenses = auditedDefenses;
+            fighterStatsChanged = true;
+        }
+        if (Number(fighter.lifetime_defenses || 0) !== auditedLifetimeDefenses) {
+            fighter.lifetime_defenses = auditedLifetimeDefenses;
             fighterStatsChanged = true;
         }
     });
@@ -1622,6 +1645,7 @@ function auditTitleDefenses() {
     try {
         if (fighterStatsChanged) saveFighters(fighters);
         if (titleStatsChanged) localStorage.setItem('wwe_titles', JSON.stringify(championships));
+        if (eventHistoryChanged) localStorage.setItem('wwe_event_history', JSON.stringify(eventHistory));
         if (fighterStatsChanged) {
             const savedFighters = JSON.parse(localStorage.getItem('wwe_fighters') || '[]');
             if (!Array.isArray(savedFighters) || Array.from(defenseTotals).some(([id, count]) => {
@@ -1641,7 +1665,8 @@ function auditTitleDefenses() {
                 throw new Error('Saved championship defense totals did not match the audited values.');
             }
         }
-        localStorage.setItem(TITLE_DEFENSE_AUDIT_KEY, 'complete');
+        if (!auditAlreadyComplete) localStorage.setItem(TITLE_DEFENSE_AUDIT_KEY, 'complete');
+        localStorage.setItem(auditLifetimeKey, 'complete');
         return fighterStatsChanged || titleStatsChanged;
     } catch (error) {
         console.error('Unable to persist audited title defense totals.', error);
@@ -1852,6 +1877,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupSidebarFormEngine();
     setupLiveSearchEngine();
     window.addEventListener('beforeunload', () => saveFighters(fighters));
+    const refreshRosterStreakPortraits = () => {
+        document.querySelectorAll('.roster-portrait-frame').forEach(frame => {
+            const card = frame.closest('[id^="fighter-card-"]');
+            const fighterId = card?.id.slice('fighter-card-'.length);
+            const fighter = fighters.find(item => item.id === fighterId);
+            if (fighter) applyRosterStreakPortraitClass(frame, fighter);
+        });
+    };
+    window.addEventListener('focus', refreshRosterStreakPortraits);
+    window.addEventListener('pageshow', refreshRosterStreakPortraits);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) refreshRosterStreakPortraits();
+    });
 });
 
 // Inject CSS for the fighter history button if not already present
@@ -1905,9 +1943,11 @@ window.openFighterAnalytics = function(fighterName) {
 };
 
 function getRosterWinStreak(fighter) {
-    const wins = Number(fighter?.wins || 0);
-    const losses = Number(fighter?.losses || 0);
-    return losses === 0 ? wins : Number(fighter?.win_streak || 0);
+    if (!fighter) return 0;
+    const wins = Number(fighter.wins || 0);
+    const losses = Number(fighter.losses || 0);
+    const activeStreak = losses === 0 ? wins : (fighter.win_streak || 0);
+    return Number(activeStreak) || 0;
 }
 
 function getStreakClass(fighter) {
@@ -1974,8 +2014,8 @@ function renderRosterGrid() {
             });
         }
 
-        let totalDefenses = championships.filter(b => b.championId === f.id).reduce((sum, b) => sum + (b.defenses || 0), 0);
-        let titleFightsCount = f.title_fights || 0;
+        let totalDefenses = Number(f.lifetime_defenses) || 0;
+        let titleFightsCount = f.total_title_fights || 0;
 
         const effectivePhoto = (typeof f.photo === 'string' && f.photo) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
         let avatarContent = '';
@@ -2205,8 +2245,8 @@ function renderRosterGridWithoutReload() {
             });
         }
 
-        let totalDefenses = championships.filter(b => b.championId === f.id).reduce((sum, b) => sum + (b.defenses || 0), 0);
-        let titleFightsCount = f.title_fights || 0;
+        let totalDefenses = Number(f.lifetime_defenses) || 0;
+        let titleFightsCount = f.total_title_fights || 0;
 
         const effectivePhoto = (typeof f.photo === 'string' && f.photo) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
         let avatarContent = '';
@@ -2304,7 +2344,7 @@ function buildMasterRankingsPanel() {
     const fightersCopy = [...fighters];
 
     const mostTitleFights = fightersCopy.reduce((best, fighter) => {
-        const count = fighter.title_fights || 0;
+        const count = fighter.total_title_fights || 0;
         return count > (best.count || 0) ? { fighter, count } : best;
     }, { fighter: null, count: 0 });
 
@@ -2333,7 +2373,7 @@ function buildMasterRankingsPanel() {
         <button type="button" data-metric="win_ko" style="background: #fff7ed; border: 1px solid #ffedd5; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #ea580c; cursor: pointer;">💥 KO Masters</button>
         <button type="button" data-metric="win_submission" style="background: #fbf7ff; border: 1px solid #f3e8ff; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #7c3aed; cursor: pointer;">🥋 Submission Experts</button>
         <button type="button" data-metric="win_rate" style="background: #ecfeff; border: 1px solid #cffafe; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">📈 Win Rate</button>
-        <button type="button" data-metric="title_fights" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🏆 Most Title Fights</button>
+        <button type="button" data-metric="total_title_fights" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🏆 Most Title Fights</button>
         <button type="button" data-metric="defenses" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🛡️ Most Title Defenses</button>
         <button type="button" data-metric="current_belts" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🎖️ Most Current Belts</button>
         <button type="button" data-metric="gender_male" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">Men</button>
@@ -2647,7 +2687,7 @@ function setupSidebarFormEngine() {
                 name: nameValue,
                 gender: genderSelect ? genderSelect.value.toLowerCase() : 'male',
                 division: normalizeDivisionName((divisionInput && divisionInput.value.trim()) ? divisionInput.value.trim() : 'HeavyWeight'),
-                wins: 0, losses: 0, defenses: 0, title_fights: 0, win_pinfall: 0, win_ko: 0, win_submission: 0
+                wins: 0, losses: 0, defenses: 0, title_fights: 0, total_title_fights: 0, win_pinfall: 0, win_ko: 0, win_submission: 0
             };
 
             fighters.push(normalizeFighterRecord(newFighter));
@@ -2724,6 +2764,7 @@ window.importBulkSuperstars = async function() {
                 losses: 0,
                 defenses: 0,
                 title_fights: 0,
+                total_title_fights: 0,
                 win_pinfall: 0,
                 win_ko: 0,
                 win_submission: 0
@@ -2777,6 +2818,7 @@ window.syncWWE2K24Roster = async function() {
             losses: 0,
             defenses: 0,
             title_fights: 0,
+            total_title_fights: 0,
             win_pinfall: 0,
             win_ko: 0,
             win_submission: 0,
@@ -2803,6 +2845,7 @@ window.editSuperstar = function(id) {
     if (oldPanel) oldPanel.remove();
 
     if (f.title_fights === undefined) f.title_fights = 0;
+    if (f.total_title_fights === undefined) f.total_title_fights = f.title_fights || 0;
 
     const editPanel = document.createElement('div');
     editPanel.id = `inline-editor-${id}`;
@@ -2852,7 +2895,7 @@ window.editSuperstar = function(id) {
         </div>
         <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
             <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Title Fights:</label>
-            <input type="number" id="edit-fights-${id}" value="${f.title_fights}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
+            <input type="number" id="edit-fights-${id}" value="${f.total_title_fights}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
         </div>
         <div style="grid-column: span 2; display: flex; gap: 4px; width: 100%; margin-top: 4px;">
             <button onclick="saveInlineEdit('${id}')" style="flex: 1; background: #10b981; border: none; color: white; font-weight: bold; padding: 4px; border-radius: 4px; font-size: 0.65rem; cursor: pointer;">Save Changes</button>
@@ -2904,7 +2947,7 @@ window.editSuperstar = function(id) {
         if (pinsEl) pinsEl.value = f.win_pinfall || 0;
         if (kosEl) kosEl.value = f.win_ko || 0;
         if (subsEl) subsEl.value = f.win_submission || 0;
-        if (fightsEl) fightsEl.value = f.title_fights || 0;
+        if (fightsEl) fightsEl.value = f.total_title_fights || 0;
     } catch (err) {
         console.error('failed to set inline editor values', err);
     }
@@ -2945,7 +2988,7 @@ window.saveInlineEdit = function(id) {
             newPinfalls !== (f.win_pinfall || 0) ||
             newKOs !== (f.win_ko || 0) ||
             newSubs !== (f.win_submission || 0) ||
-            newTitleFights !== (f.title_fights || 0)
+            newTitleFights !== (f.total_title_fights || 0)
         );
         const identityChanged = (newName !== f.name || newDivision !== f.division || newGender !== f.gender);
 
@@ -2958,6 +3001,7 @@ window.saveInlineEdit = function(id) {
         f.win_ko = newKOs;
         f.win_submission = newSubs;
         f.title_fights = newTitleFights;
+        f.total_title_fights = newTitleFights;
 
         if (statsChanged) {
             f.compiled_history_deck = [];
@@ -3017,14 +3061,9 @@ window.sortRosterByMetric = function(metricType) {
             return fightsB - fightsA || b.wins - a.wins;
         });
     } else if (metricType === 'defenses') {
-        const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
         fighters.sort((a, b) => {
-            const defensesA = championships
-                .filter(championship => championship.championId === a.id)
-                .reduce((total, championship) => total + (Number(championship.defenses) || 0), 0);
-            const defensesB = championships
-                .filter(championship => championship.championId === b.id)
-                .reduce((total, championship) => total + (Number(championship.defenses) || 0), 0);
+            const defensesA = Number(a.lifetime_defenses) || 0;
+            const defensesB = Number(b.lifetime_defenses) || 0;
             return defensesB - defensesA || b.wins - a.wins;
         });
     } else {
