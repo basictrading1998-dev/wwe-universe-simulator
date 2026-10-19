@@ -1805,6 +1805,36 @@ window.downloadAppBackup = function() {
     URL.revokeObjectURL(link.href);
 };
 
+window.saveEntireUniverseState = function(event) {
+    event?.preventDefault();
+    try {
+        const storageSnapshot = Object.create(null);
+        for (let index = 0; index < localStorage.length; index++) {
+            const key = localStorage.key(index);
+            if (key !== null) storageSnapshot[key] = localStorage.getItem(key);
+        }
+
+        const backup = {
+            format: 'wwe-universe-master-backup',
+            version: 1,
+            exportedAt: new Date().toISOString(),
+            localStorage: storageSnapshot
+        };
+        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'wwe_universe_master_backup.json';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+        console.error('Unable to export the complete WWE Universe backup.', error);
+        alert('The complete Universe backup could not be created. Check browser storage and try again.');
+    }
+};
+
 window.downloadRosterBackup = async function() {
     let roster = [];
     try {
@@ -1902,6 +1932,10 @@ window.restoreLegacyRoster = async function() {
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
+    const saveUniverseLink = document.getElementById('btnSaveUniverse');
+    if (saveUniverseLink) {
+        saveUniverseLink.addEventListener('click', window.saveEntireUniverseState);
+    }
     try {
         await loadAndHydrateFighters();
         auditTitleDefenses();
