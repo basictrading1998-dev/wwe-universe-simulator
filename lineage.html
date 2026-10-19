@@ -60,6 +60,18 @@
         .champion-lost { color: #ef4444; }
         .record-pill { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); border-radius: 999px; padding: 2px 8px; font-size: 0.65rem; font-weight: 800; color: #cbd5e1; }
         .vacant-pill { color: #94a3b8; font-weight: 800; }
+        .btn-change-title { align-self: flex-start; margin-bottom: 5px; padding: 4px 8px; border: 1px solid rgba(239,68,68,0.45); border-radius: 6px; background: rgba(127,29,29,0.2); color: #fca5a5; font-size: 0.62rem; font-weight: 800; cursor: pointer; text-transform: uppercase; }
+        .btn-change-title:hover { background: rgba(127,29,29,0.45); border-color: #ef4444; color: #fff; }
+        #changeTitleModal { position: fixed; inset: 0; z-index: 2100; display: none; align-items: center; justify-content: center; padding: 24px; background: rgba(2,6,23,0.82); }
+        #changeTitlePanel { width: min(420px, 100%); padding: 22px; border: 1px solid #7f1d1d; border-radius: 12px; background: #111827; box-shadow: 0 20px 55px rgba(2,6,23,0.55); }
+        #changeTitlePanel h2 { margin: 0 0 16px; color: #f8fafc; font-size: 1rem; }
+        #changeTitlePanel label { display: block; margin-bottom: 8px; color: #cbd5e1; font-size: 0.82rem; font-weight: 700; }
+        #changeTitlePanel select,
+        #changeTitleShow { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #334155; border-radius: 6px; background: #0f172a; color: #f8fafc; }
+        .change-title-field { margin-top: 14px; }
+        .change-title-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+        .change-title-actions button { padding: 8px 12px; border: 1px solid #475569; border-radius: 6px; background: #1e293b; color: #f8fafc; font-weight: 700; cursor: pointer; }
+        .change-title-actions button[type="submit"] { border-color: #b91c1c; background: #b91c1c; }
 
         /* HORIZONTAL LIST TABLE MATRIX GRAPHICS */
         main { max-width: 1400px; margin: 16px auto; padding: 0 24px; box-sizing: border-box; }
@@ -163,15 +175,50 @@
         </div>
     </main>
 
+    <div id="changeTitleModal" role="dialog" aria-modal="true" aria-labelledby="changeTitleHeading">
+        <form id="changeTitlePanel">
+            <h2 id="changeTitleHeading">Change Title</h2>
+            <label for="changeTitleFighter">Select the new champion for this title:</label>
+            <select id="changeTitleFighter" required></select>
+            <div class="change-title-field">
+                <label for="changeTitleShow">Select Fight Card / Show:</label>
+                <input id="changeTitleShow" type="text" list="changeTitleShowOptions" required>
+                <datalist id="changeTitleShowOptions"></datalist>
+            </div>
+            <div class="change-title-field">
+                <label for="changeTitleWinMethod">Select Win Method:</label>
+                <select id="changeTitleWinMethod" required>
+                    <option value="">Select a finish method</option>
+                    <option value="PINFALL">PINFALL</option>
+                    <option value="SUBMISSION">SUBMISSION</option>
+                    <option value="KO/TKO">KO/TKO</option>
+                </select>
+            </div>
+            <div class="change-title-actions">
+                <button type="button" id="cancelChangeTitle">Cancel</button>
+                <button type="submit">Set Champion</button>
+            </div>
+        </form>
+    </div>
+
     <script>
         let fighters = [];
         let championships = [];
+        let changingTitleId = '';
 
         document.addEventListener('DOMContentLoaded', () => {
             fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || [];
             championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
             sortChampionships(championships);
             renderHorizontalLineageMatrix();
+
+            const container = document.getElementById('lineageMasterTableContainer');
+            container.addEventListener('click', event => {
+                const button = event.target.closest('.btn-change-title');
+                if (button) openChangeTitleModal(button.dataset.titleId);
+            });
+            document.getElementById('changeTitlePanel').addEventListener('submit', saveManualTitleChange);
+            document.getElementById('cancelChangeTitle').addEventListener('click', closeChangeTitleModal);
         });
 
         function sortChampionships(list) {
@@ -224,6 +271,7 @@
                     <div class="belt-profile-block">
                         <div class="gold-avatar-circle">🏆</div>
                         <div class="name-wrapper">
+                            <button type="button" class="btn-change-title" data-title-id="${b.id}">Change Title</button>
                             <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">
                                 <div style="display:flex; align-items:center; gap:8px;">
                                     <h3 class="belt-display-title" style="margin:0;">${b.name}</h3>
@@ -273,6 +321,76 @@
                 row.innerHTML = `<div>${leftBeltHtml}</div><div>${rightDeckHtml}</div>`;
                 container.appendChild(row);
             });
+        }
+
+        function openChangeTitleModal(titleId) {
+            const select = document.getElementById('changeTitleFighter');
+            if (!fighters.length) {
+                alert('Add fighters to the Master Roster before changing a title holder.');
+                return;
+            }
+
+            changingTitleId = titleId;
+            select.replaceChildren(new Option('Select a fighter', ''));
+            fighters
+                .slice()
+                .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+                .forEach(fighter => select.add(new Option(fighter.name, fighter.id)));
+            const showInput = document.getElementById('changeTitleShow');
+            showInput.value = getCurrentFightCardName();
+            const showOptions = document.getElementById('changeTitleShowOptions');
+            showOptions.replaceChildren();
+            const shows = JSON.parse(localStorage.getItem('wwe_future_shows') || '[]');
+            const archivedEvents = JSON.parse(localStorage.getItem('wwe_event_history') || '[]');
+            const showNames = new Set([
+                ...shows.map(show => show.name),
+                ...archivedEvents.map(event => event.showTitle || event.name)
+            ].filter(name => typeof name === 'string' && name.trim()));
+            showNames.forEach(name => showOptions.appendChild(new Option(name)));
+            document.getElementById('changeTitleModal').style.display = 'flex';
+            select.focus();
+        }
+
+        function closeChangeTitleModal() {
+            document.getElementById('changeTitleModal').style.display = 'none';
+            changingTitleId = '';
+        }
+
+        function getCurrentFightCardName() {
+            const activeShowId = localStorage.getItem('wwe_active_show_id');
+            const futureShows = JSON.parse(localStorage.getItem('wwe_future_shows') || '[]');
+            const activeShow = futureShows.find(show => show.id === activeShowId);
+            return activeShow?.name || 'Manual Title Change';
+        }
+
+        function saveManualTitleChange(event) {
+            event.preventDefault();
+            const fighterId = document.getElementById('changeTitleFighter').value;
+            const newChampion = fighters.find(fighter => fighter.id === fighterId);
+            const showName = document.getElementById('changeTitleShow').value.trim();
+            const winMethod = document.getElementById('changeTitleWinMethod').value;
+            if (!newChampion || !changingTitleId || !showName || !winMethod) return;
+
+            championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+            const title = championships.find(championship => championship.id === changingTitleId);
+            if (!title) {
+                closeChangeTitleModal();
+                alert('This championship could not be found. Refresh the page and try again.');
+                return;
+            }
+
+            title.championId = newChampion.id;
+            title.defenses = 0;
+            title.history = Array.isArray(title.history) ? title.history : [];
+            title.history.push({
+                wrestlerName: newChampion.name,
+                showTitle: showName,
+                winMethod: winMethod
+            });
+
+            localStorage.setItem('wwe_titles', JSON.stringify(championships));
+            closeChangeTitleModal();
+            renderHorizontalLineageMatrix();
         }
 
         window.createNewChampionship = function() {

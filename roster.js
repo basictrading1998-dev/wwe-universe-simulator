@@ -1488,6 +1488,169 @@ function saveFighters(list = fighters) {
     }
 }
 
+const TITLE_DEFENSE_AUDIT_KEY = 'wwe_title_defenses_audit_v1';
+
+function auditTitleDefenses() {
+    if (localStorage.getItem(TITLE_DEFENSE_AUDIT_KEY) === 'complete') return false;
+    if (!Array.isArray(fighters) || fighters.length === 0) return false;
+
+    let eventHistory;
+    let championships;
+    try {
+        eventHistory = JSON.parse(localStorage.getItem('wwe_event_history') || '[]');
+        championships = JSON.parse(localStorage.getItem('wwe_titles') || '[]');
+    } catch (error) {
+        console.error('Unable to audit title defenses because saved title history is invalid.', error);
+        return false;
+    }
+    if (!Array.isArray(eventHistory) || !Array.isArray(championships)) {
+        console.error('Unable to audit title defenses because saved title history has an unexpected format.');
+        return false;
+    }
+
+    const normalize = value => String(value || '').trim().toLowerCase();
+    const fighterByName = new Map(fighters.map(fighter => [normalize(fighter.name), fighter]));
+    const fighterById = new Map(fighters.map(fighter => [fighter.id, fighter]));
+    const titleStates = new Map();
+    const defenseTotals = new Map();
+    const orderedEvents = eventHistory
+        .map((event, index) => ({
+            event,
+            index,
+            timestamp: event && typeof event === 'object' ? Date.parse(event.completedAt || event.date || '') : NaN
+        }))
+        .filter(item => item.event && Array.isArray(item.event.matches))
+        .sort((a, b) => Number.isFinite(a.timestamp) && Number.isFinite(b.timestamp)
+            ? a.timestamp - b.timestamp || a.index - b.index
+            : a.index - b.index);
+
+    championships.forEach(title => {
+        if (!title || !title.id) return;
+        const history = Array.isArray(title.history) ? title.history : [];
+        const transferCounts = new Map();
+        const manualChanges = new Map();
+        history.forEach(entry => {
+            if (!entry) return;
+            const key = `${normalize(entry.showTitle)}|${normalize(entry.wrestlerName)}`;
+            if (normalize(entry.winMethod) === 'manual change') {
+                const showKey = normalize(entry.showTitle);
+                if (!manualChanges.has(showKey)) manualChanges.set(showKey, []);
+                manualChanges.get(showKey).push(entry.wrestlerName);
+                return;
+            }
+            transferCounts.set(key, (transferCounts.get(key) || 0) + 1);
+        });
+        titleStates.set(title.id, {
+            title,
+            holderId: '',
+            activeReignDefenses: 0,
+            transferCounts,
+            manualChanges
+        });
+    });
+
+    orderedEvents.forEach(({ event }) => {
+        const showName = event.showTitle || event.name || '';
+        const normalizedShowName = normalize(showName);
+        titleStates.forEach(state => {
+            const changes = state.manualChanges.get(normalizedShowName);
+            if (!changes || changes.length === 0) return;
+            const manualChampion = fighterByName.get(normalize(changes.shift()));
+            if (!manualChampion) return;
+            state.holderId = manualChampion.id;
+            state.activeReignDefenses = 0;
+        });
+
+        event.matches.forEach(match => {
+            if (!match || !match.isTitle || !match.winner) return;
+
+            let title = match.titleId ? championships.find(item => item && item.id === match.titleId) : null;
+            if (!title) {
+                const titleName = normalize(match.customTitleName || match.titleName);
+                if (titleName) title = championships.find(item => item && normalize(item.name) === titleName);
+            }
+            if (!title) return;
+
+            const state = titleStates.get(title.id);
+            const winner = match.winnerId
+                ? fighterById.get(match.winnerId)
+                : fighterByName.get(normalize(match.winner));
+            if (!state || !winner) return;
+
+            const transferKey = `${normalize(showName)}|${normalize(winner.name)}`;
+            const matchingTransfers = state.transferCounts.get(transferKey) || 0;
+            const isRecordedTitleChange = matchingTransfers > 0;
+            if (isRecordedTitleChange) {
+                state.transferCounts.set(transferKey, matchingTransfers - 1);
+            }
+
+            if (match.titleRetained === true) {
+                defenseTotals.set(winner.id, (defenseTotals.get(winner.id) || 0) + 1);
+                state.activeReignDefenses += 1;
+                state.holderId = winner.id;
+            } else if (match.titleRetained === false || isRecordedTitleChange) {
+                state.holderId = winner.id;
+                state.activeReignDefenses = 0;
+            } else if (state.holderId && state.holderId === winner.id) {
+                defenseTotals.set(winner.id, (defenseTotals.get(winner.id) || 0) + 1);
+                state.activeReignDefenses += 1;
+            } else if (state.holderId) {
+                state.holderId = winner.id;
+                state.activeReignDefenses = 0;
+            }
+        });
+    });
+
+    let fighterStatsChanged = false;
+    defenseTotals.forEach((count, fighterId) => {
+        const fighter = fighterById.get(fighterId);
+        if (!fighter) return;
+        const currentDefenses = Number(fighter.defenses) || 0;
+        if (count > currentDefenses) {
+            fighter.defenses = count;
+            fighterStatsChanged = true;
+        }
+    });
+
+    let titleStatsChanged = false;
+    titleStates.forEach(state => {
+        if (state.holderId !== state.title.championId || state.activeReignDefenses <= Number(state.title.defenses || 0)) return;
+        state.title.defenses = state.activeReignDefenses;
+        titleStatsChanged = true;
+    });
+
+    try {
+        if (fighterStatsChanged) saveFighters(fighters);
+        if (titleStatsChanged) localStorage.setItem('wwe_titles', JSON.stringify(championships));
+        if (fighterStatsChanged) {
+            const savedFighters = JSON.parse(localStorage.getItem('wwe_fighters') || '[]');
+            if (!Array.isArray(savedFighters) || Array.from(defenseTotals).some(([id, count]) => {
+                const fighter = savedFighters.find(item => item.id === id);
+                return !fighter || (Number(fighter.defenses) || 0) < count;
+            })) {
+                throw new Error('Saved fighter defense totals did not match the audited values.');
+            }
+        }
+        if (titleStatsChanged) {
+            const savedTitles = JSON.parse(localStorage.getItem('wwe_titles') || '[]');
+            if (!Array.isArray(savedTitles) || Array.from(titleStates.values()).some(state => {
+                if (state.holderId !== state.title.championId) return false;
+                const savedTitle = savedTitles.find(item => item.id === state.title.id);
+                return !savedTitle || (Number(savedTitle.defenses) || 0) < state.activeReignDefenses;
+            })) {
+                throw new Error('Saved championship defense totals did not match the audited values.');
+            }
+        }
+        localStorage.setItem(TITLE_DEFENSE_AUDIT_KEY, 'complete');
+        return fighterStatsChanged || titleStatsChanged;
+    } catch (error) {
+        console.error('Unable to persist audited title defense totals.', error);
+        return false;
+    }
+}
+
+window.auditTitleDefenses = auditTitleDefenses;
+
 function ensureFemaleRosterEntries() {
     fighters = loadFighters();
     if (fighters.length > 0) return;
@@ -1663,6 +1826,7 @@ window.restoreLegacyRoster = async function() {
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         await loadAndHydrateFighters();
+        auditTitleDefenses();
         // Preload any photos stored in IndexedDB into a fast session cache
         await preloadPhotoCache();
         // Persist any inline data-URL photos into IndexedDB (keep them in-memory)
@@ -2172,6 +2336,12 @@ function buildMasterRankingsPanel() {
         <button type="button" data-metric="title_fights" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🏆 Most Title Fights</button>
         <button type="button" data-metric="defenses" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🛡️ Most Title Defenses</button>
         <button type="button" data-metric="current_belts" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🎖️ Most Current Belts</button>
+        <button type="button" data-metric="gender_male" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">Men</button>
+        <button type="button" data-metric="gender_female" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">Women</button>
+        <button type="button" data-metric="division_cruiser" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">Cruiserweight</button>
+        <button type="button" data-metric="division_light_heavy" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">Light Heavyweight</button>
+        <button type="button" data-metric="division_heavy" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">Heavyweight</button>
+        <button type="button" data-metric="division_super_heavy" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">Super Heavyweight</button>
     `;
 
     // Make clicks responsive: use event delegation and pointerdown for immediacy
@@ -2805,7 +2975,25 @@ window.saveInlineEdit = function(id) {
 window.sortRosterByMetric = function(metricType) {
     if (!fighters || fighters.length === 0) return;
 
-    if (metricType === 'alphabetical') {
+    const divisionFilters = {
+        division_cruiser: 'Cruiser Weight',
+        division_light_heavy: 'Light HeavyWeight',
+        division_heavy: 'HeavyWeight',
+        division_super_heavy: 'Super HeavyWeight'
+    };
+    if (metricType === 'gender_male' || metricType === 'gender_female' || divisionFilters[metricType]) {
+        const alphabetical = (a, b) => String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+        const matchesFilter = fighter => {
+            if (metricType === 'gender_male' || metricType === 'gender_female') {
+                return String(fighter.gender || '').toLowerCase() === metricType.slice('gender_'.length);
+            }
+            const division = fighter.division || fighter.weightClass;
+            return !!division && normalizeDivisionName(division) === divisionFilters[metricType];
+        };
+        const matching = fighters.filter(matchesFilter).sort(alphabetical);
+        const remaining = fighters.filter(fighter => !matchesFilter(fighter)).sort(alphabetical);
+        fighters = matching.concat(remaining);
+    } else if (metricType === 'alphabetical') {
         fighters.sort((a, b) => a.name.localeCompare(b.name));
     } else if (metricType === 'win_rate') {
         fighters.sort((a, b) => {
@@ -3200,5 +3388,3 @@ window.deleteFighterPhoto = async function(fighterId, isRoster) {
         if (typeof scheduleRenderRosterGrid === 'function') scheduleRenderRosterGrid(); else try { renderRosterGrid(); } catch(e){}
     }
 };
-
-

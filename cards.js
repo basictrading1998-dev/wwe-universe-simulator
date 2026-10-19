@@ -586,6 +586,100 @@ function ensureActiveShowSelected() {
 }
 
 ensureActiveShowSelected();
+
+function auditPastRematchStates() {
+    const auditKey = 'wwe_rematch_history_audited_v1';
+    if (localStorage.getItem(auditKey) === 'true') return;
+
+    let eventHistory;
+    try {
+        eventHistory = JSON.parse(localStorage.getItem('wwe_event_history') || '[]');
+    } catch (error) {
+        console.error('Unable to read archived event history for the rematch audit.', error);
+        return;
+    }
+    if (!Array.isArray(eventHistory)) {
+        console.error('Archived event history is not a valid list; rematch audit was not saved.');
+        return;
+    }
+
+    const showById = new Map(futureShows.map(show => [show.id, show]));
+    const showByName = new Map(futureShows.map(show => [String(show.name || '').trim().toLocaleLowerCase(), show]));
+    const getEventShow = event => showById.get(event.showId) ||
+        showByName.get(String(event.showTitle || event.name || '').trim().toLocaleLowerCase());
+    const getCardNumber = event => {
+        const match = String(event.showTitle || event.name || '').match(/(?:FIGHT\s*CARD)\s*(\d+)/i);
+        return match ? Number(match[1]) : null;
+    };
+    const chronologicalEvents = eventHistory
+        .map((event, index) => ({
+            event,
+            index,
+            cardNumber: getCardNumber(event),
+            timestamp: Date.parse(event.completedAt || event.date || '') || 0
+        }))
+        .filter(item => item.event && Array.isArray(item.event.matches))
+        .sort((a, b) => {
+            if (a.cardNumber !== null && b.cardNumber !== null && a.cardNumber !== b.cardNumber) {
+                return a.cardNumber - b.cardNumber;
+            }
+            return a.timestamp - b.timestamp || a.index - b.index;
+        });
+    const meetingCounts = new Map();
+    const changedShowStates = new Map();
+
+    chronologicalEvents.forEach(({ event }) => {
+        const show = getEventShow(event);
+        let savedMatches = null;
+        const storageKey = show?.id ? `wwe_matches_${show.id}` : null;
+        if (storageKey) {
+            try {
+                savedMatches = JSON.parse(localStorage.getItem(storageKey) || '{}');
+            } catch (error) {
+                console.error(`Unable to read saved match results for ${show.name || show.id} during rematch audit.`, error);
+                savedMatches = null;
+            }
+        }
+
+        event.matches.forEach(match => {
+            if (!match || typeof match !== 'object') return;
+            const fighterA = String(match.winner || match.winnerName || '').trim();
+            const fighterB = String(match.loser || match.loserName || '').trim();
+            if (!fighterA || !fighterB) return;
+            const names = [fighterA.toLocaleLowerCase(), fighterB.toLocaleLowerCase()].sort();
+            const pairKey = JSON.stringify(names);
+            const priorMeetings = meetingCounts.get(pairKey) || 0;
+            const markedRematch = match.isRematch === true;
+            const rematchNumber = priorMeetings > 0
+                ? priorMeetings
+                : markedRematch
+                    ? Math.max(1, Number(match.rematchNumber) || 1)
+                    : 0;
+            match.isRematch = markedRematch || priorMeetings > 0;
+            match.rematchNumber = rematchNumber;
+            meetingCounts.set(pairKey, priorMeetings + 1);
+
+            if (savedMatches && match.matchId && savedMatches[match.matchId]) {
+                savedMatches[match.matchId].isRematch = match.isRematch;
+                savedMatches[match.matchId].rematchNumber = rematchNumber;
+            }
+        });
+
+        if (storageKey && savedMatches) changedShowStates.set(storageKey, savedMatches);
+    });
+
+    try {
+        localStorage.setItem('wwe_event_history', JSON.stringify(eventHistory));
+        changedShowStates.forEach((matches, storageKey) => {
+            localStorage.setItem(storageKey, JSON.stringify(matches));
+        });
+        localStorage.setItem(auditKey, 'true');
+    } catch (error) {
+        console.error('Unable to save audited rematch history.', error);
+    }
+}
+
+auditPastRematchStates();
 let completedMatches = loadCompletedMatchesForShow(activeShowId);
 let activeMatchId = null;
 window.skipDraftSaveOnUnload = false;
@@ -635,7 +729,9 @@ function loadCompletedMatchesForShow(showId) {
             methodName: match.method || '',
             isTitle: Boolean(match.isTitle),
             titleId: match.titleId || '',
-            titleName: match.customTitleName || ''
+            titleName: match.customTitleName || '',
+            isRematch: match.isRematch === true,
+            rematchNumber: Number(match.rematchNumber) || 0
         };
     });
 
@@ -841,6 +937,101 @@ function updateFighterScheduleLocator(selectedName) {
         : `No active bookings found for ${fighterName}`;
 }
 
+function getBookingConflictStorageKey(showId, matchRowId) {
+    return `booking_conflict_${showId}_${matchRowId}`;
+}
+
+function renderBookingConflictWarning(matchRow, conflicts) {
+    const warningId = `${matchRow.id}-booking-conflict-warning`;
+    let warning = document.getElementById(warningId);
+    if (!conflicts.length) {
+        warning?.remove();
+        sessionStorage.removeItem(getBookingConflictStorageKey(activeShowId, matchRow.id));
+        return;
+    }
+
+    if (!warning) {
+        warning = document.createElement('div');
+        warning.id = warningId;
+        warning.className = 'booking-conflict-warning';
+        warning.setAttribute('role', 'alert');
+        matchRow.appendChild(warning);
+    }
+    warning.textContent = conflicts
+        .map(conflict => `${conflict.fighterName} is already scheduled to fight on ${conflict.cardName}`)
+        .join(' | ');
+    sessionStorage.setItem(getBookingConflictStorageKey(activeShowId, matchRow.id), JSON.stringify({
+        showId: activeShowId,
+        conflicts
+    }));
+}
+
+function checkFighterScheduleConflict(matchRow) {
+    if (!matchRow || !matchRow.id) return;
+    const styleId = 'booking-conflict-warning-styles';
+    if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = '.booking-conflict-warning{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #fca5a5;border-left:4px solid #dc2626;border-radius:8px;background:#fef2f2;color:#991b1b;font-size:.78rem;font-weight:700;line-height:1.45;}';
+        document.head.appendChild(style);
+    }
+
+    refreshShowStateFromStorage();
+    const currentShow = futureShows.find(show => show.id === activeShowId);
+    const finalizedShowIds = getFinalizedShowIds();
+    if (!currentShow || finalizedShowIds.has(activeShowId)) {
+        renderBookingConflictWarning(matchRow, []);
+        return;
+    }
+
+    const selectedNames = Array.from(matchRow.querySelectorAll('.fighter-search-input'))
+        .map(input => input.value.trim())
+        .filter(Boolean);
+    const conflicts = new Map();
+    const normalizedSelectedNames = new Set(selectedNames.map(name => name.toLocaleLowerCase()));
+
+    const recordConflict = (name, show) => {
+        const fighterName = String(name || '').trim();
+        if (!fighterName || !normalizedSelectedNames.has(fighterName.toLocaleLowerCase())) return;
+        const selectedInThisRow = Array.from(matchRow.querySelectorAll('.fighter-search-input'))
+            .some(input => input.value.trim().toLocaleLowerCase() === fighterName.toLocaleLowerCase());
+        if (!selectedInThisRow) return;
+        const cardName = show.name || 'Unnamed Card';
+        const key = `${fighterName.toLocaleLowerCase()}|${show.id}`;
+        conflicts.set(key, { fighterName, cardName });
+    };
+
+    futureShows.forEach(show => {
+        if (!show?.id || finalizedShowIds.has(show.id)) return;
+        if (show.id === activeShowId) {
+            document.querySelectorAll('.match-row').forEach(otherRow => {
+                if (otherRow === matchRow) return;
+                otherRow.querySelectorAll('.fighter-search-input').forEach(input => recordConflict(input.value, show));
+            });
+            return;
+        }
+
+        const entries = [];
+        [ `wwe_draft_${show.id}`, `wwe_matches_${show.id}` ].forEach(storageKey => {
+            try {
+                const stored = JSON.parse(localStorage.getItem(storageKey) || '{}');
+                if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+                    entries.push(...Object.values(stored));
+                }
+            } catch (error) {
+                console.warn(`Unable to read scheduled matches for ${show.name || show.id}.`, error);
+            }
+        });
+        entries.forEach(entry => {
+            if (!entry || typeof entry !== 'object') return;
+            recordConflict(entry.f1Name || entry.slot1Name, show);
+            recordConflict(entry.f2Name || entry.slot2Name, show);
+        });
+    });
+
+    renderBookingConflictWarning(matchRow, Array.from(conflicts.values()));
+}
+
 function buildShowSchedulerHeader() {
     if (document.getElementById('schedulerControlRow')) return;
     
@@ -985,7 +1176,7 @@ function insertCompletedShowNotice() {
     const notice = document.createElement('div');
     notice.id = 'completedShowNotice';
     notice.style.cssText = 'background:#f1f5f9; border:1px solid #cbd5e1; border-radius:12px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:10px; color:#0f172a;';
-    notice.innerHTML = `<div style="display:flex; align-items:center; gap:10px; font-size:0.9rem;"><strong style="color:#094067;">This show is completed and archived.</strong><span style="color:#475569;">Use the top controls to restart or edit the show name.</span></div><button onclick="restartCurrentShow()" style="background:#ef4444; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.75rem; text-transform:uppercase;">Restart Event</button>`;
+    notice.innerHTML = `<div style="display:flex; align-items:center; gap:10px; font-size:0.9rem;"><strong style="color:#094067;">This show is completed and archived.</strong><span style="color:#475569;">Use the top controls to restart or edit the show name.</span></div><div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><button onclick="unfinalizeCurrentCard()" style="background:#f97316; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.75rem; text-transform:uppercase;">UNFINALIZE CARD</button><button onclick="restartCurrentShow()" style="background:#ef4444; border:none; color:white; font-weight:bold; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.75rem; text-transform:uppercase;">Restart Event</button></div>`;
     headerRow.parentNode.insertBefore(notice, headerRow.nextSibling);
 }
 
@@ -1036,6 +1227,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (matchRow) {
                 const id = matchRow.id;
                 clearDuplicateApprovalForChangedInput(id);
+                checkFighterScheduleConflict(matchRow);
                 if (matchRow.dataset.validationBatch === 'true') return;
                 const slot1Input = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input');
                 const slot2Input = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input');
@@ -1466,6 +1658,7 @@ window.triggerSearchFill = function(uId, slotType) {
                 uploadFighterPhotoFromCard(f.id); 
             };
             updateFighterRecordDisplay(uId, slotType, f);
+            checkFighterScheduleConflict(document.getElementById(uId));
             updateWinnerDropdown(uId);
             recheckMatchValidation(uId, slotType);
             refreshTitleFightState(uId);
@@ -1541,6 +1734,7 @@ function populateDropdownGenders(matchRowId, genderVariant) {
         updateFighterRecordDisplay(matchRowId, 'slot2', null);
         resetMatchValidationState(matchRowId);
         refreshTitleFightState(matchRowId);
+        checkFighterScheduleConflict(document.getElementById(matchRowId));
         updateFighterScheduleLocator();
     }
 }
@@ -1616,6 +1810,7 @@ function clearCardFighterSlot(matchRowId, slotType) {
             matchRow.style.borderColor = '#bae6fd';
         }
         matchRow.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+        checkFighterScheduleConflict(matchRow);
     }
     
     resetMatchRowRematchState(matchRowId);
@@ -1988,6 +2183,7 @@ function restoreSessionWarnings() {
     restoreSessionRematchWarnings();
     document.querySelectorAll('.match-row').forEach(matchRow => {
         if (!isUnfinalizedWarningRow(matchRow.id)) return;
+        checkFighterScheduleConflict(matchRow);
         if (sessionStorage.getItem(getDuplicateApprovalKey(matchRow.id)) === 'true') {
             const container = document.getElementById(`${matchRow.id}-duplicate-warning`);
             if (container) container.style.display = 'none';
@@ -3272,17 +3468,22 @@ window.logMatchResult = function(id) {
     const methodName = methodSelect.options[methodSelect.selectedIndex].text;
     const currentShow = futureShows.find(s => s.id === activeShowId);
     const showName = currentShow?.name || document.getElementById('eventNameInput')?.value.trim() || 'Show';
+    const rematchCheckbox = row?.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]');
+    const rematchCountInput = document.getElementById(`${id}-rematch-count`);
+    const isRematch = !!rematchCheckbox?.checked;
 
     if (!w.compiled_history_deck) w.compiled_history_deck = [];
     if (!l.compiled_history_deck) l.compiled_history_deck = [];
-    const priorHeadToHead = getFightHistoryBetween(w, l).length;
-    const rematchNumber = getNextRematchNumberForPair(w, l);
+    const rematchNumber = isRematch
+        ? Math.max(1, Number.parseInt(rematchCountInput?.value || '1', 10) || 1)
+        : getNextRematchNumberForPair(w, l);
 
     const winnerHistoryEntry = {
         outcome: 'win',
         opponent: l.name,
         method: methodName,
         showName,
+        isRematch,
         rematchNumber: rematchNumber
     };
     const loserHistoryEntry = {
@@ -3290,6 +3491,7 @@ window.logMatchResult = function(id) {
         opponent: w.name,
         method: methodName,
         showName,
+        isRematch,
         rematchNumber: rematchNumber
     };
 
@@ -3321,6 +3523,8 @@ window.logMatchResult = function(id) {
         isTitle: titleCheck ? titleCheck.checked : false,
         titleId: '',
         titleName: '',
+        titleRetained: false,
+        isRematch,
         rematchNumber: rematchNumber
     };
     // If this was a title match and a title was selected, store title id/name and immediately apply transfer
@@ -3355,6 +3559,8 @@ window.logMatchResult = function(id) {
                 if (previousChampionId && previousChampionId === w.id) {
                     // winner was already champion -> increment defenses for this belt
                     targetBelt.defenses = (targetBelt.defenses || 0) + 1;
+                    w.defenses = (Number(w.defenses) || 0) + 1;
+                    matchSaveState.titleRetained = true;
                 } else {
                     // new champion or contested match -> reset defenses for this belt
                     targetBelt.defenses = 0;
@@ -3484,6 +3690,9 @@ window.unlogMatchResult = function(id) {
                 const wasChampion = targetBelt.championId === (winner?.id || '');
                 if (wasChampion) {
                     targetBelt.defenses = Math.max(0, Number(targetBelt.defenses || 0) - 1);
+                    if (savedMatch.titleRetained === true && winner) {
+                        winner.defenses = Math.max(0, Number(winner.defenses || 0) - 1);
+                    }
                 }
                 if (targetBelt.history && targetBelt.history.length) {
                     targetBelt.history = targetBelt.history.filter(entry => !(entry.wrestlerName === (winner?.name || '') && entry.showTitle === (savedMatch.showName || '') && entry.winMethod === (savedMatch.methodName || '')));
@@ -3608,6 +3817,7 @@ window.updateRandomizerState = function() {
 window.updateFinalizeButtonState = function() {
     refreshShowStateFromStorage();
     const button = getFinalizeEventButton();
+    const activeShowCompleted = isShowCompleted(activeShowId);
     if (!button) return;
 
     const eventNameInput = getEventNameInput();
@@ -3618,7 +3828,6 @@ window.updateFinalizeButtonState = function() {
             eventNameInput.value = currentShow.name;
         }
     }
-    const activeShowCompleted = isShowCompleted(activeShowId);
     const allMatchRows = Array.from(document.querySelectorAll('.match-row'));
     const activeShowSavedData = JSON.parse(localStorage.getItem(getActiveShowMatchesStorageKey() || '')) || {};
     const savedResultEntries = Object.entries(activeShowSavedData).filter(([id, saved]) => {
@@ -3642,6 +3851,235 @@ window.updateFinalizeButtonState = function() {
         button.title = `Finish saving the current result before finalizing (${savedResultEntries.length}/${savedResultEntries.length + incompleteSavedEntries.length} complete).`;
     } else {
         button.title = 'Finalize and archive the event.';
+    }
+};
+
+function normalizeArchivedMethod(method) {
+    const value = String(method || '').trim().toLowerCase();
+    if (value === 'win_pinfall') return 'pinfall';
+    if (value === 'win_ko') return 'ko/tko';
+    if (value === 'win_submission') return 'submission';
+    return value;
+}
+
+function findArchivedTitleForMatch(match, titles) {
+    if (match.titleId) {
+        const byId = titles.find(title => title && title.id === match.titleId);
+        if (byId) return byId;
+    }
+    const name = String(match.customTitleName || match.titleName || '').trim().toLowerCase();
+    return name ? titles.find(title => title && String(title.name || '').trim().toLowerCase() === name) : null;
+}
+
+function rebuildArchivedTitleState(title, remainingEvents, remainingHistory, fallbackMatch) {
+    const state = { championId: '', defenses: 0 };
+    const orderedEvents = remainingEvents
+        .map((event, index) => ({
+            event,
+            index,
+            timestamp: Date.parse(event.completedAt || event.date || '')
+        }))
+        .sort((a, b) => Number.isFinite(a.timestamp) && Number.isFinite(b.timestamp)
+            ? a.timestamp - b.timestamp || a.index - b.index
+            : a.index - b.index);
+
+    orderedEvents.forEach(({ event }) => {
+        const showName = event.showTitle || event.name || '';
+        event.matches.forEach(match => {
+            if (!match || !match.isTitle || findArchivedTitleForMatch(match, [title]) !== title) return;
+            const winnerName = match.winner || match.winnerName || '';
+            const loserName = match.loser || match.loserName || '';
+            const winner = fighters.find(fighter => fighter.id === match.winnerId || fighter.name === winnerName);
+            const loser = fighters.find(fighter => fighter.id === match.loserId || fighter.name === loserName);
+            if (!winner) return;
+
+            const transferLogged = remainingHistory.some(entry =>
+                entry &&
+                String(entry.wrestlerName || '').trim().toLowerCase() === String(winner.name).trim().toLowerCase() &&
+                String(entry.showTitle || '').trim().toLowerCase() === String(showName).trim().toLowerCase() &&
+                normalizeArchivedMethod(entry.winMethod) === normalizeArchivedMethod(match.method || match.methodId)
+            );
+
+            if (match.titleRetained === true) {
+                state.championId = winner.id;
+                state.defenses += 1;
+            } else if (match.titleRetained === false || transferLogged) {
+                state.championId = winner.id;
+                state.defenses = 0;
+            } else if (state.championId && state.championId === winner.id) {
+                state.defenses += 1;
+            } else if (state.championId && loser && state.championId === loser.id) {
+                state.championId = winner.id;
+                state.defenses = 0;
+            } else if (!state.championId) {
+                state.championId = winner.id;
+            }
+        });
+    });
+
+    if (!state.championId) {
+        const lastReign = remainingHistory[remainingHistory.length - 1];
+        const previousChampion = lastReign && fighters.find(fighter =>
+            String(fighter.name || '').trim().toLowerCase() === String(lastReign.wrestlerName || '').trim().toLowerCase()
+        );
+        if (previousChampion) state.championId = previousChampion.id;
+        else if (fallbackMatch) {
+            const fallbackName = fallbackMatch.titleRetained === true
+                ? fallbackMatch.winner || fallbackMatch.winnerName
+                : fallbackMatch.titleRetained === false
+                    ? fallbackMatch.loser || fallbackMatch.loserName
+                    : '';
+            const fallbackId = fallbackMatch.titleRetained === true
+                ? fallbackMatch.winnerId
+                : fallbackMatch.titleRetained === false
+                    ? fallbackMatch.loserId
+                    : '';
+            const fallbackChampion = fighters.find(fighter =>
+                fighter.id === fallbackId ||
+                String(fighter.name || '').trim().toLowerCase() === String(fallbackName || '').trim().toLowerCase()
+            );
+            if (fallbackChampion) state.championId = fallbackChampion.id;
+        }
+    }
+
+    return state;
+}
+
+window.unfinalizeCurrentCard = function() {
+    refreshShowStateFromStorage();
+    const selector = document.getElementById('activeShowSelector');
+    const showId = selector?.value || activeShowId;
+    const show = futureShows.find(item => item.id === showId);
+    if (!show || !showId) {
+        return customAlert('Select a fight card before unfinalizing.', 'Unfinalize Card');
+    }
+
+    let eventHistory;
+    let championshipsRegistry;
+    try {
+        eventHistory = JSON.parse(localStorage.getItem('wwe_event_history') || '[]');
+        championshipsRegistry = JSON.parse(localStorage.getItem('wwe_titles') || '[]');
+    } catch (error) {
+        console.error('Unable to read archived card data for unfinalizing.', error);
+        return customAlert('The archived card data could not be read. No changes were made.', 'Unfinalize Card');
+    }
+    if (!Array.isArray(eventHistory) || !Array.isArray(championshipsRegistry)) {
+        return customAlert('The archived card data is not in a valid format. No changes were made.', 'Unfinalize Card');
+    }
+
+    const archivedEvents = eventHistory.filter(event =>
+        event && (event.showId === showId || (!event.showId && event.showTitle === show.name && event.type === 'fight-card'))
+    );
+    if (!show.completed && archivedEvents.length === 0) {
+        return customAlert('This fight card is not finalized.', 'Unfinalize Card');
+    }
+    if (!confirm(`Unfinalize "${show.name}"? Its archived history and the stats recorded for this card will be removed. Logged match results will remain on the card.`)) return;
+
+    const removedEvents = new Set(archivedEvents);
+    const remainingEvents = eventHistory.filter(event => !removedEvents.has(event));
+    const affectedTitles = new Map();
+    const matchHistoryRemovals = new Map();
+
+    archivedEvents.forEach(event => {
+        const showName = event.showTitle || event.name || show.name;
+        (Array.isArray(event.matches) ? event.matches : []).forEach(match => {
+            if (!match) return;
+            const winnerName = match.winner || match.winnerName || '';
+            const loserName = match.loser || match.loserName || '';
+            const winner = fighters.find(fighter => fighter.id === match.winnerId || (winnerName && fighter.name === winnerName));
+            const loser = fighters.find(fighter => fighter.id === match.loserId || (loserName && fighter.name === loserName));
+
+            if (winner) {
+                winner.wins = Math.max(0, Number(winner.wins || 0) - 1);
+                const normalizedMethod = normalizeArchivedMethod(match.method || match.methodName || '');
+                const methodId = match.methodId || ({
+                    pinfall: 'win_pinfall',
+                    'ko/tko': 'win_ko',
+                    submission: 'win_submission'
+                })[normalizedMethod] || '';
+                if (methodId && typeof winner[methodId] !== 'undefined') {
+                    winner[methodId] = Math.max(0, Number(winner[methodId] || 0) - 1);
+                }
+                if (match.isTitle) winner.title_fights = Math.max(0, Number(winner.title_fights || 0) - 1);
+                matchHistoryRemovals.set(winner, (matchHistoryRemovals.get(winner) || []).concat({
+                    outcome: 'win',
+                    opponent: loserName,
+                    showName,
+                    method: match.method || match.methodName || '',
+                    rematchNumber: match.rematchNumber
+                }));
+            }
+            if (loser) {
+                loser.losses = Math.max(0, Number(loser.losses || 0) - 1);
+                if (match.isTitle) loser.title_fights = Math.max(0, Number(loser.title_fights || 0) - 1);
+                matchHistoryRemovals.set(loser, (matchHistoryRemovals.get(loser) || []).concat({
+                    outcome: 'loss',
+                    opponent: winnerName,
+                    showName,
+                    method: match.method || match.methodName || '',
+                    rematchNumber: match.rematchNumber
+                }));
+            }
+
+            if (!match.isTitle) return;
+            const title = findArchivedTitleForMatch(match, championshipsRegistry);
+            if (!title) return;
+            if (!affectedTitles.has(title.id)) affectedTitles.set(title.id, { title, fallbackMatch: match });
+
+            if (match.titleRetained === true && winner) {
+                winner.defenses = Math.max(0, Number(winner.defenses || 0) - 1);
+            }
+
+            if (Array.isArray(title.history)) {
+                const matchMethod = normalizeArchivedMethod(match.method || match.methodId);
+                const historyIndex = title.history.findIndex(entry =>
+                    entry &&
+                    String(entry.wrestlerName || '').trim().toLowerCase() === String(winnerName).trim().toLowerCase() &&
+                    String(entry.showTitle || '').trim().toLowerCase() === String(showName).trim().toLowerCase() &&
+                    normalizeArchivedMethod(entry.winMethod) === matchMethod
+                );
+                if (historyIndex !== -1) title.history.splice(historyIndex, 1);
+            }
+        });
+    });
+
+    matchHistoryRemovals.forEach((removals, fighter) => {
+        const history = Array.isArray(fighter.compiled_history_deck) ? fighter.compiled_history_deck
+            : Array.isArray(fighter.history_deck) ? fighter.history_deck
+            : Array.isArray(fighter.history) ? fighter.history : [];
+        removals.forEach(removal => {
+            const historyIndex = history.findIndex(entry =>
+                entry &&
+                String(entry.outcome || '').toLowerCase() === removal.outcome &&
+                entry.opponent === removal.opponent &&
+                entry.showName === removal.showName &&
+                normalizeArchivedMethod(entry.method) === normalizeArchivedMethod(removal.method) &&
+                (removal.rematchNumber == null || entry.rematchNumber === removal.rematchNumber)
+            );
+            if (historyIndex !== -1) history.splice(historyIndex, 1);
+        });
+        fighter.compiled_history_deck = history;
+        restoreWinStreakAfterUnlog(fighter);
+    });
+
+    affectedTitles.forEach(({ title, fallbackMatch }) => {
+        const remainingHistory = Array.isArray(title.history) ? title.history : [];
+        const state = rebuildArchivedTitleState(title, remainingEvents, remainingHistory, fallbackMatch);
+        title.championId = state.championId;
+        title.defenses = state.defenses;
+    });
+
+    try {
+        saveFighters(fighters);
+        localStorage.setItem('wwe_titles', JSON.stringify(championshipsRegistry));
+        localStorage.setItem('wwe_event_history', JSON.stringify(remainingEvents));
+        setShowCompleted(showId, false);
+        updateFinalizedShowDropdownStyles();
+        updateFinalizeButtonState();
+        location.reload();
+    } catch (error) {
+        console.error('Unable to persist the unfinalized card changes.', error);
+        customAlert('The card could not be fully unfinalized. Check the browser console before retrying.', 'Unfinalize Card');
     }
 };
 
@@ -3754,6 +4192,16 @@ function restoreLoggedResult(id, state) {
     }
     if (methodSelect && state.methodId) {
         methodSelect.value = state.methodId;
+    }
+
+    const rematchCheckbox = row?.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]');
+    const rematchCountInput = document.getElementById(`${id}-rematch-count`);
+    if (rematchCheckbox) {
+        rematchCheckbox.checked = state.isRematch === true;
+    }
+    if (rematchCountInput) {
+        rematchCountInput.value = state.rematchNumber > 0 ? state.rematchNumber : 1;
+        rematchCountInput.style.display = state.isRematch === true ? 'inline-block' : 'none';
     }
 
     if (!hasCompleteMatch) {
@@ -3961,7 +4409,10 @@ window.finalizeFullEventCard = function() {
             methodId: savedState.methodId || '',
             isTitle: savedIsTitle,
             titleId: savedTitleId,
-            customTitleName: savedTitleName
+            customTitleName: savedTitleName,
+            titleRetained: savedState.titleRetained === true,
+            isRematch: savedState.isRematch === true,
+            rematchNumber: Number(savedState.rematchNumber) || 0
         };
     });
 
@@ -4007,8 +4458,12 @@ window.finalizeFullEventCard = function() {
                     winMethod: winMethodText
                 });
                 targetBelt.defenses = 0;
+                m.titleRetained = false;
             } else {
                 targetBelt.defenses = (targetBelt.defenses || 0) + 1;
+                champWinnerObj.defenses = (Number(champWinnerObj.defenses) || 0) + 1;
+                m.titleRetained = true;
+                saveFighters(fighters);
             }
             targetBelt.championId = champWinnerObj.id;
         }
@@ -4185,14 +4640,15 @@ function restoreCurrentCardDraft() {
         }
         
         const hasRematchAccepted = d.rematchAccepted && d.rematchF1Id && d.rematchF2Id;
+        const hasSavedRematchState = typeof completedMatches[id]?.isRematch === 'boolean';
         if (hasRematchAccepted) {
             const currentF1Id = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') || '';
             const currentF2Id = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') || '';
             if (areMatchRowRematchPairsEqual(currentF1Id, currentF2Id, d.rematchF1Id, d.rematchF2Id)) {
                 const rematchCheckbox = document.querySelector(`#${id} input[type="checkbox"][onchange*="toggleRematchCounter"]`);
                 const rematchCount = document.getElementById(`${id}-rematch-count`);
-                if (rematchCheckbox) rematchCheckbox.checked = true;
-                if (rematchCount) {
+                if (rematchCheckbox && !hasSavedRematchState) rematchCheckbox.checked = true;
+                if (rematchCount && !hasSavedRematchState) {
                     rematchCount.value = d.rematchCount || 1;
                     rematchCount.style.display = 'inline-block';
                 }
@@ -4229,10 +4685,10 @@ function restoreCurrentCardDraft() {
             }
         }
 
-        if (rematchCheckbox) {
+        if (rematchCheckbox && !hasSavedRematchState) {
             rematchCheckbox.checked = !!d.rematchChecked;
         }
-        if (rematchCount) {
+        if (rematchCount && !hasSavedRematchState) {
             rematchCount.value = d.rematchCount || 1;
             rematchCount.style.display = rematchCheckbox && rematchCheckbox.checked ? 'inline-block' : 'none';
         }

@@ -60,7 +60,19 @@
         .analytics-btn { border: none; border-radius: 10px; padding: 10px 16px; font-weight: 800; cursor: pointer; }
         .analytics-btn.primary { background: #38bdf8; color: #082f49; }
         .analytics-btn.secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+        .analytics-heading-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr); gap: 20px; align-items: stretch; margin-bottom: 24px; }
+        .analytics-heading-grid .page-heading { margin: 0; align-self: center; }
+        .title-match-analyzer { position: relative; background: #111827; border: 1px solid #334155; border-radius: 18px; padding: 18px; box-shadow: 0 2px 12px rgba(0,0,0,0.16); }
+        .title-match-analyzer h2 { margin: 0 0 12px; color: #f8fafc; font-size: 0.95rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+        .title-match-results { display: grid; gap: 8px; max-height: 220px; overflow-y: auto; margin-top: 10px; }
+        .title-match-result { padding: 9px 10px; border: 1px solid currentColor; border-radius: 9px; background: rgba(15,23,42,0.78); font-size: 0.78rem; line-height: 1.45; overflow-wrap: anywhere; }
+        .title-match-result.won { color: #86efac; border-color: rgba(34,197,94,0.35); }
+        .title-match-result.defended { color: #7dd3fc; border-color: rgba(56,189,248,0.35); }
+        .title-match-result.lost { color: #fca5a5; border-color: rgba(239,68,68,0.38); }
+        .title-match-result.challenger-fail { color: #cbd5e1; border-color: rgba(148,163,184,0.28); }
+        .title-match-empty { color: #94a3b8; font-size: 0.82rem; font-style: italic; }
         @media (max-width: 960px) { .chart-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 760px) { .analytics-heading-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -76,10 +88,19 @@
         </div>
     </nav>
     <main>
-        <section class="page-heading">
-            <h1>Roster Analytics</h1>
-            <p>Visualize your WWE Universe roster with charts and leaderboard cards for wins, title belts, gender split, and top performers.</p>
-        </section>
+        <div class="analytics-heading-grid">
+            <section class="page-heading">
+                <h1>Roster Analytics</h1>
+                <p>Visualize your WWE Universe roster with charts and leaderboard cards for wins, title belts, gender split, and top performers.</p>
+            </section>
+            <section class="title-match-analyzer" aria-labelledby="titleMatchAnalyzerHeading">
+                <h2 id="titleMatchAnalyzerHeading">Championship Match Analyzer</h2>
+                <label class="analytics-label" for="fighterTitleMatchLookup">Look Up Fighter Title History...</label>
+                <input id="fighterTitleMatchLookup" class="analytics-input" type="text" list="fighterTitleMatchNames" autocomplete="off" placeholder="Type a roster name...">
+                <datalist id="fighterTitleMatchNames"></datalist>
+                <div id="fighterTitleMatchResults" class="title-match-results" aria-live="polite"></div>
+            </section>
+        </div>
 
         <div id="statsGrid" class="stats-grid"></div>
 
@@ -130,6 +151,160 @@
         function loadChampionships() {
             const stored = safeParse(localStorage.getItem('wwe_titles')) || [];
             return Array.isArray(stored) ? stored : [];
+        }
+
+        function getArchivedMatchHistory() {
+            const stored = safeParse(localStorage.getItem('wwe_event_history')) || [];
+            return Array.isArray(stored) ? stored : [];
+        }
+
+        function formatTitleMatchMethod(match) {
+            const method = String(match.method || match.methodName || match.methodId || '').trim();
+            const knownMethods = {
+                win_pinfall: 'PINFALL',
+                win_ko: 'KO/TKO',
+                win_submission: 'SUBMISSION'
+            };
+            return knownMethods[method.toLowerCase()] || method || 'Unknown method';
+        }
+
+        function populateFighterTitleMatchNames() {
+            const datalist = document.getElementById('fighterTitleMatchNames');
+            if (!datalist) return;
+            datalist.replaceChildren(...loadRosterFighters()
+                .map(fighter => fighter.name)
+                .filter(Boolean)
+                .sort((a, b) => a.localeCompare(b))
+                .map(name => new Option(name, name)));
+        }
+
+        function lookupFighterTitleMatches(selectedName) {
+            const results = document.getElementById('fighterTitleMatchResults');
+            if (!results) return;
+            results.replaceChildren();
+            const normalizedName = String(selectedName || '').trim().toLowerCase();
+            if (!normalizedName) return;
+
+            const championships = loadChampionships();
+            const events = getArchivedMatchHistory()
+                .map((event, index) => ({
+                    event,
+                    index,
+                    timestamp: Date.parse(event.completedAt || event.date || '')
+                }))
+                .filter(item => item.event && Array.isArray(item.event.matches))
+                .sort((a, b) => Number.isFinite(a.timestamp) && Number.isFinite(b.timestamp)
+                    ? a.timestamp - b.timestamp || a.index - b.index
+                    : a.index - b.index);
+            const titleStates = new Map();
+            championships.forEach(title => {
+                if (!title || !title.id) return;
+                titleStates.set(title.id, {
+                    championName: '',
+                    lineageChanges: (Array.isArray(title.history) ? title.history : [])
+                        .filter(entry => entry && entry.wrestlerName)
+                });
+            });
+
+            const fighterMatches = [];
+            events.forEach(({ event, index }) => {
+                const showName = event.showTitle || event.name || `Fight Card ${index + 1}`;
+                event.matches.forEach(match => {
+                    if (!match || !match.isTitle) return;
+                    const winner = String(match.winner || match.winnerName || '').trim();
+                    const loser = String(match.loser || match.loserName || '').trim();
+                    if (!winner || !loser) return;
+
+                    let title = match.titleId ? championships.find(item => item && item.id === match.titleId) : null;
+                    if (!title) {
+                        const normalizedTitle = String(match.customTitleName || match.titleName || '').trim().toLowerCase();
+                        title = championships.find(item => item && String(item.name || '').trim().toLowerCase() === normalizedTitle);
+                    }
+                    const titleName = title?.name || match.customTitleName || match.titleName || 'Championship';
+                    const state = title ? titleStates.get(title.id) : null;
+                    const normalizedWinner = winner.toLowerCase();
+                    const normalizedLoser = loser.toLowerCase();
+                    const method = formatTitleMatchMethod(match);
+                    const lineageChange = state?.lineageChanges.find(entry =>
+                        String(entry.showTitle || '').trim().toLowerCase() === String(showName).trim().toLowerCase() &&
+                        String(entry.wrestlerName || '').trim().toLowerCase() === normalizedWinner
+                    );
+                    const isNewChampion = match.titleRetained === false || Boolean(lineageChange);
+                    const championBeforeMatch = state?.championName || '';
+                    let outcomeClass;
+                    let message;
+
+                    if (isNewChampion) {
+                        state.championName = winner;
+                        if (normalizedName === normalizedWinner) {
+                            outcomeClass = 'won';
+                            message = `${showName} - WON the ${titleName} by defeating ${loser} via ${method}`;
+                        } else if (normalizedName === normalizedLoser) {
+                            if (championBeforeMatch && championBeforeMatch.toLowerCase() === normalizedLoser) {
+                                outcomeClass = 'lost';
+                                message = `${showName} - LOST the ${titleName} to ${winner} via ${method}`;
+                            } else {
+                                outcomeClass = 'challenger-fail';
+                                message = `${showName} - Challenged for the ${titleName} but lost to ${winner} via ${method}`;
+                            }
+                        }
+                    } else if (match.titleRetained === true || (championBeforeMatch && championBeforeMatch.toLowerCase() === normalizedWinner)) {
+                        if (!state.championName) state.championName = winner;
+                        if (normalizedName === normalizedWinner) {
+                            outcomeClass = 'defended';
+                            message = `${showName} - DEFENDED the ${titleName} against ${loser} via ${method}`;
+                        } else if (normalizedName === normalizedLoser) {
+                            outcomeClass = 'challenger-fail';
+                            message = `${showName} - Challenged for the ${titleName} but lost to ${winner} via ${method}`;
+                        }
+                    } else if (championBeforeMatch && championBeforeMatch.toLowerCase() === normalizedLoser) {
+                        state.championName = winner;
+                        if (normalizedName === normalizedLoser) {
+                            outcomeClass = 'lost';
+                            message = `${showName} - LOST the ${titleName} to ${winner} via ${method}`;
+                        } else if (normalizedName === normalizedWinner) {
+                            outcomeClass = 'won';
+                            message = `${showName} - WON the ${titleName} by defeating ${loser} via ${method}`;
+                        }
+                    } else {
+                        if (state && !state.championName) state.championName = winner;
+                        if (normalizedName === normalizedWinner) {
+                            outcomeClass = 'defended';
+                            message = `${showName} - DEFENDED the ${titleName} against ${loser} via ${method}`;
+                        } else if (normalizedName === normalizedLoser) {
+                            outcomeClass = 'challenger-fail';
+                            message = `${showName} - Challenged for the ${titleName} but lost to ${winner} via ${method}`;
+                        }
+                    }
+
+                    if (message) fighterMatches.push({ index, outcomeClass, message });
+                });
+            });
+
+            fighterMatches.sort((a, b) => a.index - b.index);
+            if (fighterMatches.length === 0) {
+                const emptyMessage = document.createElement('div');
+                emptyMessage.className = 'title-match-empty';
+                emptyMessage.textContent = 'No title matches on record for this fighter.';
+                results.appendChild(emptyMessage);
+                return;
+            }
+            fighterMatches.forEach(match => {
+                const line = document.createElement('div');
+                line.className = `title-match-result ${match.outcomeClass}`;
+                line.textContent = match.message;
+                results.appendChild(line);
+            });
+        }
+
+        window.lookupFighterTitleMatches = lookupFighterTitleMatches;
+
+        function initFighterTitleMatchAnalyzer() {
+            const input = document.getElementById('fighterTitleMatchLookup');
+            if (!input) return;
+            populateFighterTitleMatchNames();
+            input.addEventListener('input', () => lookupFighterTitleMatches(input.value));
+            input.addEventListener('change', () => lookupFighterTitleMatches(input.value));
         }
 
         function formatCount(value) {
@@ -541,6 +716,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             buildCharts();
             initRosterAnalyticsFilters();
+            initFighterTitleMatchAnalyzer();
         });
     </script>
 </body>
