@@ -197,8 +197,8 @@
                     .replace(/\s+/g, ' ')
                     .trim()
                     .toLowerCase();
-            const normalizedName = normalizeName(selectedName);
-            if (!normalizedName) return;
+            const exactName = String(selectedName || '').trim();
+            if (!exactName) return;
 
             const championships = loadChampionships();
             const events = getArchivedMatchHistory()
@@ -252,10 +252,10 @@
 
                     if (isNewChampion) {
                         state.championName = winner;
-                        if (normalizedName === normalizedWinner) {
+                        if (exactName === winner) {
                             outcomeClass = 'won';
                             message = `${showName} - WON the ${titleName} by defeating ${loser} via ${method}`;
-                        } else if (normalizedName === normalizedLoser) {
+                        } else if (exactName === loser) {
                             if (championBeforeMatch && normalizedChampionBeforeMatch === normalizedLoser) {
                                 outcomeClass = 'lost';
                                 message = `${showName} - LOST the ${titleName} to ${winner} via ${method}`;
@@ -266,28 +266,28 @@
                         }
                     } else if (match.titleRetained === true || (championBeforeMatch && normalizedChampionBeforeMatch === normalizedWinner)) {
                         if (!state.championName) state.championName = winner;
-                        if (normalizedName === normalizedWinner) {
+                        if (exactName === winner) {
                             outcomeClass = 'defended';
                             message = `${showName} - DEFENDED the ${titleName} against ${loser} via ${method}`;
-                        } else if (normalizedName === normalizedLoser) {
+                        } else if (exactName === loser) {
                             outcomeClass = 'challenger-fail';
                             message = `${showName} - Challenged for the ${titleName} but lost to ${winner} via ${method}`;
                         }
                     } else if (championBeforeMatch && normalizedChampionBeforeMatch === normalizedLoser) {
                         state.championName = winner;
-                        if (normalizedName === normalizedLoser) {
+                        if (exactName === loser) {
                             outcomeClass = 'lost';
                             message = `${showName} - LOST the ${titleName} to ${winner} via ${method}`;
-                        } else if (normalizedName === normalizedWinner) {
+                        } else if (exactName === winner) {
                             outcomeClass = 'won';
                             message = `${showName} - WON the ${titleName} by defeating ${loser} via ${method}`;
                         }
                     } else {
                         if (state && !state.championName) state.championName = winner;
-                        if (normalizedName === normalizedWinner) {
+                        if (exactName === winner) {
                             outcomeClass = 'defended';
                             message = `${showName} - DEFENDED the ${titleName} against ${loser} via ${method}`;
-                        } else if (normalizedName === normalizedLoser) {
+                        } else if (exactName === loser) {
                             outcomeClass = 'challenger-fail';
                             message = `${showName} - Challenged for the ${titleName} but lost to ${winner} via ${method}`;
                         }
