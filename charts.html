@@ -179,10 +179,11 @@
         }
 
         function lookupFighterTitleMatches(selectedName) {
-            const results = document.getElementById('fighterTitleMatchResults');
-            if (!results) return;
-            results.innerHTML = '';
-            const exactName = String(selectedName || '').trim();
+            const fighterTitleMatchResults = document.getElementById('fighterTitleMatchResults');
+            if (!fighterTitleMatchResults) return;
+            fighterTitleMatchResults.innerHTML = '';
+            selectedName = String(selectedName || '');
+            const exactName = selectedName.trim();
             if (!exactName) return;
 
             const championships = loadChampionships();
@@ -209,8 +210,18 @@
             const fighterMatches = [];
             events.forEach(({ event, index }) => {
                 const showName = event.showTitle || event.name || `Fight Card ${index + 1}`;
-                event.matches.forEach(match => {
-                    if (!match || !match.isTitle) return;
+                event.matches.forEach(savedMatch => {
+                    if (!savedMatch) return;
+                    const match = {
+                        ...savedMatch,
+                        fighterA: String(savedMatch.fighterA || savedMatch.winner || savedMatch.winnerName || ''),
+                        fighterB: String(savedMatch.fighterB || savedMatch.loser || savedMatch.loserName || '')
+                    };
+                    let isSelectedMatch = false;
+                    if (selectedName.trim() === match.fighterA.trim() || selectedName.trim() === match.fighterB.trim()) {
+                        isSelectedMatch = true;
+                    }
+                    if (!match.isTitle) return;
                     const winner = String(match.winner || match.winnerName || '');
                     const loser = String(match.loser || match.loserName || '');
                     if (!winner.trim() || !loser.trim()) return;
@@ -275,7 +286,7 @@
                         }
                     }
 
-                    if (message) fighterMatches.push({ index, outcomeClass, message });
+                    if (message && isSelectedMatch) fighterMatches.push({ index, outcomeClass, message });
                 });
             });
 
@@ -284,14 +295,14 @@
                 const emptyMessage = document.createElement('div');
                 emptyMessage.className = 'title-match-empty';
                 emptyMessage.textContent = 'No title matches on record for this fighter.';
-                results.appendChild(emptyMessage);
+                fighterTitleMatchResults.appendChild(emptyMessage);
                 return;
             }
             fighterMatches.forEach(match => {
                 const line = document.createElement('div');
                 line.className = `title-match-result ${match.outcomeClass}`;
                 line.textContent = match.message;
-                results.appendChild(line);
+                fighterTitleMatchResults.appendChild(line);
             });
         }
 
