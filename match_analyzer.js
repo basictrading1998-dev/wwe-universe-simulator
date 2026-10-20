@@ -38,15 +38,17 @@ function populateFighterTitleMatchNames() {
 }
 
 function lookupFighterTitleMatches(selectedName) {
-    const fighterTitleMatchResults = document.getElementById('fighterTitleMatchResults');
-    if (!fighterTitleMatchResults) return;
-    fighterTitleMatchResults.innerHTML = '';
+    const resultsContainer = document.getElementById('fighterTitleMatchResults');
+    if (!resultsContainer) return;
+    resultsContainer.innerHTML = '';
+
     selectedName = String(selectedName || '');
+    let titleMatchCount = 0;
     const exactName = selectedName.trim();
     if (!exactName) return;
 
     const championships = loadChampionships();
-    const events = getArchivedMatchHistory()
+    const matchHistoryArray = getArchivedMatchHistory()
         .map((event, index) => ({
             event,
             index,
@@ -66,11 +68,10 @@ function lookupFighterTitleMatches(selectedName) {
         });
     });
 
-    const fighterMatches = [];
-    events.forEach(({ event, index }) => {
+    matchHistoryArray.forEach(({ event, index }) => {
         const showName = event.showTitle || event.name || `Fight Card ${index + 1}`;
         event.matches.forEach(savedMatch => {
-            if (!savedMatch) return;
+            if (!savedMatch || savedMatch.isTitle !== true) return;
             const match = {
                 ...savedMatch,
                 fighterA: String(savedMatch.fighterA || savedMatch.winner || savedMatch.winnerName || ''),
@@ -80,10 +81,12 @@ function lookupFighterTitleMatches(selectedName) {
             if (selectedName.trim() === match.fighterA.trim() || selectedName.trim() === match.fighterB.trim()) {
                 isSelectedMatch = true;
             }
-            if (!match.isTitle) return;
-            const winner = String(match.winner || match.winnerName || '');
-            const loser = String(match.loser || match.loserName || '');
-            if (!winner.trim() || !loser.trim()) return;
+            if (!isSelectedMatch) return;
+            titleMatchCount++;
+
+            const winner = String(match.winner || match.winnerName || '').trim();
+            const loser = String(match.loser || match.loserName || '').trim();
+            if (!winner || !loser) return;
 
             let title = match.titleId ? championships.find(item => item && item.id === match.titleId) : null;
             if (!title) {
@@ -92,77 +95,62 @@ function lookupFighterTitleMatches(selectedName) {
             }
             const titleName = title?.name || match.customTitleName || match.titleName || 'Championship';
             const state = title ? titleStates.get(title.id) : null;
-            const method = formatTitleMatchMethod(match);
+            const championBeforeMatch = state?.championName || '';
             const lineageChange = state?.lineageChanges.find(entry =>
                 String(entry.showTitle || '').trim().toLowerCase() === String(showName).trim().toLowerCase() &&
-                entry.wrestlerName === winner
+                String(entry.wrestlerName || '').trim() === winner
             );
-            const isNewChampion = match.titleRetained === false || Boolean(lineageChange);
-            const championBeforeMatch = state?.championName || '';
+            const winnerIsChampion = match.titleRetained === true ||
+                (match.titleRetained !== false && championBeforeMatch === winner && !lineageChange);
+            const loserIsChampion = championBeforeMatch === loser;
+            const selectedIsWinner = exactName === winner;
             let outcomeClass;
-            let message;
+            let outcomeText;
 
-            if (isNewChampion) {
-                state.championName = winner;
-                if (exactName === winner) {
-                    outcomeClass = 'won';
-                    message = `${showName} - WON the ${titleName} by defeating ${loser} via ${method}`;
-                } else if (exactName === loser) {
-                    if (championBeforeMatch && championBeforeMatch === loser) {
-                        outcomeClass = 'lost';
-                        message = `${showName} - LOST the ${titleName} to ${winner} via ${method}`;
-                    } else {
-                        outcomeClass = 'challenger-fail';
-                        message = `${showName} - Challenged for the ${titleName} but lost to ${winner} via ${method}`;
-                    }
-                }
-            } else if (match.titleRetained === true || (championBeforeMatch && championBeforeMatch === winner)) {
-                if (!state.championName) state.championName = winner;
-                if (exactName === winner) {
+            if (selectedIsWinner) {
+                if (winnerIsChampion) {
                     outcomeClass = 'defended';
-                    message = `${showName} - DEFENDED the ${titleName} against ${loser} via ${method}`;
-                } else if (exactName === loser) {
-                    outcomeClass = 'challenger-fail';
-                    message = `${showName} - Challenged for the ${titleName} but lost to ${winner} via ${method}`;
-                }
-            } else if (championBeforeMatch && championBeforeMatch === loser) {
-                state.championName = winner;
-                if (exactName === loser) {
-                    outcomeClass = 'lost';
-                    message = `${showName} - LOST the ${titleName} to ${winner} via ${method}`;
-                } else if (exactName === winner) {
+                    outcomeText = `DEFENDED the ${titleName} against ${loser}`;
+                } else {
                     outcomeClass = 'won';
-                    message = `${showName} - WON the ${titleName} by defeating ${loser} via ${method}`;
+                    outcomeText = `WON the ${titleName} by defeating ${loser}`;
                 }
+            } else if (loserIsChampion) {
+                outcomeClass = 'lost';
+                outcomeText = `LOST the ${titleName} to ${winner}`;
             } else {
-                if (state && !state.championName) state.championName = winner;
-                if (exactName === winner) {
-                    outcomeClass = 'defended';
-                    message = `${showName} - DEFENDED the ${titleName} against ${loser} via ${method}`;
-                } else if (exactName === loser) {
-                    outcomeClass = 'challenger-fail';
-                    message = `${showName} - Challenged for the ${titleName} but lost to ${winner} via ${method}`;
-                }
+                outcomeClass = 'challenger-fail';
+                outcomeText = `Challenged for the ${titleName} but lost to ${winner}`;
             }
 
-            if (message && isSelectedMatch) fighterMatches.push({ index, outcomeClass, message });
+            const line = document.createElement('div');
+            line.className = `title-match-result ${outcomeClass}`;
+            line.textContent = `${showName} - ${outcomeText} via ${formatTitleMatchMethod(match)}`;
+            resultsContainer.appendChild(line);
+
+            if (state) {
+                state.championName = winner;
+                if (match.titleRetained === false || lineageChange) {
+                    state.lineageChanges = state.lineageChanges.filter(entry => entry !== lineageChange);
+                }
+            }
         });
     });
 
-    fighterMatches.sort((a, b) => a.index - b.index);
-    if (fighterMatches.length === 0) {
-        const emptyMessage = document.createElement('div');
-        emptyMessage.className = 'title-match-empty';
-        emptyMessage.textContent = 'No title matches on record for this fighter.';
-        fighterTitleMatchResults.appendChild(emptyMessage);
-        return;
+    if (selectedName.trim() !== "" && titleMatchCount === 0) {
+        const safeSelectedName = selectedName.replace(/[&<>"']/g, character => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[character]);
+        resultsContainer.innerHTML = `
+            <div class="no-matches-found" style="color: #a0aec0; padding: 20px; text-align: center; font-style: italic;">
+                No championship matches on record for ${safeSelectedName}.
+            </div>
+        `;
     }
-    fighterMatches.forEach(match => {
-        const line = document.createElement('div');
-        line.className = `title-match-result ${match.outcomeClass}`;
-        line.textContent = match.message;
-        fighterTitleMatchResults.appendChild(line);
-    });
 }
 
 window.lookupFighterTitleMatches = lookupFighterTitleMatches;
