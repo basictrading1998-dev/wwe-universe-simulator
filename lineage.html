@@ -10,7 +10,7 @@
         /* UNIFIED PREMIUM HEADER NAVBAR (CENTER ALIGNED) */
         nav { background-color: #1e293b; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #334155; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); font-family: sans-serif; position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; }
         .logo { color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px; }
-        .nav-links { display: flex; gap: 16px; justify-content: center; flex: 1; }
+        .nav-links { display: flex; gap: 16px; justify-content: center; flex: 1; flex-wrap: wrap; }
         .nav-btn { background: transparent; border: none; color: #94a3b8; padding: 8px 14px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; cursor: pointer; text-decoration: none; text-transform: uppercase; }
         .nav-btn:hover { color: #f8fafc; background: rgba(255,255,255,0.05); }
         .nav-btn.active { background: #ef4444; color: white; box-shadow: 0 2px 8px rgba(239,68,68,0.3); }
@@ -151,7 +151,8 @@
             <a href="history.html" class="nav-btn">Event History</a>
             <a href="fighter-history.html" class="nav-btn">Fight History Log</a>
             <a href="lineage.html" class="nav-btn active">Championship Lineage</a>
-            <a href="charts.html" class="nav-btn">Roster Analytics</a>
+            <a href="charts.html?v=10.16" class="nav-btn">Roster Analytics</a>
+            <a href="match_analyzer.html" class="nav-btn">CHAMPIONSHIP ANALYZER</a>
         </div>
         <div style="flex: 0 0 420px; display: flex; justify-content: flex-end; align-items: center; gap: 8px;">
             <button type="button" id="backgroundSettingsButton" onclick="openBackgroundSettings()" style="background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.28); padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 700; text-transform: uppercase;">Background Settings</button>

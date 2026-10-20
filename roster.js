@@ -1611,7 +1611,7 @@ function auditTitleDefenses() {
         });
 
         event.matches.forEach(match => {
-            if (!match || !match.isTitle || !match.winner) return;
+            if (!match || !match.isTitle || !(match.winner || match.winnerName)) return;
 
             let title = match.titleId ? championships.find(item => item && item.id === match.titleId) : null;
             if (!title) {
@@ -1621,9 +1621,8 @@ function auditTitleDefenses() {
             if (!title) return;
 
             const state = titleStates.get(title.id);
-            const winner = match.winnerId
-                ? fighterById.get(match.winnerId)
-                : fighterByName.get(normalize(match.winner));
+            const winner = (match.winnerId && fighterById.get(match.winnerId)) ||
+                fighterByName.get(normalize(match.winner || match.winnerName));
             if (!state || !winner) return;
 
             const transferKey = `${normalize(showName)}|${normalize(winner.name)}`;
@@ -1633,11 +1632,18 @@ function auditTitleDefenses() {
                 state.transferCounts.set(transferKey, matchingTransfers - 1);
             }
 
-            if (match.titleRetained === true) {
+            const currentChampion = fighterById.get(state.holderId);
+            const winnerMatchesCurrentChampion = currentChampion &&
+                String(winner.name || '').trim().toLowerCase() === String(currentChampion.name || '').trim().toLowerCase();
+            if (match.titleRetained === true || winnerMatchesCurrentChampion) {
                 defenseTotals.set(winner.id, (defenseTotals.get(winner.id) || 0) + 1);
                 lifetimeDefenseTotals.set(winner.id, (lifetimeDefenseTotals.get(winner.id) || 0) + 1);
                 state.activeReignDefenses += 1;
                 state.holderId = winner.id;
+                if (match.titleRetained !== true) {
+                    match.titleRetained = true;
+                    eventHistoryChanged = true;
+                }
                 if (match.lifetimeDefenseCounted !== true) {
                     match.lifetimeDefenseCounted = true;
                     eventHistoryChanged = true;
@@ -1645,14 +1651,6 @@ function auditTitleDefenses() {
             } else if (match.titleRetained === false || isRecordedTitleChange) {
                 state.holderId = winner.id;
                 state.activeReignDefenses = 0;
-            } else if (state.holderId && state.holderId === winner.id) {
-                defenseTotals.set(winner.id, (defenseTotals.get(winner.id) || 0) + 1);
-                lifetimeDefenseTotals.set(winner.id, (lifetimeDefenseTotals.get(winner.id) || 0) + 1);
-                state.activeReignDefenses += 1;
-                if (match.lifetimeDefenseCounted !== true) {
-                    match.lifetimeDefenseCounted = true;
-                    eventHistoryChanged = true;
-                }
             } else if (state.holderId) {
                 state.holderId = winner.id;
                 state.activeReignDefenses = 0;
@@ -1701,10 +1699,15 @@ function auditTitleDefenses() {
         if (eventHistoryChanged) localStorage.setItem('wwe_event_history', JSON.stringify(eventHistory));
         if (fighterStatsChanged) {
             const savedFighters = JSON.parse(localStorage.getItem('wwe_fighters') || '[]');
-            if (!Array.isArray(savedFighters) || Array.from(defenseTotals).some(([id, count]) => {
-                const fighter = savedFighters.find(item => item.id === id);
-                return !fighter || (Number(fighter.defenses) || 0) < count;
-            })) {
+            if (!Array.isArray(savedFighters) ||
+                Array.from(defenseTotals).some(([id, count]) => {
+                    const fighter = savedFighters.find(item => item.id === id);
+                    return !fighter || (Number(fighter.defenses) || 0) < count;
+                }) ||
+                Array.from(lifetimeDefenseTotals).some(([id, count]) => {
+                    const fighter = savedFighters.find(item => item.id === id);
+                    return !fighter || (Number(fighter.lifetime_defenses) || 0) < count;
+                })) {
                 throw new Error('Saved fighter defense totals did not match the audited values.');
             }
         }

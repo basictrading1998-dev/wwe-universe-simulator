@@ -3725,13 +3725,25 @@ window.logMatchResult = function(id) {
             }
 
             const previousChampionId = targetBelt.championId;
+            const previousReign = Array.isArray(targetBelt.history)
+                ? [...targetBelt.history].reverse().find(entry => entry && entry.wrestlerName)
+                : null;
+            const priorHolderName = previousChampionId || (previousReign && previousReign.wrestlerName);
+            const previousChampion = fighters.find(fighter =>
+                fighter.id === priorHolderName ||
+                String(fighter.name || '').trim().toLowerCase() === String(priorHolderName || '').trim().toLowerCase()
+            );
+            const previousChampionName = previousChampion ? previousChampion.name : priorHolderName;
             // Score title fight/defense stats for this specific belt
             try {
-                if (previousChampionId && previousChampionId === w.id) {
+                if (previousChampionId === w.id ||
+                    String(w.name || '').trim().toLowerCase() === String(previousChampionName || '').trim().toLowerCase()) {
                     // winner was already champion -> increment defenses for this belt
                     targetBelt.defenses = (targetBelt.defenses || 0) + 1;
                     w.defenses = (Number(w.defenses) || 0) + 1;
+                    w.lifetime_defenses = (Number(w.lifetime_defenses) || 0) + 1;
                     matchSaveState.titleRetained = true;
+                    matchSaveState.lifetimeDefenseCounted = true;
                 } else {
                     // new champion or contested match -> reset defenses for this belt
                     targetBelt.defenses = 0;
@@ -3740,7 +3752,8 @@ window.logMatchResult = function(id) {
                 console.error('Error updating roster title stats', err);
             }
             const winMethodText = methodSelect.value.replace('win_pinfall','PINFALL').replace('win_ko','KO/TKO').replace('win_submission','SUBMISSION');
-            if (previousChampionId !== w.id) {
+            if (previousChampionId !== w.id &&
+                String(w.name || '').trim().toLowerCase() !== String(previousChampionName || '').trim().toLowerCase()) {
                 // push new reign
                 targetBelt.history = targetBelt.history || [];
                 targetBelt.history.push({ wrestlerName: w.name, showTitle: showName, winMethod: winMethodText });
@@ -3819,10 +3832,12 @@ window.unlogMatchResult = function(id) {
     const savedMatch = completedMatches[id];
     if (!savedMatch) return;
 
-    const f1 = fighters.find(f => f.id === savedMatch.slot1Id || f.name === savedMatch.slot1Name);
-    const f2 = fighters.find(f => f.id === savedMatch.slot2Id || f.name === savedMatch.slot2Name);
-    const winner = savedMatch.winnerName === (f1?.name || '') ? f1 : f2;
-    const loser = savedMatch.loserName === (f1?.name || '') ? f1 : f2;
+    const normalizeFighterName = name => String(name || '').trim().toLowerCase();
+    const findSavedFighter = (id, name) => fighters.find(fighter =>
+        (id && fighter.id === id) || normalizeFighterName(fighter.name) === normalizeFighterName(name)
+    );
+    const winner = findSavedFighter(savedMatch.winnerId, savedMatch.winnerName);
+    const loser = findSavedFighter(savedMatch.loserId, savedMatch.loserName);
 
     if (winner) {
         winner.wins = Math.max(0, Number(winner.wins || 0) - 1);
@@ -3872,7 +3887,8 @@ window.unlogMatchResult = function(id) {
             const championshipsRegistry = JSON.parse(localStorage.getItem('wwe_titles')) || [];
             const targetBelt = championshipsRegistry.find(b => b.id === savedMatch.titleId);
             if (targetBelt) {
-                const wasChampion = targetBelt.championId === (winner?.id || '');
+                const wasChampion = targetBelt.championId === (winner?.id || '') ||
+                    normalizeFighterName(targetBelt.championId) === normalizeFighterName(winner?.name);
                 if (wasChampion) {
                     targetBelt.defenses = Math.max(0, Number(targetBelt.defenses || 0) - 1);
                     if (savedMatch.titleRetained === true && winner) {
@@ -3880,10 +3896,18 @@ window.unlogMatchResult = function(id) {
                     }
                 }
                 if (targetBelt.history && targetBelt.history.length) {
-                    targetBelt.history = targetBelt.history.filter(entry => !(entry.wrestlerName === (winner?.name || '') && entry.showTitle === (savedMatch.showName || '') && entry.winMethod === (savedMatch.methodName || '')));
+                    targetBelt.history = targetBelt.history.filter(entry =>
+                        !(normalizeFighterName(entry.wrestlerName) === normalizeFighterName(winner?.name) &&
+                            normalizeFighterName(entry.showTitle) === normalizeFighterName(savedMatch.showName) &&
+                            normalizeFighterName(entry.winMethod) === normalizeFighterName(savedMatch.methodName))
+                    );
                 }
                 if (wasChampion) {
-                    targetBelt.championId = '';
+                    const priorReign = [...(targetBelt.history || [])].reverse().find(entry => entry && entry.wrestlerName);
+                    const priorChampion = priorReign && fighters.find(fighter =>
+                        normalizeFighterName(fighter.name) === normalizeFighterName(priorReign.wrestlerName)
+                    );
+                    targetBelt.championId = priorChampion ? priorChampion.id : '';
                 }
                 localStorage.setItem('wwe_titles', JSON.stringify(championshipsRegistry));
             }
@@ -4601,8 +4625,10 @@ window.finalizeFullEventCard = function() {
         const savedTitleId = savedState?.titleId || '';
         const savedTitleName = savedState?.titleName || (titleNameInp ? (titleNameInp.options[titleNameInp.selectedIndex]?.getAttribute('data-name') || titleNameInp.value.trim()) : '');
         if (savedIsTitle && savedState.totalTitleFightAppearanceCounted !== true) {
-            const winner = fighters.find(fighter => fighter.id === savedState.winnerId || fighter.name === savedState.winnerName);
-            const loser = fighters.find(fighter => fighter.id === savedState.loserId || fighter.name === savedState.loserName);
+            const winner = fighters.find(fighter => fighter.id === savedState.winnerId ||
+                String(fighter.name || '').trim().toLowerCase() === String(savedState.winnerName || '').trim().toLowerCase());
+            const loser = fighters.find(fighter => fighter.id === savedState.loserId ||
+                String(fighter.name || '').trim().toLowerCase() === String(savedState.loserName || '').trim().toLowerCase());
             if (winner) {
                 winner.total_title_fights = (Number(winner.total_title_fights ?? winner.title_fights) || 0) + 1;
                 winner.title_fights = Number(winner.title_fights || 0) + 1;
@@ -4644,8 +4670,8 @@ window.finalizeFullEventCard = function() {
         const savedState = activeShowSavedData[m.matchId] || {};
         if (savedState && savedState.titleId) return;
 
-        const champWinnerObj = fighters.find(f => f.name === m.winner);
-        const loserObj = fighters.find(f => f.name === m.loser);
+        const champWinnerObj = fighters.find(f => String(f.name || '').trim().toLowerCase() === String(m.winner || '').trim().toLowerCase());
+        const loserObj = fighters.find(f => String(f.name || '').trim().toLowerCase() === String(m.loser || '').trim().toLowerCase());
         const beltName = m.customTitleName;
 
         let targetBelt = championshipsRegistry.find(b => b.name.toLowerCase() === beltName.toLowerCase());
@@ -4663,8 +4689,15 @@ window.finalizeFullEventCard = function() {
 
         if (champWinnerObj) {
             const previousChampionId = targetBelt.championId;
+            const previousChampion = fighters.find(fighter =>
+                fighter.id === previousChampionId ||
+                String(fighter.name || '').trim().toLowerCase() === String(previousChampionId || '').trim().toLowerCase()
+            );
+            const previousChampionName = previousChampion ? previousChampion.name : previousChampionId;
+            const winnerRetainedTitle = previousChampionId === champWinnerObj.id ||
+                String(champWinnerObj.name || '').trim().toLowerCase() === String(previousChampionName || '').trim().toLowerCase();
             const winMethodText = m.method.replace('win_pinfall','PINFALL').replace('win_ko','KO/TKO').replace('win_submission','SUBMISSION');
-            if (previousChampionId !== champWinnerObj.id) {
+            if (!winnerRetainedTitle) {
                 targetBelt.history.push({
                     wrestlerName: champWinnerObj.name,
                     showTitle: shownShowName,
@@ -4691,12 +4724,14 @@ window.finalizeFullEventCard = function() {
             match.lifetimeDefenseCounted = true;
             return;
         }
-        const champion = fighters.find(fighter => fighter.id === match.winnerId || fighter.name === match.winner);
+        const champion = fighters.find(fighter => fighter.id === match.winnerId ||
+            String(fighter.name || '').trim().toLowerCase() === String(match.winner || '').trim().toLowerCase());
         if (!champion) return;
         champion.lifetime_defenses = (Number(champion.lifetime_defenses) || 0) + 1;
         savedState.lifetimeDefenseCounted = true;
         match.lifetimeDefenseCounted = true;
     });
+    saveFighters(fighters);
 
     if (activeMatchesStorageKey) localStorage.setItem(activeMatchesStorageKey, JSON.stringify(activeShowSavedData));
     localStorage.setItem('wwe_titles', JSON.stringify(championshipsRegistry));
