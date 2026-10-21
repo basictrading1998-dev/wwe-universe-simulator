@@ -1397,7 +1397,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         e.target.setAttribute('data-fighter-id', '');
                         const badge = slot.querySelector('.win-badge');
                         const label = slot.querySelector('.win-method-label');
-                        if (badge) badge.style.display = 'none';
+                        if (badge) {
+                            badge.style.display = 'none';
+                            badge.classList.remove('winner-check-badge');
+                        }
+                        if (avatar) avatar.classList.remove('ufc-winner-border');
                         if (label) label.style.display = 'none';
 
                         if (matchRow) {
@@ -1653,7 +1657,7 @@ function renderCardRows(box, num, tierId, isMain) {
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
                         <div class="avatar-frame portrait-frame-base" style="position:relative; width:60px; height:60px;">
                             <div class="avatar-box" style="width:60px; height:60px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
-                            <div class="win-badge" style="display:none; position:absolute; right:-2px; bottom:-2px; width:14px; height:14px; border-radius:50%; background:#16a34a; color:white; border:1px solid white; display:flex; align-items:center; justify-content:center; font-size:0.65rem; box-shadow:none;">✓</div>
+                            <div class="win-badge" style="display:none;">✓</div>
                         </div>
                         <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
                     </div>
@@ -1675,7 +1679,7 @@ function renderCardRows(box, num, tierId, isMain) {
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
                         <div class="avatar-frame portrait-frame-base" style="position:relative; width:60px; height:60px;">
                             <div class="avatar-box" style="width:60px; height:60px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
-                            <div class="win-badge" style="display:none; position:absolute; right:-2px; bottom:-2px; width:14px; height:14px; border-radius:50%; background:#16a34a; color:white; border:1px solid white; display:flex; align-items:center; justify-content:center; font-size:0.65rem; box-shadow:none;">✓</div>
+                            <div class="win-badge" style="display:none;">✓</div>
                         </div>
                         <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
                     </div>
@@ -1948,7 +1952,11 @@ function clearCardFighterSlot(matchRowId, slotType) {
     const badge = slot.querySelector('.win-badge');
     const label = slot.querySelector('.win-method-label');
     const recordDisplay = slot.querySelector('.fighter-record');
-    if (badge) badge.style.display = 'none';
+    if (badge) {
+        badge.style.display = 'none';
+        badge.classList.remove('winner-check-badge');
+    }
+    if (av) av.classList.remove('ufc-winner-border');
     if (label) label.style.display = 'none';
     if (recordDisplay) recordDisplay.textContent = '';
     
@@ -4494,8 +4502,10 @@ function clearMatchWinnerBadges(matchId) {
         const label = slot.querySelector('.win-method-label');
         const avatar = slot.querySelector('.avatar-box');
         if (badge) badge.style.display = 'none';
+        if (badge) badge.classList.remove('winner-check-badge');
         if (label) label.style.display = 'none';
         if (avatar) {
+            avatar.classList.remove('ufc-winner-border');
             avatar.style.borderColor = '#cbd5e1';
             avatar.style.background = '#e2e8f0';
             avatar.style.boxShadow = 'none';
@@ -4569,6 +4579,7 @@ function showMatchWinnerBadge(matchId, slotType, methodText) {
     const otherInput = otherSlot?.querySelector('.fighter-search-input');
     applyStreakPortraitClass(otherSlot?.querySelector('.avatar-frame'), otherInput ? getFighterByIdOrName(otherInput.value.trim()) : null);
     if (badge) {
+        badge.classList.add('winner-check-badge');
         badge.style.display = 'flex';
         badge.style.opacity = '1';
     }
@@ -4577,10 +4588,7 @@ function showMatchWinnerBadge(matchId, slotType, methodText) {
         label.style.display = methodText ? 'block' : 'none';
     }
     if (avatar) {
-        avatar.style.background = '#dcfce7';
-        avatar.style.borderColor = '#16a34a';
-        avatar.style.boxShadow = '0 0 0 4px rgba(22, 163, 74, 0.24), inset 0 0 0 1px rgba(22, 163, 74, 0.55)';
-        avatar.style.position = 'relative';
+        avatar.classList.add('ufc-winner-border');
     }
 }
 
