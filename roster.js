@@ -1413,11 +1413,40 @@ function loadFighters() {
     }
 }
 
+function syncFighterRecordsFromHistory(list) {
+    let changed = false;
+
+    list.forEach(fighter => {
+        const historyCandidates = [
+            fighter.compiled_history_deck,
+            fighter.history_deck,
+            fighter.history
+        ];
+        const history = historyCandidates.find(entries => Array.isArray(entries) && entries.length > 0);
+        if (!history) return;
+
+        const wins = history.filter(entry => (entry?.outcome || '').toLowerCase() === 'win').length;
+        const losses = history.filter(entry => (entry?.outcome || '').toLowerCase() === 'loss').length;
+        if (wins + losses === 0) return;
+
+        if (Number(fighter.wins || 0) !== wins || Number(fighter.losses || 0) !== losses) {
+            fighter.wins = wins;
+            fighter.losses = losses;
+            changed = true;
+        }
+    });
+
+    return changed;
+}
+
 // Paste the array from a downloaded roster backup here to restore it without browser storage.
 const hardcodedRosterBackup = [];
 
 async function loadAndHydrateFighters() {
     fighters = loadFighters();
+    if (syncFighterRecordsFromHistory(fighters)) {
+        saveFighters(fighters);
+    }
     clearInjectedWWE2K24Portraits(fighters);
     purgeGeneratedPlaceholderPhotos(fighters);
     await hydrateRosterFighterPhotos();

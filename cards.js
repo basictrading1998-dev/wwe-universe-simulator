@@ -2160,7 +2160,7 @@ function updateFighterRecordDisplay(matchRowId, slotType, fighter) {
         ? historyEntries.filter(entry => (entry?.outcome || '').toLowerCase() === 'win').length
         : Number(recordSource.wins || 0);
     const losses = hasHistoryResults
-        ? historyEntries.length - wins
+        ? historyEntries.filter(entry => (entry?.outcome || '').toLowerCase() === 'loss').length
         : Number(recordSource.losses || 0);
     recordEl.textContent = `${wins}W / ${losses}L`;
 }
