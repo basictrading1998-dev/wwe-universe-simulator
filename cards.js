@@ -2151,8 +2151,17 @@ function updateFighterRecordDisplay(matchRowId, slotType, fighter) {
         f => f.name.trim() === currentFighterName
     );
     const recordSource = liveFighterData || fighter;
-    const wins = Number(recordSource.wins || 0);
-    const losses = Number(recordSource.losses || 0);
+    const history = recordSource.compiled_history_deck || recordSource.history_deck || recordSource.history || [];
+    const historyEntries = Array.isArray(history) ? history : [];
+    const hasHistoryResults = historyEntries.some(entry =>
+        ['win', 'loss'].includes((entry?.outcome || '').toLowerCase())
+    );
+    const wins = hasHistoryResults
+        ? historyEntries.filter(entry => (entry?.outcome || '').toLowerCase() === 'win').length
+        : Number(recordSource.wins || 0);
+    const losses = hasHistoryResults
+        ? historyEntries.length - wins
+        : Number(recordSource.losses || 0);
     recordEl.textContent = `${wins}W / ${losses}L`;
 }
 
