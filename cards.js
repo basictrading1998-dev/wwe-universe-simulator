@@ -2145,8 +2145,14 @@ function updateFighterRecordDisplay(matchRowId, slotType, fighter) {
         return;
     }
 
-    const wins = Number(fighter.wins || 0);
-    const losses = Number(fighter.losses || 0);
+    const fighterInput = document.getElementById(`${matchRowId}-${slotType}`)?.querySelector('.fighter-search-input');
+    const currentFighterName = (fighterInput?.value || fighter.name || '').trim();
+    const liveFighterData = loadFightersFromStorage().find(
+        f => f.name.trim() === currentFighterName
+    );
+    const recordSource = liveFighterData || fighter;
+    const wins = Number(recordSource.wins || 0);
+    const losses = Number(recordSource.losses || 0);
     recordEl.textContent = `${wins}W / ${losses}L`;
 }
 
