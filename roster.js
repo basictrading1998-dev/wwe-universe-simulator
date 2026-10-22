@@ -2168,9 +2168,9 @@ function renderRosterGrid() {
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 6px; font-size: 0.58rem; color: #64748b; gap: 2px;">
-                <div><span style="color: #1e293b; display: block; font-weight: bold;">${f.win_pinfall || 0}</span>PINS</div>
-                <div><span style="color: #1e293b; display: block; font-weight: bold;">${f.win_ko || 0}</span>KO</div>
-                <div><span style="color: #1e293b; display: block; font-weight: bold;">${f.win_submission || 0}</span>SUB</div>
+                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_pinfall || 0}</span>PINS</div>
+                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_ko || 0}</span>KO</div>
+                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_submission || 0}</span>SUB</div>
             </div>
             <div style="margin-top: 10px; display: flex; gap: 4px; width: 100%;">
                 <button onclick="editSuperstar('${f.id}')" style="flex: 1; background: #f1f5f9; border: none; padding: 4px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #475569; cursor: pointer;">✏️ Edit</button>
@@ -2399,9 +2399,9 @@ function renderRosterGridWithoutReload() {
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 6px; font-size: 0.58rem; color: #64748b; gap: 2px;">
-                <div><span style="color: #1e293b; display: block; font-weight: bold;">${f.win_pinfall || 0}</span>PINS</div>
-                <div><span style="color: #1e293b; display: block; font-weight: bold;">${f.win_ko || 0}</span>KO</div>
-                <div><span style="color: #1e293b; display: block; font-weight: bold;">${f.win_submission || 0}</span>SUB</div>
+                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_pinfall || 0}</span>PINS</div>
+                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_ko || 0}</span>KO</div>
+                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_submission || 0}</span>SUB</div>
             </div>
             <div style="margin-top: 10px; display: flex; gap: 4px; width: 100%;">
                 <button onclick="editSuperstar('${f.id}')" style="flex: 1; background: #f1f5f9; border: none; padding: 4px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #475569; cursor: pointer;">✏️ Edit</button>
