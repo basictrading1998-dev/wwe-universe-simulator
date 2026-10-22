@@ -1394,8 +1394,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             const matchRow = e.target.closest('.match-row');
             if (matchRow) {
                 const id = matchRow.id;
+                clearMatchRowWarningsForInput(id);
                 clearDuplicateApprovalForChangedInput(id);
                 checkFighterScheduleConflict(matchRow);
+                const typedName = e.target.value.trim().toLowerCase();
+                const exactFighter = fighters.find(f => f.name.toLowerCase() === typedName);
+                e.target.setAttribute('data-fighter-id', exactFighter ? exactFighter.id : '');
                 if (matchRow.dataset.validationBatch === 'true') return;
                 const slot1Input = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input');
                 const slot2Input = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input');
@@ -1444,8 +1448,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (accepted && !areMatchRowRematchPairsEqual(currentF1Id, currentF2Id, accepted.fighter1Id, accepted.fighter2Id)) {
                         resetMatchRowRematchState(id);
                     }
-                    recheckMatchValidation(id, slotType);
                 }
+                if (!hasEmptyFighter) recheckMatchValidation(id, slotType);
             }
             saveCurrentCardDraft();
         }
@@ -1868,7 +1872,7 @@ document.addEventListener('input', (e) => {
     if (!matchRow) return;
     const slotType = input.closest('.fighter-slot')?.id?.endsWith('-slot1') ? 'slot1' : 'slot2';
     clearRematchWarningForInput(matchRow.id);
-    const fighter = getFighterByIdOrName(input.value.trim());
+    const fighter = fighters.find(f => f.name.toLowerCase() === input.value.trim().toLowerCase());
     if (fighter) {
         input.setAttribute('data-fighter-id', fighter.id);
         updateFighterRecordDisplay(matchRow.id, slotType, fighter);
@@ -1879,7 +1883,9 @@ document.addEventListener('input', (e) => {
         hideRematchWarning(matchRow.id);
     }
     updateWinnerDropdown(matchRow.id);
-    recheckMatchValidation(matchRow.id, slotType);
+    if (matchRow.dataset.validationBatch !== 'true') {
+        recheckMatchValidation(matchRow.id, slotType);
+    }
     refreshTitleFightState(matchRow.id);
     saveCurrentCardDraft();
 });
@@ -1908,6 +1914,7 @@ function populateDropdownGenders(matchRowId, genderVariant) {
     const slot1 = document.getElementById(`${matchRowId}-slot1`);
     const slot2 = document.getElementById(`${matchRowId}-slot2`);
     if (slot1 && slot2) {
+        clearMatchRowWarningsForInput(matchRowId);
         slot1.setAttribute('data-gender', genderVariant);
         slot2.setAttribute('data-gender', genderVariant);
         slot1.querySelector('.fighter-search-input').value = '';
@@ -1956,6 +1963,7 @@ function getNextRematchNumberForPair(f1, f2) {
 function clearCardFighterSlot(matchRowId, slotType) {
     const slot = document.getElementById(`${matchRowId}-${slotType}`);
     if (!slot) return;
+    clearMatchRowWarningsForInput(matchRowId);
     resetMatchValidationState(matchRowId);
     const input = slot.querySelector('.fighter-search-input');
     const av = slot.querySelector('.avatar-box');
@@ -2010,9 +2018,42 @@ function clearCardFighterSlot(matchRowId, slotType) {
 }
 
 function clearRematchWarningForInput(matchRowId) {
-    if (isRematchWarningActive(matchRowId)) return;
-    resetMatchValidationState(matchRowId);
+    clearMatchRowWarningsForInput(matchRowId);
+}
+
+function clearMatchRowWarningsForInput(matchRowId) {
+    const rematchWarning = document.getElementById(`${matchRowId}-rematch-warning`);
+    const duplicateWarning = document.getElementById(`${matchRowId}-duplicate-warning`);
+
+    if (rematchWarning) {
+        if (!rematchWarning.dataset.warningMarkup) {
+            rematchWarning.dataset.warningMarkup = rematchWarning.innerHTML;
+        }
+        rematchWarning.innerHTML = '';
+        rematchWarning.style.display = 'none';
+    }
+    if (duplicateWarning) {
+        if (!duplicateWarning.dataset.warningMarkup) {
+            duplicateWarning.dataset.warningMarkup = duplicateWarning.innerHTML;
+        }
+        duplicateWarning.innerHTML = '';
+        duplicateWarning.style.display = 'none';
+    }
+
+    clearRematchWarningStorage(matchRowId);
+    sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
+    sessionStorage.removeItem(`match_${matchRowId}_rematch_warning_active`);
+    sessionStorage.removeItem(`match_${activeShowId || 'default'}_${matchRowId}_variant_approved`);
+    sessionStorage.removeItem(`match_${matchRowId}_variant_approved`);
+    clearDuplicateApproval(matchRowId);
+    clearWarningMatchState(matchRowId);
+    delete activeRematchWarnings[matchRowId];
+
+    const matchRow = document.getElementById(matchRowId);
+    if (matchRow) delete matchRow.dataset.rematchPending;
+    resetMatchRowRematchState(matchRowId);
     hideRematchWarning(matchRowId);
+    hideDuplicateWarning(matchRowId);
 }
 
 function resetMatchValidationState(matchRowId) {
@@ -2285,6 +2326,9 @@ function checkExistingFightRematch(matchRowId, changedSlot) {
 
 function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot) {
     const container = document.getElementById(`${matchRowId}-rematch-warning`);
+    if (container && !container.innerHTML.trim() && container.dataset.warningMarkup) {
+        container.innerHTML = container.dataset.warningMarkup;
+    }
     const text = document.getElementById(`${matchRowId}-rematch-warning-text`);
     if (!container || !text) return;
     text.innerHTML = `⚠️ <strong>${fighter1.name}</strong> and <strong>${fighter2.name}</strong> have already fought ${history.priorCount} time${history.priorCount === 1 ? '' : 's'}.<br>` +
@@ -2487,6 +2531,7 @@ function findSimilarNameOnCard(name, excludeInput) {
         if (inp === excludeInput) continue;
         const val = inp.value || '';
         if (!val) continue;
+        if (!fighters.some(f => f.name.toLowerCase() === val.trim().toLowerCase())) continue;
         const normVal = normalizeFighterName(val);
         const baseVal = baseFighterName(val);
         const lookupVal = normalizeLookupKey(val);
@@ -2579,7 +2624,7 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
         }
         const pick = candidates[Math.floor(Math.random() * candidates.length)];
         if (changedInput) {
-            resetMatchValidationState(matchRowId);
+            clearMatchRowWarningsForInput(matchRowId);
             changedInput.value = pick.name;
             clearDuplicateApprovalForChangedInput(matchRowId);
             changedInput.setAttribute('data-fighter-id', pick.id);
@@ -2617,6 +2662,9 @@ function findDuplicatePairInMatchRow(matchRowId) {
     const s1 = document.getElementById(`${matchRowId}-slot1`)?.querySelector('.fighter-search-input');
     const s2 = document.getElementById(`${matchRowId}-slot2`)?.querySelector('.fighter-search-input');
     if (!s1 || !s2 || !s1.value || !s2.value) return null;
+    const selectedFighterNames = fighters.map(f => f.name.toLowerCase());
+    if (!selectedFighterNames.includes(s1.value.trim().toLowerCase()) ||
+        !selectedFighterNames.includes(s2.value.trim().toLowerCase())) return null;
     const sim1 = findSimilarNameOnCard(s1.value.trim(), s1);
     const sim2 = findSimilarNameOnCard(s2.value.trim(), s2);
     if (sim1) return { slotType: 'slot1', similar: sim1, value: s1.value.trim() };
