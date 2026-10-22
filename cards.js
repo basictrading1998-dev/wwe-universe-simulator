@@ -199,6 +199,23 @@ function getWarningStorageKey(matchRowId) {
     return `warning_match_${matchRowId}`;
 }
 
+function getRematchWarningActiveStorageKey(matchRowId) {
+    return `match_${activeShowId || 'default'}_${matchRowId}_rematch_warning_active`;
+}
+
+function getRematchWarningDataStorageKey(matchRowId) {
+    return `match_${activeShowId || 'default'}_${matchRowId}_rematch_warning_data`;
+}
+
+function isRematchWarningActive(matchRowId) {
+    return sessionStorage.getItem(getRematchWarningActiveStorageKey(matchRowId)) === 'true';
+}
+
+function clearRematchWarningStorage(matchRowId) {
+    sessionStorage.removeItem(getRematchWarningActiveStorageKey(matchRowId));
+    sessionStorage.removeItem(getRematchWarningDataStorageKey(matchRowId));
+}
+
 function getWarningMatchState(matchRowId) {
     try {
         const stored = sessionStorage.getItem(getWarningStorageKey(matchRowId));
@@ -1743,6 +1760,7 @@ function renderCardRows(box, num, tierId, isMain) {
 
             </div>`;
         box.appendChild(matchRow);
+        restoreSessionRematchWarningForRow(uId);
         clearMatchWinnerBadges(uId);
         
         if (completedMatches[uId]) {
@@ -1806,6 +1824,7 @@ window.triggerSearchFill = function(uId, slotType) {
         item.onclick = function() {
             clearRematchWarningForInput(uId);
             input.value = f.name;
+            clearDuplicateApprovalForChangedInput(uId);
             hydrateFighterPhotos().catch(() => {});
             input.setAttribute('data-fighter-id', f.id);
             panel.style.display = 'none';
@@ -1991,19 +2010,23 @@ function clearCardFighterSlot(matchRowId, slotType) {
 }
 
 function clearRematchWarningForInput(matchRowId) {
+    if (isRematchWarningActive(matchRowId)) return;
     resetMatchValidationState(matchRowId);
     hideRematchWarning(matchRowId);
 }
 
 function resetMatchValidationState(matchRowId) {
-    clearWarningMatchState(matchRowId);
-    sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
-    delete activeRematchWarnings[matchRowId];
-    resetMatchRowRematchState(matchRowId);
+    const rematchWarningActive = isRematchWarningActive(matchRowId);
+    if (!rematchWarningActive) {
+        clearWarningMatchState(matchRowId);
+        sessionStorage.removeItem(`rematch_pending_match${matchRowId}`);
+        delete activeRematchWarnings[matchRowId];
+        resetMatchRowRematchState(matchRowId);
+    }
 
     const rematchWarning = document.getElementById(`${matchRowId}-rematch-warning`);
     const duplicateWarning = document.getElementById(`${matchRowId}-duplicate-warning`);
-    [rematchWarning, duplicateWarning].forEach(container => {
+    [rematchWarningActive ? null : rematchWarning, duplicateWarning].forEach(container => {
         if (!container) return;
         container.style.display = 'none';
         const text = container.querySelector('[id$="-warning-text"]');
@@ -2091,6 +2114,7 @@ function refreshTitleFightState(matchRowId) {
 }
 
 function resetMatchRowRematchState(matchRowId) {
+    if (isRematchWarningActive(matchRowId)) return;
     const matchRow = document.getElementById(matchRowId);
     const rematchCheckbox = matchRow ? matchRow.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]') : null;
     const rematchCount = document.getElementById(`${matchRowId}-rematch-count`);
@@ -2191,6 +2215,8 @@ function getFighterByIdOrName(identifier) {
 }
 
 function checkExistingFightRematch(matchRowId, changedSlot) {
+    if (isRematchWarningActive(matchRowId)) return false;
+
     const slot1 = document.getElementById(`${matchRowId}-slot1`)?.querySelector('.fighter-search-input');
     const slot2 = document.getElementById(`${matchRowId}-slot2`)?.querySelector('.fighter-search-input');
     if (!slot1 || !slot2 || !slot1.value || !slot2.value) return true;
@@ -2236,10 +2262,17 @@ function checkExistingFightRematch(matchRowId, changedSlot) {
         fighter1: fighter1.name,
         fighter2: fighter2.name
     });
-    activeRematchWarnings[matchRowId] = {
+    const warningState = {
         fighter1: fighter1.name,
-        fighter2: fighter2.name
+        fighter2: fighter2.name,
+        fighter1Id: fighter1.id,
+        fighter2Id: fighter2.id,
+        history: historySummary,
+        changedSlot
     };
+    activeRematchWarnings[matchRowId] = warningState;
+    sessionStorage.setItem(getRematchWarningActiveStorageKey(matchRowId), 'true');
+    sessionStorage.setItem(getRematchWarningDataStorageKey(matchRowId), JSON.stringify(warningState));
     sessionStorage.setItem(`rematch_pending_match${matchRowId}`, JSON.stringify({
         fighter1: fighter1.name,
         fighter2: fighter2.name
@@ -2280,6 +2313,7 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
     const allowBtn = document.getElementById(`${matchRowId}-rematch-allow`);
     if (cancelBtn) {
         cancelBtn.onclick = function() {
+            clearRematchWarningStorage(matchRowId);
             if (changedSlot === 'both') {
                 clearCardFighterSlot(matchRowId, 'slot1');
                 clearCardFighterSlot(matchRowId, 'slot2');
@@ -2296,6 +2330,7 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
     }
     if (allowBtn) {
         allowBtn.onclick = function() {
+            clearRematchWarningStorage(matchRowId);
             const matchRow = document.getElementById(matchRowId);
             const rematchCheckbox = matchRow ? matchRow.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]') : null;
             const rematchCount = document.getElementById(`${matchRowId}-rematch-count`);
@@ -2320,8 +2355,8 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
 function restoreActiveRematchWarnings() {
     Object.entries(activeRematchWarnings).forEach(([matchRowId, warning]) => {
         const matchRow = document.getElementById(matchRowId);
-        const fighter1 = getFighterByIdOrName(warning.fighter1);
-        const fighter2 = getFighterByIdOrName(warning.fighter2);
+        const fighter1 = getFighterByIdOrName(warning.fighter1Id || warning.fighter1);
+        const fighter2 = getFighterByIdOrName(warning.fighter2Id || warning.fighter2);
         if (!matchRow || !fighter1 || !fighter2) return;
 
         let container = document.getElementById(`${matchRowId}-rematch-warning`);
@@ -2334,34 +2369,45 @@ function restoreActiveRematchWarnings() {
         }
 
         const historyEntries = getFightHistoryBetween(fighter1, fighter2);
-        if (!historyEntries.length) return;
-        const priorCount = getNextRematchNumberForPair(fighter1, fighter2);
-        showRematchWarning(matchRowId, fighter1, fighter2, {
-            priorCount,
+        if (!warning.history && !historyEntries.length) return;
+        const historySummary = warning.history || {
+            priorCount: getNextRematchNumberForPair(fighter1, fighter2),
             lastWinner: historyEntries[historyEntries.length - 1]?.winner || fighter1.name,
             showName: historyEntries[historyEntries.length - 1]?.showName || 'Previous show',
             methodLabel: historyEntries[historyEntries.length - 1]?.method || 'Previous result',
-            fightNumber: priorCount + 1
-        }, 'both');
+            fightNumber: getNextRematchNumberForPair(fighter1, fighter2) + 1
+        };
+        showRematchWarning(matchRowId, fighter1, fighter2, {
+            priorCount: historySummary.priorCount,
+            lastWinner: historySummary.lastWinner,
+            showName: historySummary.showName,
+            methodLabel: historySummary.methodLabel,
+            fightNumber: historySummary.fightNumber
+        }, warning.changedSlot || 'both');
     });
+}
+
+function restoreSessionRematchWarningForRow(matchRowId) {
+    if (!isRematchWarningActive(matchRowId)) return;
+    try {
+        const stored = sessionStorage.getItem(getRematchWarningDataStorageKey(matchRowId));
+        const warning = stored ? JSON.parse(stored) : null;
+        if (!warning || !warning.fighter1 || !warning.fighter2) return;
+        activeRematchWarnings[matchRowId] = warning;
+        setWarningMatchState(matchRowId, 'rematch', {
+            fighter1: warning.fighter1,
+            fighter2: warning.fighter2
+        });
+        restoreActiveRematchWarnings();
+    } catch (error) {
+        console.error(`Failed to restore rematch warning for match ${matchRowId}:`, error);
+    }
 }
 
 function restoreSessionRematchWarnings() {
     document.querySelectorAll('.match-row').forEach(matchRow => {
-        const state = getWarningMatchState(matchRow.id);
-        const stored = sessionStorage.getItem(`rematch_pending_match${matchRow.id}`);
-        if (state?.rematch) activeRematchWarnings[matchRow.id] = state.rematch;
-        if (!stored) return;
-        try {
-            const warning = JSON.parse(stored);
-            if (!warning || !warning.fighter1 || !warning.fighter2) return;
-            activeRematchWarnings[matchRow.id] = warning;
-            setWarningMatchState(matchRow.id, 'rematch', warning);
-        } catch (error) {
-            return;
-        }
+        restoreSessionRematchWarningForRow(matchRow.id);
     });
-    restoreActiveRematchWarnings();
 }
 
 function restoreSessionWarnings() {
@@ -2369,7 +2415,7 @@ function restoreSessionWarnings() {
     document.querySelectorAll('.match-row').forEach(matchRow => {
         if (!isUnfinalizedWarningRow(matchRow.id)) return;
         checkFighterScheduleConflict(matchRow);
-        if (sessionStorage.getItem(getDuplicateApprovalKey(matchRow.id)) === 'true') {
+        if (isDuplicateApprovalCurrent(matchRow.id)) {
             const container = document.getElementById(`${matchRow.id}-duplicate-warning`);
             if (container) container.style.display = 'none';
             return;
@@ -2382,6 +2428,7 @@ function restoreSessionWarnings() {
 }
 
 function hideRematchWarning(matchRowId) {
+    if (isRematchWarningActive(matchRowId)) return;
     if (isUnfinalizedWarningRow(matchRowId) && getWarningMatchState(matchRowId)?.rematch) return;
     const container = document.getElementById(`${matchRowId}-rematch-warning`);
     if (container) container.style.display = 'none';
@@ -2462,7 +2509,7 @@ function findSimilarNameOnCard(name, excludeInput) {
 function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, persist = true) {
     const container = document.getElementById(`${matchRowId}-duplicate-warning`);
     if (!container) return;
-    if (sessionStorage.getItem(getDuplicateApprovalKey(matchRowId)) === 'true') {
+    if (isDuplicateApprovalCurrent(matchRowId)) {
         container.style.display = 'none';
         return;
     }
@@ -2534,6 +2581,7 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
         if (changedInput) {
             resetMatchValidationState(matchRowId);
             changedInput.value = pick.name;
+            clearDuplicateApprovalForChangedInput(matchRowId);
             changedInput.setAttribute('data-fighter-id', pick.id);
             updateFighterRecordDisplay(matchRowId, changedSlot, pick);
             const av = document.getElementById(`${matchRowId}-${changedSlot}`).querySelector('.avatar-box');
@@ -2577,7 +2625,7 @@ function findDuplicatePairInMatchRow(matchRowId) {
 }
 
 function checkDuplicateOnCard(matchRowId, changedSlot) {
-    if (sessionStorage.getItem(getDuplicateApprovalKey(matchRowId)) === 'true') {
+    if (isDuplicateApprovalCurrent(matchRowId)) {
         const container = document.getElementById(`${matchRowId}-duplicate-warning`);
         if (container) container.style.display = 'none';
         return true;
@@ -2592,7 +2640,7 @@ function checkDuplicateOnCard(matchRowId, changedSlot) {
 }
 
 function getDuplicateApprovalKey(matchRowId) {
-    return `match_${matchRowId}_duplicate_allowed`;
+    return `match_${activeShowId || 'default'}_${matchRowId}_variant_approved`;
 }
 
 function getMatchFighterNames(matchRowId) {
@@ -2630,6 +2678,32 @@ function clearDuplicateApprovalForChangedInput(matchRowId) {
     if (currentPair.slot1 !== approvedPair.slot1 || currentPair.slot2 !== approvedPair.slot2) {
         clearDuplicateApproval(matchRowId);
     }
+}
+
+function isDuplicateApprovalCurrent(matchRowId) {
+    const approvalKey = getDuplicateApprovalKey(matchRowId);
+    if (sessionStorage.getItem(approvalKey) !== 'true') return false;
+
+    const approvedNames = sessionStorage.getItem(`${approvalKey}_fighters`);
+    if (!approvedNames) {
+        clearDuplicateApproval(matchRowId);
+        return false;
+    }
+
+    let approvedPair;
+    try {
+        approvedPair = JSON.parse(approvedNames);
+    } catch (error) {
+        clearDuplicateApproval(matchRowId);
+        return false;
+    }
+
+    const currentPair = getMatchFighterNames(matchRowId);
+    if (!approvedPair || currentPair.slot1 !== approvedPair.slot1 || currentPair.slot2 !== approvedPair.slot2) {
+        clearDuplicateApproval(matchRowId);
+        return false;
+    }
+    return true;
 }
 
 function clearDuplicateApproval(matchRowId) {
