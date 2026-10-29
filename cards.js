@@ -17,9 +17,9 @@ function loadFightersFromStorage() {
             lifetime_defenses: Number(f.lifetime_defenses || 0),
             title_fights: Number(f.title_fights || 0),
             total_title_fights: Number(f.total_title_fights ?? f.title_fights ?? 0),
-            win_pinfall: Number(f.win_pinfall || 0),
-            win_ko: Number(f.win_ko || 0),
-            win_submission: Number(f.win_submission || 0),
+            win_pinfall: Number(f.win_pinfall ?? f.pin_wins ?? 0),
+            win_ko: Number(f.win_ko ?? f.ko_wins ?? 0),
+            win_submission: Number(f.win_submission ?? f.sub_wins ?? 0),
             win_streak: Number(f.win_streak || 0),
             retired: f.retired === true,
             photo: f.photo || '',
@@ -33,12 +33,12 @@ function loadFightersFromStorage() {
     }
 }
 
-function refreshFightersFromStorage() {
+function refreshFightersFromStorage(force = false) {
     const loaded = loadFightersFromStorage();
-    if (!Array.isArray(fighters) || fighters.length === 0 || loaded.length > fighters.length) {
+    if (force || !Array.isArray(fighters) || fighters.length === 0 || loaded.length > fighters.length) {
         fighters = loaded;
     }
-    if (!window.fighters || !window.fighters.length) {
+    if (force || !window.fighters || !window.fighters.length) {
         window.fighters = fighters;
     }
     return fighters;
@@ -73,9 +73,9 @@ function saveFighters(list = fighters) {
         normalized.lifetime_defenses = Number(normalized.lifetime_defenses || 0);
         normalized.title_fights = Number(normalized.title_fights || 0);
         normalized.total_title_fights = Number(normalized.total_title_fights ?? normalized.title_fights ?? 0);
-        normalized.win_pinfall = Number(normalized.win_pinfall || 0);
-        normalized.win_ko = Number(normalized.win_ko || 0);
-        normalized.win_submission = Number(normalized.win_submission || 0);
+        normalized.win_pinfall = Number(normalized.win_pinfall ?? normalized.pin_wins ?? 0);
+        normalized.win_ko = Number(normalized.win_ko ?? normalized.ko_wins ?? 0);
+        normalized.win_submission = Number(normalized.win_submission ?? normalized.sub_wins ?? 0);
         delete normalized.team;
         delete normalized.partner;
         delete normalized.family;
@@ -1480,8 +1480,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     restoreSessionWarnings();
     window.addEventListener('focus', () => {
+        refreshFightersFromStorage(true);
+        removeRetiredFightersFromActiveCard();
         restoreSessionWarnings();
         refreshFightCardPortraits().catch(error => console.warn('Unable to refresh fight-card streak portraits on focus.', error));
+    });
+    window.addEventListener('storage', event => {
+        if (event.key !== 'wwe_fighters') return;
+        refreshFightersFromStorage(true);
+        removeRetiredFightersFromActiveCard();
+    });
+    window.addEventListener('wwe_fighters:changed', () => {
+        refreshFightersFromStorage(true);
+        removeRetiredFightersFromActiveCard();
     });
     window.addEventListener('pageshow', () => {
         refreshFightCardPortraits().catch(error => console.warn('Unable to refresh fight-card streak portraits after page restore.', error));
@@ -1491,6 +1502,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             refreshFightCardPortraits().catch(error => console.warn('Unable to refresh fight-card streak portraits after tab switch.', error));
         }
     });
+    refreshFightersFromStorage(true);
+    removeRetiredFightersFromActiveCard();
 });
 
 
@@ -3231,6 +3244,109 @@ function pickTwoDistinctFighters(list) {
     return [list[idx1], list[idx2]];
 }
 
+function pickCompetitiveMatchup(fighterPool, reservedPairs) {
+    const candidates = [];
+    for (let i = 0; i < fighterPool.length - 1; i++) {
+        for (let j = i + 1; j < fighterPool.length; j++) {
+            const fighter1 = fighterPool[i];
+            const fighter2 = fighterPool[j];
+            if (!fighter1?.id || !fighter2?.id || fighter1.id === fighter2.id) continue;
+
+            const name1 = normalizeLookupKey(fighter1.name);
+            const name2 = normalizeLookupKey(fighter2.name);
+            if (!name1 || name1 === name2) continue;
+            if (reservedPairs.has(window.makeOpponentPairKey(fighter1.id, fighter2.id))) continue;
+            if (getFightHistoryBetween(fighter1, fighter2).length) continue;
+
+            const wins1 = Math.max(0, Number(fighter1.wins) || 0);
+            const wins2 = Math.max(0, Number(fighter2.wins) || 0);
+            const losses1 = Math.max(0, Number(fighter1.losses) || 0);
+            const losses2 = Math.max(0, Number(fighter2.losses) || 0);
+            const total1 = wins1 + losses1;
+            const total2 = wins2 + losses2;
+            const ratio1 = total1 ? wins1 / total1 : 0;
+            const ratio2 = total2 ? wins2 / total2 : 0;
+            const ratioGap = Math.abs(ratio1 - ratio2);
+            const pin1 = Math.max(0, Number(fighter1.win_pinfall ?? fighter1.pin_wins) || 0);
+            const pin2 = Math.max(0, Number(fighter2.win_pinfall ?? fighter2.pin_wins) || 0);
+            const ko1 = Math.max(0, Number(fighter1.win_ko ?? fighter1.ko_wins) || 0);
+            const ko2 = Math.max(0, Number(fighter2.win_ko ?? fighter2.ko_wins) || 0);
+            const sub1 = Math.max(0, Number(fighter1.win_submission ?? fighter1.sub_wins) || 0);
+            const sub2 = Math.max(0, Number(fighter2.win_submission ?? fighter2.sub_wins) || 0);
+            const relativeGap = (a, b) => Math.abs(a - b) / Math.max(1, a, b);
+            const winsGap = Math.abs(wins1 - wins2);
+            const pinGap = Math.abs(pin1 - pin2);
+            const koGap = Math.abs(ko1 - ko2);
+            const subGap = Math.abs(sub1 - sub2);
+            const similarWins = winsGap <= Math.max(2, Math.max(wins1, wins2) * 0.2);
+            const similarPins = pinGap <= Math.max(1, Math.max(pin1, pin2) * 0.25);
+            const similarKOs = koGap <= Math.max(1, Math.max(ko1, ko2) * 0.25);
+            const similarSubs = subGap <= Math.max(1, Math.max(sub1, sub2) * 0.25);
+            const balanceTier = ratioGap <= 0.15 ? 0 : (similarWins || similarPins || similarKOs || similarSubs ? 1 : 2);
+            const score = ratioGap +
+                relativeGap(wins1, wins2) * 0.45 +
+                relativeGap(pin1, pin2) * 0.25 +
+                relativeGap(ko1, ko2) * 0.25 +
+                relativeGap(sub1, sub2) * 0.25;
+            candidates.push({ pair: [fighter1, fighter2], balanceTier, score });
+        }
+    }
+
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => a.balanceTier - b.balanceTier || a.score - b.score);
+    const bestTier = candidates[0].balanceTier;
+    const bestScore = candidates[0].score;
+    const bestCandidates = candidates.filter(candidate =>
+        candidate.balanceTier === bestTier && candidate.score <= bestScore + 0.08
+    );
+    return bestCandidates[Math.floor(Math.random() * bestCandidates.length)].pair;
+}
+
+function removeRetiredFightersFromActiveCard() {
+    if (isShowCompleted(activeShowId)) return;
+    refreshFightersFromStorage(true);
+
+    document.querySelectorAll('.match-row').forEach(row => {
+        if (!row.id || completedMatches[row.id]) return;
+
+        const retiredSlots = ['slot1', 'slot2'].filter(slotName => {
+            const input = row.querySelector(`.fighter-slot[id$="-${slotName}"] .fighter-search-input`);
+            const currentName = input?.value.trim();
+            if (!currentName) return false;
+
+            const fighterId = input.getAttribute('data-fighter-id');
+            const profile = fighters.find(fighter => fighter.name.trim().toLowerCase() === currentName.toLowerCase()) ||
+                fighters.find(fighter => fighter.id === fighterId);
+            return profile?.retired === true;
+        });
+        if (!retiredSlots.length) return;
+
+        row.dataset.validationBatch = 'true';
+        retiredSlots.forEach(slotName => {
+            const slot = row.querySelector(`.fighter-slot[id$="-${slotName}"]`);
+            const input = slot?.querySelector('.fighter-search-input');
+            if (!slot || !input) return;
+            input.value = '';
+            input.setAttribute('data-fighter-id', '');
+            const avatar = slot.querySelector('.avatar-box');
+            if (avatar) {
+                avatar.innerHTML = '👤';
+                avatar.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;";
+            }
+            updateFighterRecordDisplay(row.id, slotName, null);
+            notifyFighterInputChanged(input);
+        });
+        delete row.dataset.validationBatch;
+        updateWinnerDropdown(row.id);
+
+        if (!window.randomizeMatchup(row.id, { automatic: true })) {
+            console.warn(`Retired fighter cleanup could not find a replacement matchup for ${row.id}.`);
+        }
+    });
+
+    saveCurrentCardDraft();
+}
+
 window.randomizeEntireShow = function() {
     if (isShowCompleted(activeShowId) || window.hasActiveShowResults()) {
         customAlert('This show has already begun or been finalized. Reset the show or switch cards before randomizing.', 'Randomize Disabled');
@@ -3252,11 +3368,18 @@ window.randomizeEntireShow = function() {
             const matchId = row.id;
             if (!matchId) return;
             
-            // Collect all currently booked fighter IDs
+            // Keep fighters booked on other rows unavailable while allowing this row to reroll its own picks.
             let bookedFighterIds = [];
             document.querySelectorAll('.fighter-search-input').forEach(inp => {
+                if (inp.closest('.match-row') === row) return;
                 const fighterId = inp.getAttribute('data-fighter-id');
-                if (fighterId && !bookedFighterIds.includes(fighterId)) bookedFighterIds.push(fighterId);
+                const typedName = inp.value.trim();
+                const bookedFighter = fighterId
+                    ? fighters.find(fighter => fighter.id === fighterId)
+                    : fighters.find(fighter => normalizeLookupKey(fighter.name) === normalizeLookupKey(typedName));
+                if (bookedFighter && !bookedFighterIds.includes(bookedFighter.id)) {
+                    bookedFighterIds.push(bookedFighter.id);
+                }
             });
             
             // Also exclude fighters in completed matches
@@ -3270,80 +3393,47 @@ window.randomizeEntireShow = function() {
                 }
             });
             
-            // Filter available fighters by gender and division groups
+            const slot1 = document.getElementById(`${matchId}-slot1`);
+            const slot2 = document.getElementById(`${matchId}-slot2`);
+            if (!slot1 || !slot2) {
+                failCount++;
+                return;
+            }
+
+            const selectedGender = (slot1.dataset.gender || 'male').toLowerCase();
             const reservedPairs = new Set(getReservedOpponentPairsFromOtherShows());
-            const availableFighters = fighters.filter(f => f.retired !== true && !bookedFighterIds.includes(f.id));
-            const fightersByGenderAndDivision = {};
+            const availableFighters = fighters.filter(f =>
+                f.retired !== true &&
+                (f.gender || 'male').toLowerCase() === selectedGender &&
+                !bookedFighterIds.includes(f.id)
+            );
+            const fightersByDivision = {};
             availableFighters.forEach(f => {
-                const gender = (f.gender || 'male').toLowerCase();
                 const div = (f.division || 'Heavyweight').toLowerCase();
-                fightersByGenderAndDivision[gender] = fightersByGenderAndDivision[gender] || {};
-                fightersByGenderAndDivision[gender][div] = fightersByGenderAndDivision[gender][div] || [];
-                fightersByGenderAndDivision[gender][div].push(f);
+                fightersByDivision[div] = fightersByDivision[div] || [];
+                fightersByDivision[div].push(f);
             });
 
-            const validGenderChoices = Object.keys(fightersByGenderAndDivision).filter(gender => {
-                return Object.values(fightersByGenderAndDivision[gender]).some(list => list.length >= 2);
-            });
-            if (validGenderChoices.length === 0) {
+            const matchupChoices = Object.entries(fightersByDivision)
+                .map(([division, divisionFighters]) => ({
+                    division,
+                    pair: pickCompetitiveMatchup(divisionFighters, reservedPairs)
+                }))
+                .filter(choice => choice.pair);
+            if (!matchupChoices.length) {
                 failCount++;
                 return;
             }
 
-            const selectedGender = validGenderChoices[Math.floor(Math.random() * validGenderChoices.length)];
-            const validDivisions = Object.entries(fightersByGenderAndDivision[selectedGender]).filter(([, list]) => list.length >= 2);
-            if (!validDivisions.length) {
-                failCount++;
-                return;
-            }
-
-            const [randomDivision, divisionalFighters] = validDivisions[Math.floor(Math.random() * validDivisions.length)];
-            const allowedPairs = [];
-            for (let i = 0; i < divisionalFighters.length - 1; i++) {
-                for (let j = i + 1; j < divisionalFighters.length; j++) {
-                    const f1 = divisionalFighters[i];
-                    const f2 = divisionalFighters[j];
-                    const key = window.makeOpponentPairKey(f1.id, f2.id);
-                    if (!reservedPairs.has(key)) {
-                        allowedPairs.push([f1, f2]);
-                    }
-                }
-            }
-            if (!allowedPairs.length) {
-                failCount++;
-                return;
-            }
-
-            let chosenPair = null;
-            let pairPool = [...allowedPairs];
-            let pairAttempts = 0;
-            while (!chosenPair && pairPool.length && pairAttempts < 250) {
-                const pickIndex = Math.floor(Math.random() * pairPool.length);
-                const candidate = pairPool.splice(pickIndex, 1)[0];
-                const [f1, f2] = candidate;
-                const historyEntries = getFightHistoryBetween(f1, f2);
-                if (!historyEntries.length) {
-                    chosenPair = candidate;
-                    break;
-                }
-                pairAttempts++;
-            }
-
-            if (!chosenPair) {
-                failCount++;
-                return;
-            }
-
+            const { pair: chosenPair } =
+                matchupChoices[Math.floor(Math.random() * matchupChoices.length)];
             const [fighter1, fighter2] = chosenPair;
             
             // Set the gender for this match based on the chosen fighters
             setMatchRowSelectedGender(matchId, selectedGender);
             
             // Populate both slots
-            const slot1 = document.getElementById(`${matchId}-slot1`);
-            const slot2 = document.getElementById(`${matchId}-slot2`);
-            
-            if (slot1 && slot2) {
+            {
                 resetMatchValidationState(matchId);
                 row.dataset.validationBatch = 'true';
                 // Slot 1
@@ -3395,31 +3485,32 @@ window.randomizeEntireShow = function() {
     }, 'Randomize All');
 };
 
-window.randomizeMatchup = function(matchId) {
-    if (isShowCompleted(activeShowId) || window.hasActiveShowResults()) {
+window.randomizeMatchup = function(matchId, options = {}) {
+    const row = document.getElementById(matchId);
+    if (isShowCompleted(activeShowId) || (!options.automatic && window.hasActiveShowResults()) ||
+        (options.automatic && completedMatches[matchId])) {
         return customAlert('This show has already begun or been finalized. Reset the show or switch cards before randomizing.', 'Randomize Disabled');
     }
-    const row = document.getElementById(matchId);
     const slot1 = document.getElementById(`${matchId}-slot1`);
     const slot2 = document.getElementById(`${matchId}-slot2`);
     
     if (!slot1 || !slot2) return customAlert('Match row not found.', 'Match Error');
 
-    customConfirm('Randomize this match? Current fighters will be replaced.', function(confirmed) {
+    const performRandomization = function(confirmed) {
         if (!confirmed) return;
 
-        // Collect all booked fighter IDs (by explicit id or typed name) and logged/completed matches
+        // Keep fighters booked on other rows unavailable while allowing this row to reroll its own picks.
         let bookedFighterIds = [];
         const reservedPairs = new Set(getReservedOpponentPairsFromOtherShows());
         document.querySelectorAll('.fighter-search-input').forEach(inp => {
+            if (inp.closest('.match-row') === row) return;
             const fighterId = inp.getAttribute('data-fighter-id');
-            if (fighterId) {
-                if (!bookedFighterIds.includes(fighterId)) bookedFighterIds.push(fighterId);
-            } else if (inp.value && inp.value.trim()) {
-                // If user typed a name but didn't select from dropdown, resolve it to an id
-                const typed = inp.value.trim();
-                const found = fighters.find(ff => ff.name === typed);
-                if (found && !bookedFighterIds.includes(found.id)) bookedFighterIds.push(found.id);
+            const typedName = inp.value.trim();
+            const found = fighterId
+                ? fighters.find(fighter => fighter.id === fighterId)
+                : fighters.find(fighter => normalizeLookupKey(fighter.name) === normalizeLookupKey(typedName));
+            if (found && !bookedFighterIds.includes(found.id)) {
+                bookedFighterIds.push(found.id);
             }
         });
         // Also exclude fighters already logged in completed matches for the active show
@@ -3433,71 +3524,31 @@ window.randomizeMatchup = function(matchId) {
             }
         });
         
-        // Filter available fighters: same gender, not booked, have a valid division
-        const availableFighters = fighters.filter(f => 
-            f.retired !== true && !bookedFighterIds.includes(f.id)
+        const selectedGender = (slot1.dataset.gender || 'male').toLowerCase();
+        const availableFighters = fighters.filter(f =>
+            f.retired !== true &&
+            (f.gender || 'male').toLowerCase() === selectedGender &&
+            !bookedFighterIds.includes(f.id)
         );
-        
-        const fightersByGenderAndDivision = {};
+
+        const fightersByDivision = {};
         availableFighters.forEach(f => {
-            const gender = f.gender || 'male';
             const div = (f.division || 'Heavyweight').toLowerCase();
-            fightersByGenderAndDivision[gender] = fightersByGenderAndDivision[gender] || {};
-            fightersByGenderAndDivision[gender][div] = fightersByGenderAndDivision[gender][div] || [];
-            fightersByGenderAndDivision[gender][div].push(f);
+            fightersByDivision[div] = fightersByDivision[div] || [];
+            fightersByDivision[div].push(f);
         });
 
-        const validGenderChoices = Object.keys(fightersByGenderAndDivision).filter(gender => {
-            return Object.values(fightersByGenderAndDivision[gender]).some(list => list.length >= 2);
-        });
-
-        if (validGenderChoices.length === 0) {
-            return customAlert('Not enough available fighters of any gender! You need at least 2 unbooked fighters in the same division.', 'Randomize Matchup');
+        const matchupChoices = Object.entries(fightersByDivision)
+            .map(([division, divisionFighters]) => ({
+                division,
+                pair: pickCompetitiveMatchup(divisionFighters, reservedPairs)
+            }))
+            .filter(choice => choice.pair);
+        if (!matchupChoices.length) {
+            return customAlert(`No fresh matchup is available for the ${selectedGender} gender filter. Check the division, booking, and rematch restrictions.`, 'Randomize Matchup');
         }
-
-        const selectedGender = validGenderChoices[Math.floor(Math.random() * validGenderChoices.length)];
-        const validDivisions = Object.entries(fightersByGenderAndDivision[selectedGender]).filter(([, list]) => list.length >= 2);
-        const randomDivision = validDivisions[Math.floor(Math.random() * validDivisions.length)][0];
-        const divisionalFighters = fightersByGenderAndDivision[selectedGender][randomDivision] || [];
-        const selectedDivision = randomDivision;
-
-        if (!divisionalFighters.length) {
-            return customAlert(`No weight class has 2+ available ${selectedGender} fighters! Add more wrestlers to the roster.`, 'Randomize Matchup');
-        }
-
-        const allowedPairs = [];
-        for (let i = 0; i < divisionalFighters.length - 1; i++) {
-            for (let j = i + 1; j < divisionalFighters.length; j++) {
-                const f1 = divisionalFighters[i];
-                const f2 = divisionalFighters[j];
-                const key = window.makeOpponentPairKey(f1.id, f2.id);
-                if (!reservedPairs.has(key)) {
-                    allowedPairs.push([f1, f2]);
-                }
-            }
-        }
-        if (!allowedPairs.length) {
-            return customAlert(`No weight class has 2+ available ${selectedGender} fighters who are not already paired elsewhere.`, 'Randomize Matchup');
-        }
-
-        let chosenPair = null;
-        let pairPool = [...allowedPairs];
-        let pairAttempts = 0;
-        while (!chosenPair && pairPool.length && pairAttempts < 250) {
-            const pickIndex = Math.floor(Math.random() * pairPool.length);
-            const candidate = pairPool.splice(pickIndex, 1)[0];
-            const [f1, f2] = candidate;
-            const historyEntries = getFightHistoryBetween(f1, f2);
-            if (!historyEntries.length) {
-                chosenPair = candidate;
-                break;
-            }
-            pairAttempts++;
-        }
-
-        if (!chosenPair) {
-            return customAlert('No fresh matchup could be generated from the available fighters. Try a different roster or re-roll.', 'Randomize Matchup');
-        }
+        const { division: selectedDivision, pair: chosenPair } =
+            matchupChoices[Math.floor(Math.random() * matchupChoices.length)];
 
         const [fighter1, fighter2] = chosenPair;
         resetMatchValidationState(matchId);
@@ -3554,8 +3605,16 @@ window.randomizeMatchup = function(matchId) {
         
         // Show confirmation
         const divisionDisplay = selectedDivision.charAt(0).toUpperCase() + selectedDivision.slice(1);
-        customAlert(`🎲 Randomized!\n\n${fighter1.name} vs ${fighter2.name}\n(${divisionDisplay})`, 'Match Randomized');
-    }, 'Randomize Match');
+        if (!options.automatic) {
+            customAlert(`🎲 Randomized!\n\n${fighter1.name} vs ${fighter2.name}\n(${divisionDisplay})`, 'Match Randomized');
+        }
+        return true;
+    };
+
+    if (options.automatic) {
+        return performRandomization(true);
+    }
+    return customConfirm('Randomize this match? Current fighters will be replaced.', performRandomization, 'Randomize Match');
 };
 
 window.suggestOpponent = function(id) {
@@ -5132,54 +5191,6 @@ window.changeMatchGender = function(matchRowId, gender) {
     populateDropdownGenders(matchRowId, gender);
     saveCurrentCardDraft();
 };
-window.resetActiveShowDraft = function() {
-    customConfirm("Are you sure you want to clear this entire card layout?\n\nThis will empty out all selected fighters and wipe logged match results for this specific show, but your Master Roster stats and Championship Lineage will stay completely safe!", function(result) {
-        if (!result) return;
-        const selector = document.getElementById('activeShowSelector');
-        const targetShowId = selector && selector.value ? selector.value : activeShowId;
-        if (targetShowId) {
-            setShowCompleted(targetShowId, false);
-            localStorage.removeItem(`wwe_matches_${targetShowId}`);
-            localStorage.removeItem(`wwe_draft_${targetShowId}`);
-        }
-        localStorage.removeItem('wwe_draft_default');
-
-        document.querySelectorAll('.fighter-search-input').forEach(input => {
-            input.value = '';
-            input.setAttribute('data-fighter-id', '');
-        });
-        document.querySelectorAll('.avatar-box').forEach(av => {
-            av.innerHTML = '👤';
-            av.style.cssText = "width:36px; height:36px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; cursor:pointer; overflow:hidden;";
-        });
-        document.querySelectorAll('.match-row').forEach(row => {
-            const id = row.id;
-            resetMatchValidationState(id);
-            clearMatchWinnerBadges(id);
-            updateWinnerDropdown(id);
-            setMatchRowSelectedGender(id, 'male');
-
-            const titleCheck = document.getElementById(`${id}-title-check`);
-            if (titleCheck) {
-                titleCheck.checked = false;
-                titleCheck.disabled = true;
-            }
-            const titleInput = document.getElementById(`${id}-title-name-input`);
-            if (titleInput) {
-                titleInput.style.display = 'none';
-                titleInput.value = '';
-            }
-        });
-        document.querySelectorAll('.search-results-floating-panel').forEach(panel => panel.style.display = 'none');
-        updateFighterScheduleLocator();
-
-        window.skipDraftSaveOnUnload = true;
-        customAlert("Active card layout has been completely reset back to its clean draft state!", 'Draft Reset', function() {
-            location.reload();
-        });
-    }, 'Reset Draft');
-};
-
 window.downloadAppBackup = function() {
     const backup = {};
     for (let i = 0; i < localStorage.length; i++) {
