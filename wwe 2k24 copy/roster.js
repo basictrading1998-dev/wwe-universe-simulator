@@ -2097,6 +2097,22 @@ function escapeRosterMarkup(value) {
     })[character]);
 }
 
+function getCachedRosterPortrait(fighter) {
+    const cache = window._fighterPhotoCache;
+    if (!cache || !fighter) return '';
+
+    const keys = [
+        fighter.photo_key,
+        fighter.photoKey,
+        fighter.id ? `fighter-photo-${fighter.id}` : ''
+    ];
+    for (const key of keys) {
+        const photo = key ? cache[String(key)] : '';
+        if (typeof photo === 'string' && photo.trim()) return photo;
+    }
+    return '';
+}
+
 function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
     const showRetired = document.getElementById('showRetiredLegends');
@@ -2154,9 +2170,8 @@ function renderRosterGrid() {
         let titleFightsCount = f.total_title_fights || 0;
 
         const fighter = f;
-        const photoKey = fighter.photo_key && String(fighter.photo_key);
         const liveImage = fighter.image || fighter.profile_pic
-            || (photoKey && window._fighterPhotoCache[photoKey])
+            || getCachedRosterPortrait(fighter)
             || fighter.photo;
         const avatarContent = typeof liveImage === 'string' && liveImage.trim()
             ? `<img src="${escapeRosterMarkup(liveImage)}" class="fighter-portrait-circle" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
@@ -2381,9 +2396,8 @@ function renderRosterGridWithoutReload() {
         let titleFightsCount = f.total_title_fights || 0;
 
         const fighter = f;
-        const photoKey = fighter.photo_key && String(fighter.photo_key);
         const liveImage = fighter.image || fighter.profile_pic
-            || (photoKey && window._fighterPhotoCache[photoKey])
+            || getCachedRosterPortrait(fighter)
             || fighter.photo;
         const avatarContent = typeof liveImage === 'string' && liveImage.trim()
             ? `<img src="${escapeRosterMarkup(liveImage)}" class="fighter-portrait-circle" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
