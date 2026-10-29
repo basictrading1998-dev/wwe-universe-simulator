@@ -22,7 +22,7 @@ function loadFightersFromStorage() {
             win_submission: Number(f.win_submission ?? f.sub_wins ?? 0),
             win_streak: Number(f.win_streak || 0),
             retired: f.retired === true,
-            photo: f.photo || '',
+            photo: f.photo || f.image || '',
             photo_key: f.photo_key || '',
             compiled_history_deck: Array.isArray(f.compiled_history_deck) ? f.compiled_history_deck : Array.isArray(f.history_deck) ? f.history_deck : Array.isArray(f.history) ? f.history : [],
             history_deck: Array.isArray(f.history_deck) ? f.history_deck : [],
@@ -304,50 +304,17 @@ function applyStreakPortraitClass(frame, fighter) {
 window.getStreakClass = getStreakClass;
 
 const hydrateFighterPhotos = async function() {
-    await Promise.all(fighters.map(async (fighter) => {
-        if (!fighter || typeof fighter !== 'object' || fighter.photo || !fighter.photo_key) return;
-        if (typeof loadFighterPhotoFromIDB !== 'function') return;
+    const activeFighters = Array.from(document.querySelectorAll('.fighter-search-input'))
+        .map(input => getFighterByIdOrName(input.value.trim()) || getFighterByIdOrName(input.getAttribute('data-fighter-id')))
+        .filter((fighter, index, list) => fighter && list.indexOf(fighter) === index);
+
+    await Promise.all(activeFighters.map(async fighter => {
+        if (fighter.photo || !fighter.photo_key || typeof loadFighterPhotoFromIDB !== 'function') return;
         const storedPhoto = await loadFighterPhotoFromIDB(fighter.photo_key);
-        if (storedPhoto) {
-            fighter.photo = storedPhoto;
-            window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
-            window._fighterPhotoCache[String(fighter.photo_key)] = storedPhoto;
-        }
-    }));
-
-    if (typeof window !== 'undefined' && typeof window.ensureMissingPortraits === 'function') {
-        window.ensureMissingPortraits(fighters);
-    }
-
-    if (typeof window !== 'undefined' && typeof window.forceHydrateAllPhotos === 'function') {
-        window.forceHydrateAllPhotos(fighters);
-    }
-
-    await Promise.all(fighters.map(async (fighter) => {
-        if (!fighter || typeof fighter !== 'object') return;
-        if (fighter.photo && fighter.photo.trim()) return;
-
-        const fighterName = fighter.name || '';
-        const lookupKey = normalizeLookupKey(fighterName);
-        let portraitUrl = '';
-
-        if (!portraitUrl && typeof window !== 'undefined' && typeof window.getWWE2K24Portrait === 'function') {
-            portraitUrl = window.getWWE2K24Portrait(fighterName);
-        }
-        if (!portraitUrl && typeof window !== 'undefined' && window.wwe2k24PortraitMapNormalized) {
-            portraitUrl = window.wwe2k24PortraitMapNormalized[lookupKey] || '';
-        }
-        if (!portraitUrl && typeof window !== 'undefined' && window.wwe2k24PortraitMap) {
-            portraitUrl = window.wwe2k24PortraitMap[normalizeLookupKey(fighterName)] || '';
-        }
-        if (!portraitUrl && typeof window !== 'undefined' && typeof window.buildFallbackPortraitDataUrl === 'function') {
-            portraitUrl = window.buildFallbackPortraitDataUrl(fighterName, fighter.gender || 'male');
-        }
-
-        if (portraitUrl) {
-            fighter.photo = portraitUrl;
-            fighter.photo_key = fighter.photo_key || `wwe2k24-${lookupKey}`;
-        }
+        if (!storedPhoto) return;
+        fighter.photo = storedPhoto;
+        window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
+        window._fighterPhotoCache[String(fighter.photo_key)] = storedPhoto;
     }));
 };
 
@@ -363,7 +330,7 @@ async function hydrateSelectedFighterPortrait(input) {
 
     const photo = getEffectivePhotoFor(fighter);
     avatar.innerHTML = photo
-        ? `<img src="${photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
+        ? `<img src="${photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
         : (fighter.name || 'F').charAt(0);
 }
 
@@ -1002,7 +969,7 @@ function populateVoiceList() {
 
 async function refreshFightCardPortraits() {
     try {
-        refreshFightersFromStorage();
+        refreshFightersFromStorage(true);
         await hydrateFighterPhotos();
         document.querySelectorAll('.fighter-search-input').forEach(input => {
             const slot = input.closest('.fighter-slot');
@@ -1012,13 +979,17 @@ async function refreshFightCardPortraits() {
 
             const slotType = slot.id.endsWith('-slot1') ? 'slot1' : 'slot2';
             const fighterId = input.getAttribute('data-fighter-id');
-            const fighter = fighterId ? fighters.find(f => f.id === fighterId) : getFighterByIdOrName(input.value.trim());
+            const currentName = input.value.trim();
+            const fighter = fighters.find(f =>
+                f.name.trim().toLowerCase() === currentName.toLowerCase()
+            ) || (fighterId ? fighters.find(f => f.id === fighterId) : null);
             const avatar = slot.querySelector('.avatar-box');
             if (!avatar) return;
 
             if (fighter) {
-                const photo = getEffectivePhotoFor(fighter);
-                avatar.innerHTML = photo ? `<img src="${photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : (fighter.name || 'F').charAt(0);
+                const liveImage = typeof fighter.image === 'string' ? fighter.image.trim() : '';
+                const photo = liveImage || getEffectivePhotoFor(fighter);
+                avatar.innerHTML = photo ? `<img src="${photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : (fighter.name || 'F').charAt(0);
                 avatar.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
                 applyStreakPortraitClass(slot.querySelector('.avatar-frame'), fighter);
                 if (fighter.id) input.setAttribute('data-fighter-id', fighter.id);
@@ -1032,6 +1003,12 @@ async function refreshFightCardPortraits() {
     } catch (err) {
         console.warn('Failed to refresh fight-card portraits', err);
     }
+}
+
+async function refreshFightCardView() {
+    refreshFightersFromStorage(true);
+    removeRetiredFightersFromActiveCard();
+    await refreshFightCardPortraits();
 }
 
 function updateFighterScheduleLocator(selectedName) {
@@ -1370,7 +1347,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderCardRows(box, num, id, id.includes('mainEvent'));
     });
     restoreCurrentCardDraft();
-    refreshFightCardPortraits().catch(error => console.warn('Unable to restore fight-card streak portraits.', error));
+    refreshFightCardView().catch(error => console.warn('Unable to restore fight-card portraits.', error));
     buildShowSchedulerHeader();
     buildModalContainer();
     insertCompletedShowNotice();
@@ -1480,26 +1457,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     restoreSessionWarnings();
     window.addEventListener('focus', () => {
-        refreshFightersFromStorage(true);
-        removeRetiredFightersFromActiveCard();
         restoreSessionWarnings();
-        refreshFightCardPortraits().catch(error => console.warn('Unable to refresh fight-card streak portraits on focus.', error));
+        refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits on focus.', error));
     });
     window.addEventListener('storage', event => {
         if (event.key !== 'wwe_fighters') return;
-        refreshFightersFromStorage(true);
-        removeRetiredFightersFromActiveCard();
+        refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits after roster storage changed.', error));
     });
     window.addEventListener('wwe_fighters:changed', () => {
-        refreshFightersFromStorage(true);
-        removeRetiredFightersFromActiveCard();
+        refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits after roster update.', error));
     });
+    const refreshFightCardViewAfterNavigation = reason => {
+        window.requestAnimationFrame(() => {
+            refreshFightCardView().catch(error => console.warn(`Unable to refresh fight-card portraits ${reason}.`, error));
+        });
+    };
     window.addEventListener('pageshow', () => {
-        refreshFightCardPortraits().catch(error => console.warn('Unable to refresh fight-card streak portraits after page restore.', error));
+        refreshFightCardViewAfterNavigation('after page restore');
     });
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
-            refreshFightCardPortraits().catch(error => console.warn('Unable to refresh fight-card streak portraits after tab switch.', error));
+            refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits after tab switch.', error));
+        }
+    });
+    document.addEventListener('click', event => {
+        const link = event.target.closest('.navbar-sidebar-left a[href]');
+        if (!link) return;
+        const targetUrl = new URL(link.href, window.location.href);
+        const targetPath = targetUrl.pathname.toLowerCase().replace(/\/+$/, '');
+        if (targetPath === '' || targetPath.endsWith('/index.html')) {
+            refreshFightCardViewAfterNavigation('during navigation');
         }
     });
     refreshFightersFromStorage(true);
@@ -1849,7 +1836,7 @@ window.triggerSearchFill = function(uId, slotType) {
             const av = slot.querySelector('.avatar-box');
             let avatarContent = '';
             if (f.photo) {
-                avatarContent = `<img src="${f.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                avatarContent = `<img src="${f.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
             } else {
                 avatarContent = f.name.charAt(0);
             }
@@ -2645,7 +2632,7 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
             const av = document.getElementById(`${matchRowId}-${changedSlot}`).querySelector('.avatar-box');
             if (av) {
                 const _eff = getEffectivePhotoFor(pick);
-                av.innerHTML = _eff ? `<img src="${_eff}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : pick.name.charAt(0);
+                av.innerHTML = _eff ? `<img src="${_eff}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : pick.name.charAt(0);
                 av.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
             }
             refreshTitleFightState(matchRowId);
@@ -3443,7 +3430,7 @@ window.randomizeEntireShow = function() {
                 notifyFighterInputChanged(input1);
                 const av1 = slot1.querySelector('.avatar-box');
                 const _eff1 = getEffectivePhotoFor(fighter1);
-                av1.innerHTML = _eff1 ? `<img src="${_eff1}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter1.name.charAt(0);
+                av1.innerHTML = _eff1 ? `<img src="${_eff1}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter1.name.charAt(0);
                 av1.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
                 av1.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter1.id); };
                 updateFighterRecordDisplay(matchId, 'slot1', fighter1);
@@ -3456,7 +3443,7 @@ window.randomizeEntireShow = function() {
                 delete row.dataset.validationBatch;
                 const av2 = slot2.querySelector('.avatar-box');
                 const _eff2 = getEffectivePhotoFor(fighter2);
-                av2.innerHTML = _eff2 ? `<img src="${_eff2}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter2.name.charAt(0);
+                av2.innerHTML = _eff2 ? `<img src="${_eff2}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter2.name.charAt(0);
                 av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
                 av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
                 updateFighterRecordDisplay(matchId, 'slot2', fighter2);
@@ -3562,7 +3549,7 @@ window.randomizeMatchup = function(matchId, options = {}) {
         const av1 = slot1.querySelector('.avatar-box');
         let content1 = '';
         if (fighter1.photo) {
-            content1 = `<img src="${fighter1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
+            content1 = `<img src="${fighter1.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
         } else {
             content1 = fighter1.name.charAt(0);
         }
@@ -3579,7 +3566,7 @@ window.randomizeMatchup = function(matchId, options = {}) {
         const av2 = slot2.querySelector('.avatar-box');
         let content2 = '';
         if (fighter2.photo) {
-            content2 = `<img src="${fighter2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
+            content2 = `<img src="${fighter2.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
         } else {
             content2 = fighter2.name.charAt(0);
         }
@@ -3770,7 +3757,7 @@ window.bookSuggested = function(fId) {
         const av = slot2.querySelector('.avatar-box');
         let avatarContent = '';
         if (f2.photo) {
-            avatarContent = `<img src="${f2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+            avatarContent = `<img src="${f2.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
         } else {
             avatarContent = f2.name.charAt(0);
         }
@@ -4546,7 +4533,7 @@ function restoreLoggedResult(id, state) {
             let avatarContent = '';
             const _eff = getEffectivePhotoFor(fighter) || '';
             if (_eff) {
-                avatarContent = `<img src="${_eff}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                avatarContent = `<img src="${_eff}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
             } else {
                 avatarContent = fighterName.charAt(0);
             }
@@ -5076,7 +5063,7 @@ function restoreCurrentCardDraft() {
             const av1 = s1.querySelector('.avatar-box');
             let avatarContent1 = '';
             if (f1 && f1.photo) {
-                avatarContent1 = `<img src="${f1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                avatarContent1 = `<img src="${f1.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
             } else {
                 avatarContent1 = d.f1Name.charAt(0);
             }
@@ -5099,7 +5086,7 @@ function restoreCurrentCardDraft() {
             const av2 = s2.querySelector('.avatar-box');
             let avatarContent2 = '';
             if (f2 && f2.photo) {
-                avatarContent2 = `<img src="${f2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                avatarContent2 = `<img src="${f2.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
             } else {
                 avatarContent2 = d.f2Name.charAt(0);
             }
