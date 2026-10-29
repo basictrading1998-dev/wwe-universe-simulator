@@ -1967,6 +1967,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     try {
         await loadAndHydrateFighters();
+        await hydrateRosterFighterPhotos();
         auditTitleDefenses();
     } catch (err) {
         console.warn('Photo DB migration/hydration failed', err);
@@ -2075,8 +2076,6 @@ function applyRosterStreakPortraitClass(frame, fighter) {
 
 window.getStreakClass = getStreakClass;
 
-const ROSTER_RENDER_PAGE_SIZE = 50;
-
 function getRosterFightersForCurrentFilters(showRetired) {
     const searchQuery = getRosterSearchQuery();
     const compareSelection = getRosterCompareSelection().map(name => name.toLowerCase());
@@ -2088,62 +2087,11 @@ function getRosterFightersForCurrentFilters(showRetired) {
     });
 }
 
-function observeRosterPortrait(fighter, frame) {
-    if (!fighter || !frame || fighter.photo) return;
-
-    const loadPortrait = async () => {
-        try {
-            const photoKey = fighter.photo_key && String(fighter.photo_key);
-            if (!fighter.photo && photoKey && window._fighterPhotoCache[photoKey]) {
-                fighter.photo = window._fighterPhotoCache[photoKey];
-            }
-            if (!fighter.photo && photoKey) {
-                const storedPhoto = await loadFighterPhotoFromIDB(fighter.photo_key);
-                if (storedPhoto) {
-                    fighter.photo = storedPhoto;
-                    window._fighterPhotoCache[photoKey] = storedPhoto;
-                }
-            }
-            if (!fighter.photo) ensureMissingPortraits([fighter], false);
-            if (!fighter.photo || !frame.isConnected) return;
-            frame.innerHTML = `<img src="${fighter.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${fighter.name}">`;
-        } catch (error) {
-            console.warn(`Unable to load portrait for ${fighter.name}.`, error);
-        }
-    };
-
-    if (!('IntersectionObserver' in window)) {
-        loadPortrait();
-        return;
-    }
-
-    if (!window._rosterPortraitObserver) {
-        const observer = new IntersectionObserver(entries => {
-            entries.forEach(entry => {
-                if (!entry.isIntersecting) return;
-                observer.unobserve(entry.target);
-                loadPortrait();
-            });
-        }, { rootMargin: '200px' });
-        window._rosterPortraitObserver = observer;
-    }
-    window._rosterPortraitObserver.observe(frame);
-}
-
-function renderRosterGrid(visibleLimit = ROSTER_RENDER_PAGE_SIZE) {
+function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
     const showRetired = document.getElementById('showRetiredLegends');
     const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
-
-    if (window._rosterRenderObserver) {
-        window._rosterRenderObserver.disconnect();
-        window._rosterRenderObserver = null;
-    }
-    if (window._rosterPortraitObserver) {
-        window._rosterPortraitObserver.disconnect();
-        window._rosterPortraitObserver = null;
-    }
 
     // Use the already-loaded fighter list so hydrated photo data is preserved.
     refreshFighterNameDatalist();
@@ -2166,12 +2114,7 @@ function renderRosterGrid(visibleLimit = ROSTER_RENDER_PAGE_SIZE) {
         return;
     }
 
-    const selectedFighterId = localStorage.getItem('wwe_selected_fighter');
-    const selectedFighterIndex = selectedFighterId
-        ? rosterToRender.findIndex(fighter => String(fighter.id) === selectedFighterId)
-        : -1;
-    const renderedLimit = Math.max(visibleLimit, selectedFighterIndex + 1);
-    rosterToRender.slice(0, renderedLimit).forEach(f => {
+    rosterToRender.forEach(f => {
         const card = document.createElement('div');
         card.style.cssText = "background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;";
         card.id = `fighter-card-${f.id}`;
@@ -2200,10 +2143,10 @@ function renderRosterGrid(visibleLimit = ROSTER_RENDER_PAGE_SIZE) {
         let totalDefenses = Number(f.lifetime_defenses) || 0;
         let titleFightsCount = f.total_title_fights || 0;
 
-        const effectivePhoto = (typeof f.photo === 'string' && f.photo) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
+        const effectivePhoto = (typeof f.photo === 'string' && f.photo) || (typeof f.image === 'string' && f.image) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
         let avatarContent = '';
         if (effectivePhoto) {
-            avatarContent = `<img src="${effectivePhoto}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
+            avatarContent = `<img src="${effectivePhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
         } else {
             avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
         }
@@ -2252,27 +2195,8 @@ function renderRosterGrid(visibleLimit = ROSTER_RENDER_PAGE_SIZE) {
         }
         if (!f.retired || showRetired?.checked) {
             grid.appendChild(card);
-            observeRosterPortrait(f, card.querySelector('.roster-portrait-frame'));
         }
     });
-
-    if (rosterToRender.length > renderedLimit) {
-        const loadMore = document.createElement('button');
-        loadMore.type = 'button';
-        loadMore.textContent = `Load more superstars (${rosterToRender.length - renderedLimit} remaining)`;
-        loadMore.style.cssText = 'grid-column:1 / -1; justify-self:center; padding:10px 18px; border:1px solid #bae6fd; border-radius:8px; background:#f0f9ff; color:#075985; font-weight:700; cursor:pointer;';
-        loadMore.addEventListener('click', () => renderRosterGrid(renderedLimit + ROSTER_RENDER_PAGE_SIZE));
-        grid.appendChild(loadMore);
-
-        if ('IntersectionObserver' in window) {
-            window._rosterRenderObserver = new IntersectionObserver(entries => {
-                if (entries.some(entry => entry.isIntersecting)) {
-                    renderRosterGrid(renderedLimit + ROSTER_RENDER_PAGE_SIZE);
-                }
-            }, { rootMargin: '300px' });
-            window._rosterRenderObserver.observe(loadMore);
-        }
-    }
 
     // Re-apply any saved roster comparison filter after cards are recreated
     applySavedCompareFilter();
@@ -2445,10 +2369,10 @@ function renderRosterGridWithoutReload() {
         let totalDefenses = Number(f.lifetime_defenses) || 0;
         let titleFightsCount = f.total_title_fights || 0;
 
-        const effectivePhoto = (typeof f.photo === 'string' && f.photo) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
+        const effectivePhoto = (typeof f.photo === 'string' && f.photo) || (typeof f.image === 'string' && f.image) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
         let avatarContent = '';
         if (effectivePhoto) {
-            avatarContent = `<img src="${effectivePhoto}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
+            avatarContent = `<img src="${effectivePhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
         } else {
             avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
         }

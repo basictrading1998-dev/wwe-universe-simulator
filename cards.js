@@ -330,13 +330,14 @@ async function hydrateSelectedFighterPortrait(input) {
 
     const photo = getEffectivePhotoFor(fighter);
     avatar.innerHTML = photo
-        ? `<img src="${photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
+        ? `<img src="${photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
         : (fighter.name || 'F').charAt(0);
 }
 
 function getEffectivePhotoFor(fighter) {
     if (!fighter || typeof fighter !== 'object') return '';
     if (typeof fighter.photo === 'string' && fighter.photo) return fighter.photo;
+    if (typeof fighter.image === 'string' && fighter.image) return fighter.image;
     const mapped = typeof window !== 'undefined' && typeof window.getWWE2K24Portrait === 'function'
         ? window.getWWE2K24Portrait(fighter.name || '')
         : getWWE2K24Portrait(fighter.name || '');
@@ -989,7 +990,7 @@ async function refreshFightCardPortraits() {
             if (fighter) {
                 const liveImage = typeof fighter.image === 'string' ? fighter.image.trim() : '';
                 const photo = liveImage || getEffectivePhotoFor(fighter);
-                avatar.innerHTML = photo ? `<img src="${photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : (fighter.name || 'F').charAt(0);
+                avatar.innerHTML = photo ? `<img src="${photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : (fighter.name || 'F').charAt(0);
                 avatar.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
                 applyStreakPortraitClass(slot.querySelector('.avatar-frame'), fighter);
                 if (fighter.id) input.setAttribute('data-fighter-id', fighter.id);
@@ -1836,7 +1837,7 @@ window.triggerSearchFill = function(uId, slotType) {
             const av = slot.querySelector('.avatar-box');
             let avatarContent = '';
             if (f.photo) {
-                avatarContent = `<img src="${f.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                avatarContent = `<img src="${f.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
             } else {
                 avatarContent = f.name.charAt(0);
             }
@@ -2632,7 +2633,7 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
             const av = document.getElementById(`${matchRowId}-${changedSlot}`).querySelector('.avatar-box');
             if (av) {
                 const _eff = getEffectivePhotoFor(pick);
-                av.innerHTML = _eff ? `<img src="${_eff}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : pick.name.charAt(0);
+                av.innerHTML = _eff ? `<img src="${_eff}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">` : pick.name.charAt(0);
                 av.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
             }
             refreshTitleFightState(matchRowId);
@@ -3430,7 +3431,7 @@ window.randomizeEntireShow = function() {
                 notifyFighterInputChanged(input1);
                 const av1 = slot1.querySelector('.avatar-box');
                 const _eff1 = getEffectivePhotoFor(fighter1);
-                av1.innerHTML = _eff1 ? `<img src="${_eff1}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter1.name.charAt(0);
+                av1.innerHTML = _eff1 ? `<img src="${_eff1}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter1.name.charAt(0);
                 av1.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
                 av1.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter1.id); };
                 updateFighterRecordDisplay(matchId, 'slot1', fighter1);
@@ -3443,7 +3444,7 @@ window.randomizeEntireShow = function() {
                 delete row.dataset.validationBatch;
                 const av2 = slot2.querySelector('.avatar-box');
                 const _eff2 = getEffectivePhotoFor(fighter2);
-                av2.innerHTML = _eff2 ? `<img src="${_eff2}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter2.name.charAt(0);
+                av2.innerHTML = _eff2 ? `<img src="${_eff2}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">` : fighter2.name.charAt(0);
                 av2.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
                 av2.onclick = function(e) { e.stopPropagation(); uploadFighterPhotoFromCard(fighter2.id); };
                 updateFighterRecordDisplay(matchId, 'slot2', fighter2);
@@ -3549,7 +3550,7 @@ window.randomizeMatchup = function(matchId, options = {}) {
         const av1 = slot1.querySelector('.avatar-box');
         let content1 = '';
         if (fighter1.photo) {
-            content1 = `<img src="${fighter1.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
+            content1 = `<img src="${fighter1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
         } else {
             content1 = fighter1.name.charAt(0);
         }
@@ -3566,7 +3567,7 @@ window.randomizeMatchup = function(matchId, options = {}) {
         const av2 = slot2.querySelector('.avatar-box');
         let content2 = '';
         if (fighter2.photo) {
-            content2 = `<img src="${fighter2.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
+            content2 = `<img src="${fighter2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`;
         } else {
             content2 = fighter2.name.charAt(0);
         }
@@ -3757,7 +3758,7 @@ window.bookSuggested = function(fId) {
         const av = slot2.querySelector('.avatar-box');
         let avatarContent = '';
         if (f2.photo) {
-            avatarContent = `<img src="${f2.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+            avatarContent = `<img src="${f2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
         } else {
             avatarContent = f2.name.charAt(0);
         }
@@ -4533,7 +4534,7 @@ function restoreLoggedResult(id, state) {
             let avatarContent = '';
             const _eff = getEffectivePhotoFor(fighter) || '';
             if (_eff) {
-                avatarContent = `<img src="${_eff}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                avatarContent = `<img src="${_eff}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
             } else {
                 avatarContent = fighterName.charAt(0);
             }
@@ -5063,7 +5064,7 @@ function restoreCurrentCardDraft() {
             const av1 = s1.querySelector('.avatar-box');
             let avatarContent1 = '';
             if (f1 && f1.photo) {
-                avatarContent1 = `<img src="${f1.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                avatarContent1 = `<img src="${f1.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
             } else {
                 avatarContent1 = d.f1Name.charAt(0);
             }
@@ -5086,7 +5087,7 @@ function restoreCurrentCardDraft() {
             const av2 = s2.querySelector('.avatar-box');
             let avatarContent2 = '';
             if (f2 && f2.photo) {
-                avatarContent2 = `<img src="${f2.photo}" loading="lazy" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                avatarContent2 = `<img src="${f2.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
             } else {
                 avatarContent2 = d.f2Name.charAt(0);
             }
