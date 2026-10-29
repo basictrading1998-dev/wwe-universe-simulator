@@ -1292,6 +1292,37 @@ async function hydrateRosterFighterPhotos() {
     return loadedAny;
 }
 
+async function loadRosterPortraitsForDisplay() {
+    window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
+    await Promise.all(fighters.map(async fighter => {
+        if (isCustomPhotoValue(fighter.image) || isCustomPhotoValue(fighter.profile_pic) || isCustomPhotoValue(fighter.photo)) return;
+        const normalizedName = normalizeLookupKey(fighter.name);
+        const keys = [
+            fighter.photo_key,
+            fighter.photoKey,
+            fighter.id && `fighter-photo-${fighter.id}`,
+            normalizedName && `fighter-photo-${normalizedName}`,
+            normalizedName && `wwe2k24-${normalizedName}`
+        ].filter((key, index, list) => key && list.indexOf(key) === index);
+
+        for (const key of keys) {
+            const cacheKey = String(key);
+            const cachedPhoto = window._fighterPhotoCache[cacheKey];
+            if (isCustomPhotoValue(cachedPhoto)) {
+                fighter.photo = cachedPhoto;
+                return;
+            }
+
+            const photo = await loadFighterPhotoFromIDB(cacheKey);
+            if (isCustomPhotoValue(photo)) {
+                window._fighterPhotoCache[cacheKey] = photo;
+                fighter.photo = photo;
+                return;
+            }
+        }
+    }));
+}
+
 function recoverPortraitsFromLocalStorage() {
     let restored = 0;
     const candidates = [];
@@ -1444,10 +1475,10 @@ const hardcodedRosterBackup = [];
 
 async function loadAndHydrateFighters() {
     fighters = loadFighters();
+    await loadRosterPortraitsForDisplay();
     if (syncFighterRecordsFromHistory(fighters)) {
         saveFighters(fighters);
     }
-    clearInjectedWWE2K24Portraits(fighters);
     purgeGeneratedPlaceholderPhotos(fighters);
     recoverPortraitsFromLocalStorage();
     return fighters;
@@ -1972,7 +2003,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.warn('Photo DB migration/hydration failed', err);
     }
     ensureFemaleRosterEntries();
-    clearInjectedWWE2K24Portraits(fighters);
     ensureFighterHistoryButtonStyles();
     refreshFighterNameDatalist();
     const showRetiredLegends = document.getElementById('showRetiredLegends');
@@ -2086,16 +2116,6 @@ function getRosterFightersForCurrentFilters(showRetired) {
     });
 }
 
-function escapeRosterMarkup(value) {
-    return String(value).replace(/[&<>"']/g, character => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-    })[character]);
-}
-
 function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
     const showRetired = document.getElementById('showRetiredLegends');
@@ -2152,12 +2172,13 @@ function renderRosterGrid() {
         let totalDefenses = Number(f.lifetime_defenses) || 0;
         let titleFightsCount = f.total_title_fights || 0;
 
-        const fighter = f;
-        const liveImage = fighter.image || fighter.profile_pic || fighter.photo
-            || (fighter.photo_key && window._fighterPhotoCache[String(fighter.photo_key)]);
-        const avatarContent = typeof liveImage === 'string' && liveImage.trim()
-            ? `<img src="${escapeRosterMarkup(liveImage)}" class="fighter-portrait-circle" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
-            : `<div class="initials-circle" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">${escapeRosterMarkup(fighter.name.charAt(0))}</div>`;
+        const effectivePhoto = (typeof f.image === 'string' && f.image) || (typeof f.profile_pic === 'string' && f.profile_pic) || (typeof f.photo === 'string' && f.photo) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
+        let avatarContent = '';
+        if (effectivePhoto) {
+            avatarContent = `<img src="${effectivePhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
+        } else {
+            avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
+        }
 
         card.innerHTML = `
             <div style="position:absolute; left:10px; top:10px; background:#e0f2fe; color:#075985; border:1px solid #bae6fd; border-radius:999px; font-size:0.58rem; font-weight:800; letter-spacing:0.06em; padding:3px 7px; line-height:1.2; box-shadow:0 1px 2px rgba(14,116,144,0.12); text-transform:uppercase;">Fights ${totalFights}</div>
@@ -2377,12 +2398,13 @@ function renderRosterGridWithoutReload() {
         let totalDefenses = Number(f.lifetime_defenses) || 0;
         let titleFightsCount = f.total_title_fights || 0;
 
-        const fighter = f;
-        const liveImage = fighter.image || fighter.profile_pic || fighter.photo
-            || (fighter.photo_key && window._fighterPhotoCache[String(fighter.photo_key)]);
-        const avatarContent = typeof liveImage === 'string' && liveImage.trim()
-            ? `<img src="${escapeRosterMarkup(liveImage)}" class="fighter-portrait-circle" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
-            : `<div class="initials-circle" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">${escapeRosterMarkup(fighter.name.charAt(0))}</div>`;
+        const effectivePhoto = (typeof f.image === 'string' && f.image) || (typeof f.profile_pic === 'string' && f.profile_pic) || (typeof f.photo === 'string' && f.photo) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
+        let avatarContent = '';
+        if (effectivePhoto) {
+            avatarContent = `<img src="${effectivePhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
+        } else {
+            avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
+        }
 
         card.innerHTML = `
             <div style="position:absolute; left:10px; top:10px; background:#e0f2fe; color:#075985; border:1px solid #bae6fd; border-radius:999px; font-size:0.58rem; font-weight:800; letter-spacing:0.06em; padding:3px 7px; line-height:1.2; box-shadow:0 1px 2px rgba(14,116,144,0.12); text-transform:uppercase;">Fights ${totalFights}</div>
