@@ -1294,53 +1294,33 @@ async function hydrateRosterFighterPhotos() {
 
 async function loadRosterPortraitsForDisplay() {
     window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
-    if (!('indexedDB' in window)) return;
-
-    const db = await openFighterPhotoDB();
-    const photosByKey = await new Promise((resolve, reject) => {
-        const tx = db.transaction('photos', 'readonly');
-        const request = tx.objectStore('photos').openCursor();
-        const photos = new Map();
-
-        request.onsuccess = () => {
-            const cursor = request.result;
-            if (!cursor) {
-                resolve(photos);
-                return;
-            }
-
-            const photo = cursor.value;
-            if (typeof photo === 'string' && photo.startsWith('data:image') && !isGeneratedFallbackPortrait(photo)) {
-                photos.set(String(cursor.key).trim().toLowerCase(), photo);
-                window._fighterPhotoCache[String(cursor.key)] = photo;
-            }
-            cursor.continue();
-        };
-        request.onerror = () => reject(request.error || new Error('Failed to scan saved fighter portraits'));
-        tx.onerror = () => reject(tx.error || new Error('Failed to read saved fighter portraits'));
-    });
-
-    fighters.forEach(fighter => {
-        if (isCustomPhotoValue(fighter.photo)) return;
-
+    await Promise.all(fighters.map(async fighter => {
+        if (isCustomPhotoValue(fighter.image) || isCustomPhotoValue(fighter.profile_pic) || isCustomPhotoValue(fighter.photo)) return;
         const normalizedName = normalizeLookupKey(fighter.name);
         const keys = [
             fighter.photo_key,
             fighter.photoKey,
-            fighter.id,
             fighter.id && `fighter-photo-${fighter.id}`,
-            normalizedName,
-            normalizedName && `fighter-photo-${normalizedName}`
-        ].filter(Boolean);
+            normalizedName && `fighter-photo-${normalizedName}`,
+            normalizedName && `wwe2k24-${normalizedName}`
+        ].filter((key, index, list) => key && list.indexOf(key) === index);
 
         for (const key of keys) {
-            const photo = photosByKey.get(String(key).trim().toLowerCase());
-            if (photo) {
+            const cacheKey = String(key);
+            const cachedPhoto = window._fighterPhotoCache[cacheKey];
+            if (isCustomPhotoValue(cachedPhoto)) {
+                fighter.photo = cachedPhoto;
+                return;
+            }
+
+            const photo = await loadFighterPhotoFromIDB(cacheKey);
+            if (isCustomPhotoValue(photo)) {
+                window._fighterPhotoCache[cacheKey] = photo;
                 fighter.photo = photo;
-                break;
+                return;
             }
         }
-    });
+    }));
 }
 
 function recoverPortraitsFromLocalStorage() {
@@ -1495,10 +1475,10 @@ const hardcodedRosterBackup = [];
 
 async function loadAndHydrateFighters() {
     fighters = loadFighters();
+    await loadRosterPortraitsForDisplay();
     if (syncFighterRecordsFromHistory(fighters)) {
         saveFighters(fighters);
     }
-    clearInjectedWWE2K24Portraits(fighters);
     purgeGeneratedPlaceholderPhotos(fighters);
     recoverPortraitsFromLocalStorage();
     return fighters;
@@ -2018,13 +1998,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     try {
         await loadAndHydrateFighters();
-        await loadRosterPortraitsForDisplay();
         auditTitleDefenses();
     } catch (err) {
         console.warn('Photo DB migration/hydration failed', err);
     }
     ensureFemaleRosterEntries();
-    clearInjectedWWE2K24Portraits(fighters);
     ensureFighterHistoryButtonStyles();
     refreshFighterNameDatalist();
     const showRetiredLegends = document.getElementById('showRetiredLegends');
