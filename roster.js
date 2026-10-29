@@ -1980,7 +1980,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (showRetiredLegends) {
         showRetiredLegends.checked = localStorage.getItem('showRetiredLegendsState') === 'true';
     }
-    scheduleRenderRosterGrid();
+    renderRosterGrid();
     setupSidebarFormEngine();
     setupLiveSearchEngine();
     window.addEventListener('beforeunload', () => saveFighters(fighters));
@@ -2087,6 +2087,16 @@ function getRosterFightersForCurrentFilters(showRetired) {
     });
 }
 
+function escapeRosterMarkup(value) {
+    return String(value).replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[character]);
+}
+
 function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
     const showRetired = document.getElementById('showRetiredLegends');
@@ -2143,13 +2153,16 @@ function renderRosterGrid() {
         let totalDefenses = Number(f.lifetime_defenses) || 0;
         let titleFightsCount = f.total_title_fights || 0;
 
-        const effectivePhoto = (typeof f.photo === 'string' && f.photo) || (typeof f.image === 'string' && f.image) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
-        let avatarContent = '';
-        if (effectivePhoto) {
-            avatarContent = `<img src="${effectivePhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
-        } else {
-            avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
-        }
+        const fighter = f;
+        const fighterImgSrc = [
+            fighter.image,
+            fighter.profile_pic,
+            fighter.photo,
+            fighter.photo_key && window._fighterPhotoCache[String(fighter.photo_key)]
+        ].find(source => typeof source === 'string' && source.trim())?.trim() || '';
+        const avatarContent = fighterImgSrc
+            ? `<img src="${escapeRosterMarkup(fighterImgSrc)}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
+            : `<div class="initials-circle" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">${escapeRosterMarkup(fighter.name.charAt(0))}</div>`;
 
         card.innerHTML = `
             <div style="position:absolute; left:10px; top:10px; background:#e0f2fe; color:#075985; border:1px solid #bae6fd; border-radius:999px; font-size:0.58rem; font-weight:800; letter-spacing:0.06em; padding:3px 7px; line-height:1.2; box-shadow:0 1px 2px rgba(14,116,144,0.12); text-transform:uppercase;">Fights ${totalFights}</div>
@@ -2369,13 +2382,16 @@ function renderRosterGridWithoutReload() {
         let totalDefenses = Number(f.lifetime_defenses) || 0;
         let titleFightsCount = f.total_title_fights || 0;
 
-        const effectivePhoto = (typeof f.photo === 'string' && f.photo) || (typeof f.image === 'string' && f.image) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
-        let avatarContent = '';
-        if (effectivePhoto) {
-            avatarContent = `<img src="${effectivePhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
-        } else {
-            avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
-        }
+        const fighter = f;
+        const fighterImgSrc = [
+            fighter.image,
+            fighter.profile_pic,
+            fighter.photo,
+            fighter.photo_key && window._fighterPhotoCache[String(fighter.photo_key)]
+        ].find(source => typeof source === 'string' && source.trim())?.trim() || '';
+        const avatarContent = fighterImgSrc
+            ? `<img src="${escapeRosterMarkup(fighterImgSrc)}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
+            : `<div class="initials-circle" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">${escapeRosterMarkup(fighter.name.charAt(0))}</div>`;
 
         card.innerHTML = `
             <div style="position:absolute; left:10px; top:10px; background:#e0f2fe; color:#075985; border:1px solid #bae6fd; border-radius:999px; font-size:0.58rem; font-weight:800; letter-spacing:0.06em; padding:3px 7px; line-height:1.2; box-shadow:0 1px 2px rgba(14,116,144,0.12); text-transform:uppercase;">Fights ${totalFights}</div>
