@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Universe - Future Fighters</title>
+    <link rel="stylesheet" href="layout.css">
+    <style>
+        body { min-height: 100vh; background: #e0f2fe; color: #1f2937; font-family: sans-serif; margin: 0; }
+        .navbar-sidebar-left .nav-current { background: #ef4444 !important; color: white !important; }
+        main { max-width: 1280px; margin: 32px auto; padding: 0 24px; }
+        .page-heading { margin-bottom: 24px; }
+        .page-heading h2 { margin: 0 0 8px; color: #0c4a6e; text-transform: uppercase; }
+        .page-heading p { color: #475569; margin: 0; }
+        .staging-panel { background: #fff; border: 1px solid #bae6fd; border-radius: 14px; padding: 24px; box-shadow: 0 4px 14px rgba(3,105,161,.08); }
+        .staging-panel h3 { margin: 0 0 18px; color: #0c4a6e; text-transform: uppercase; }
+        .staging-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: end; }
+        .field label { display: block; margin-bottom: 6px; color: #0369a1; font-size: .75rem; font-weight: 800; text-transform: uppercase; }
+        .field input, .field select { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #bae6fd; border-radius: 8px; background: #f8fcff; color: #1f2937; font: inherit; }
+        .photo-picker { display: flex; flex-direction: column; gap: 8px; }
+        .photo-picker input[type="file"] { padding: 8px; }
+        .photo-preview { width: 76px; height: 76px; border: 2px solid #38bdf8; border-radius: 50%; overflow: hidden; background: #f0f9ff; color: #0369a1; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: 900; }
+        .photo-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .add-button, .graduate-button { border: 0; border-radius: 8px; padding: 11px 16px; font-weight: 800; cursor: pointer; }
+        .add-button { background: #0284c7; color: white; }
+        .add-button:hover { background: #0369a1; }
+        .status-message { min-height: 1.25em; margin: 14px 0 0; color: #166534; font-weight: 700; }
+        .status-message.error { color: #b91c1c; }
+        .pool-section { margin-top: 32px; }
+        .pool-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .pool-heading h3 { margin: 0; color: #0c4a6e; text-transform: uppercase; }
+        .pool-count { color: #0369a1; font-size: .85rem; font-weight: 800; }
+        .talent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+        .talent-card { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px; background: #fff; border: 1px solid #bae6fd; border-radius: 12px; box-shadow: 0 2px 8px rgba(15,23,42,.06); text-align: center; }
+        .talent-photo { display: flex; align-items: center; justify-content: center; width: 76px; height: 76px; overflow: hidden; border: 2px solid #38bdf8; border-radius: 50%; background: #f0f9ff; color: #0369a1; font-size: 1.5rem; font-weight: 900; }
+        .talent-photo img { width: 100%; height: 100%; object-fit: cover; }
+        .talent-name { margin: 0; color: #0f172a; font-size: 1rem; font-weight: 900; }
+        .talent-meta { color: #64748b; font-size: .75rem; font-weight: 800; text-transform: uppercase; }
+        .graduate-button { width: 100%; margin-top: 8px; background: #16a34a; color: white; }
+        .graduate-button:hover { background: #15803d; }
+        .empty-state { padding: 32px; border: 1px dashed #7dd3fc; border-radius: 12px; color: #475569; background: rgba(255,255,255,.6); text-align: center; }
+        @media (max-width: 640px) { main { padding: 0 16px; } .staging-panel { padding: 18px; } }
+    </style>
+</head>
+<body>
+    <nav class="navbar-sidebar-left">
+        <h1 class="logo">WWE Universe</h1>
+        <div class="nav-links">
+            <a href="index.html" class="nav-btn">Fight Cards</a>
+            <a href="fighters.html" class="nav-btn">Master Roster</a>
+            <a href="future_fighters.html" class="nav-btn nav-current" aria-current="page">FUTURE FIGHTERS</a>
+            <a href="history.html" class="nav-btn">Event History</a>
+            <a href="fighter-history.html" class="nav-btn">Fighter History</a>
+            <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="charts.html?v=10.16" class="nav-btn">Roster Analytics</a>
+            <a href="match_analyzer.html" class="nav-btn">CHAMPIONSHIP ANALYZER</a>
+        </div>
+    </nav>
+    <main>
+        <header class="page-heading">
+            <h2>Future Fighters</h2>
+            <p>Draft incoming talent separately, then move them to the main roster when they are ready.</p>
+        </header>
+        <section class="staging-panel" aria-labelledby="draftHeading">
+            <h3 id="draftHeading">Draft Upcoming Superstars</h3>
+            <form id="stagedFighterForm" class="staging-form">
+                <div class="field">
+                    <label for="stagedFighterName">Name</label>
+                    <input id="stagedFighterName" name="name" type="text" maxlength="100" required>
+                </div>
+                <div class="field">
+                    <label for="stagedFighterGender">Gender</label>
+                    <select id="stagedFighterGender" name="gender" required>
+                        <option value="male">Male</option>
+                        <option value="female">Female</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="stagedFighterDivision">Weight Class</label>
+                    <select id="stagedFighterDivision" name="division" required>
+                        <option value="Cruiserweight">Cruiserweight</option>
+                        <option value="Light Heavyweight">Light Heavyweight</option>
+                        <option value="Heavyweight">Heavyweight</option>
+                        <option value="Super Heavyweight">Super Heavyweight</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="stagedFighterPhotoFile">Profile Picture</label>
+                    <div class="photo-picker">
+                        <input id="stagedFighterPhotoFile" name="photoFile" type="file" accept="image/*">
+                        <div class="photo-preview" id="stagedFighterPhotoPreview" aria-label="Profile picture preview">?</div>
+                        <span id="stagedFighterPhotoStatus" class="talent-meta" aria-live="polite">Choose a picture to crop it.</span>
+                    </div>
+                </div>
+                <button class="add-button" type="submit">Add to Staging Pool</button>
+            </form>
+            <p id="stagingStatus" class="status-message" role="status" aria-live="polite"></p>
+        </section>
+        <section class="pool-section" aria-labelledby="poolHeading">
+            <div class="pool-heading">
+                <h3 id="poolHeading">Staged Future Talent Pool</h3>
+                <span id="stagedFighterCount" class="pool-count">0 fighters</span>
+            </div>
+            <div id="stagedFighterGrid" class="talent-grid"></div>
+        </section>
+    </main>
+    <script src="future_fighters.js"></script>
+</body>
+</html>

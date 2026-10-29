@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Fights - Fight Cards</title>
+    <style>
+        body { background-color: #e0f2fe; color: #1f2937; font-family: sans-serif; margin: 0; padding-bottom: 64px; }
+        header { background-color: #0369a1; border-bottom: 2px solid #bae6fd; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; }
+        .header-container { max-width: 56rem; margin: 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 16px; }
+        @media (min-width: 768px) { .header-container { flex-direction: row; } }
+        h1 { color: #ffffff; font-size: 1.875rem; font-weight: 800; text-transform: uppercase; margin: 0; }
+        nav { display: flex; flex-wrap: wrap; gap: 8px; }
+        nav a { padding: 8px 16px; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; text-decoration: none; transition: 0.2s; }
+        .nav-inactive { background-color: rgba(7, 89, 133, 0.4); color: #bae6fd; }
+        .nav-inactive:hover { background-color: #075985; color: #ffffff; }
+        .nav-active { background-color: #dc2626; color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .portrait-frame-base {
+            position: relative;
+            display: inline-flex !important;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            justify-content: center !important;
+            align-items: center !important;
+            text-align: center !important;
+            vertical-align: middle;
+            box-sizing: border-box;
+            margin-right: 10px;
+            transition: all 0.3s ease-in-out;
+        }
+        .fighter-portrait-img, .portrait-frame-base > img, .portrait-frame-base > .avatar-box { width: 100% !important; height: 100% !important; object-fit: cover; border-radius: 50%; display: flex; justify-content: center; align-items: center; text-align: center; }
+        .portrait-frame-base > .avatar-box img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+        .portrait-frame-base > .win-badge { position: absolute !important; }
+        .portrait-frame-base + .win-method-label { display: block; width: 100%; }
+        .ufc-winner-border {
+            border: 3px solid #2ecc71 !important;
+            box-shadow: none !important;
+            box-sizing: border-box;
+        }
+        .winner-check-badge {
+            position: absolute !important;
+            right: -2px;
+            bottom: -2px;
+            width: 16px;
+            height: 16px;
+            border: 1px solid #ffffff;
+            border-radius: 50%;
+            background-color: #2ecc71;
+            color: #ffffff;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.65rem;
+            line-height: 1;
+            z-index: 2;
+            box-shadow: none;
+        }
+        /* Stacking streak border on top of existing victory states */
+        .streak-purple { border: 4px solid #8a2be2 !important; box-shadow: 0 0 8px #8a2be2; }
+        .streak-green { border: 4px solid #00ff7f !important; box-shadow: 0 0 12px #00ff7f; }
+        .streak-blue { border: 4px solid #00bfff !important; box-shadow: 0 0 12px #00bfff; }
+        .streak-rainbow-diamond {
+            border: 4px solid transparent !important;
+            background: linear-gradient(45deg, #ff007f, #7f00ff, #00bfff, #00ff7f, #ffea00, #ff007f) border-box;
+            -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: destination-out;
+            mask-composite: exclude;
+            box-shadow: 0 0 18px rgba(0, 191, 255, 0.7);
+            animation: rainbowCamo 4s linear infinite;
+        }
+        .border-tier-1 { box-sizing: border-box; border: 4px solid #8a2be2 !important; box-shadow: 0 0 8px #8a2be2; }
+        .border-tier-2 { box-sizing: border-box; border: 4px solid #00ff7f !important; box-shadow: 0 0 12px #00ff7f; }
+        .border-tier-3 { box-sizing: border-box; border: 4px solid #00bfff !important; box-shadow: 0 0 12px #00bfff; }
+        .border-tier-4 { border: 4px solid transparent !important; box-sizing: border-box; background: linear-gradient(45deg, #ff007f, #7f00ff, #00bfff, #00ff7f, #ffea00, #ff007f) border-box; box-shadow: 0 0 18px rgba(0, 191, 255, 0.7); animation: rainbowCamo 4s linear infinite; }
+        @keyframes rainbowCamo {
+            0% { filter: hue-rotate(0deg); }
+            100% { filter: hue-rotate(360deg); }
+        }
+        main { max-width: 48rem; margin: 32px auto 0 auto; padding: 0 16px; display: flex; flex-direction: column; gap: 32px; }
+        section { background-color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #bae6fd; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .tier-title { font-size: 0.875rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em; margin-top: 0; margin-bottom: 16px; padding-bottom: 6px; border-bottom: 2px solid #f0f9ff; }
+        .title-main-event { color: #dc2626; border-color: #fee2e2; }
+        .title-co-main { color: #ea580c; border-color: #ffedd5; }
+        .title-main-card { color: #0369a1; border-color: #e0f2fe; }
+        .title-prelims { color: #0d9488; border-color: #ccfbf1; }
+        .title-early-prelims { color: #7c3aed; border-color: #f3e8ff; }
+        .match-row { background-color: #f8fafc; border: 1px solid #f1f5f9; border-radius: 12px; padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+        .fighter-slot { display: flex; align-items: center; gap: 12px; }
+        .fighter-schedule-locator { flex: 1 1 240px; min-width: 220px; }
+        .fighter-schedule-locator input { box-sizing: border-box; width: 100%; padding: 7px 9px; border: 1px solid #94a3b8; border-radius: 4px; color: #0f172a; font-weight: 600; }
+        #fighterScheduleResults { min-height: 1em; margin-top: 4px; color: #334155; font-size: 0.75rem; font-weight: 600; }
+    .dropdown-search-container { position: relative; width: 85%; }
+.search-results-floating-panel { position: absolute; top: 100%; left: 0; width: 100%; max-height: 180px; overflow-y: auto; background: white; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 9999; }
+.search-result-item-row { padding: 8px 12px; cursor: pointer; font-size: 0.8rem; color: #1e293b; font-weight: bold; text-align: left; }
+.search-result-item-row:hover { background: #f0f9ff; color: #0284c7; }
+.search-result-item-row.is-already-booked { background: #f1f5f9; color: #94a3b8 !important; cursor: not-allowed; text-decoration: line-through; }
+    .dropdown-card-finalized { color: #00ff7f !important; font-weight: bold; }
+body { position: relative; }
+@media (max-width: 768px) {
+    body { padding-bottom: 80px; }
+    nav { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 16px; }
+    .nav-links { flex-wrap: wrap; justify-content: center; gap: 6px; }
+    main { margin: 16px auto 0 auto; padding: 0 12px; }
+    section { padding: 18px; }
+    .match-row { flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 12px; padding: 14px; }
+    .match-row .fighter-slot { width: 100% !important; flex-direction: row; justify-content: flex-start; }
+    .match-row .fighter-slot .dropdown-search-container { width: 100%; }
+    .fighter-search-input { width: 100% !important; }
+    .vs-badge { width: 100%; flex-direction: row; justify-content: center; gap: 8px; }
+    .controls-area { flex-direction: column; align-items: stretch; gap: 10px; }
+    .controls-area > div { width: 100%; }
+    .controls-area label { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+    .controls-area select, .controls-area button { width: 100% !important; }
+    .search-results-floating-panel { position: relative; box-shadow: none; border: 1px solid #cbd5e1; }
+}
+
+    </style>
+    <link rel="stylesheet" href="layout.css">
+</head>
+<body>
+    <!-- MASTER SYNCED NAV HEADER (CENTER ALIGNED) -->
+    <nav class="navbar-sidebar-left" style="background-color: #0284c7; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-family: sans-serif; position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; left: 0; right: 0;">
+        <h1 class="logo" style="color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px;">WWE Universe</h1>
+        
+        <!-- CENTERED LINKS DECK -->
+        <div class="nav-links" style="display: flex; gap: 16px; justify-content: center; flex: 1; flex-wrap: wrap;">
+            <a href="index.html" style="background: #ef4444; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase; box-shadow: 0 2px 4px rgba(239,68,68,0.2);">Fight Cards</a>
+            <a href="fighters.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Master Roster</a>
+            <a href="future_fighters.html">FUTURE FIGHTERS</a>
+            <a href="history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Event History</a>
+            <a href="fighter-history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fighter History</a>
+            <a href="lineage.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Championship Lineage</a>
+            <a href="charts.html?v=10.16" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Roster Analytics</a>
+            <a href="match_analyzer.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">CHAMPIONSHIP ANALYZER</a>
+        </div>
+
+    </nav>
+
+
+   
+
+    <main>
+
+    <template id="fighterScheduleLocatorTemplate">
+        <div class="fighter-schedule-locator">
+            <input type="text" id="fighterScheduleLocatorInput" list="fighterRosterOptions" placeholder="Locate Scheduled Fighter..." autocomplete="off">
+            <datalist id="fighterRosterOptions"></datalist>
+            <div id="fighterScheduleResults" aria-live="polite"></div>
+        </div>
+    </template>
+        <!-- MASTER EVENT COMPLETION AND ARCHIVE PANEL (moved to top for quick access) -->
+        <section style="background: #0f172a; color: white; padding: 24px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #1e293b; text-align: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); width: 100%; box-sizing: border-box;">
+            <h3 style="margin-top: 0; color: #38bdf8; font-size: 1.15rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">🎬 Complete & Archive Live Show</h3>
+            <p style="margin: 0 0 16px 0; font-size: 0.75rem; color: #94a3b8; font-weight: 600;">Lock down records, process championship defenses, and refresh the card draft below.</p>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 400px; margin: 0 auto; width: 100%;">
+                <button type="button" id="finalizeEventButton" onclick="finalizeFullEventCard()" disabled style="width: 100%; background: #22c55e; border: none; color: white; padding: 12px; border-radius: 8px; font-weight: 800; font-size: 0.9rem; cursor: not-allowed; text-transform: uppercase; box-shadow: 0 4px 6px -1px rgba(34,197,94,0.2); box-sizing: border-box;">🎥 Finalize & Archive Card</button>
+            </div>
+        </section>
+
+        <!-- 1. MAIN EVENT -->
+        <section>
+            <h2 class="tier-title title-main-event">Main Event</h2>
+            <div id="mainEventContainer"></div>
+        </section>
+
+        <!-- 2. CO-MAIN EVENT -->
+        <section>
+            <h2 class="tier-title title-co-main">Co-Main Event</h2>
+            <div id="coMainContainer"></div>
+        </section>
+
+        <!-- 3. MAIN CARD -->
+        <section>
+            <h2 class="tier-title title-main-card">Main Card</h2>
+            <div id="mainCardContainer"></div>
+        </section>
+
+        <!-- 4. PRELIMINARY CARD -->
+        <section>
+            <h2 class="tier-title title-prelims">Preliminary Card</h2>
+            <div id="prelimsContainer"></div>
+        </section>
+
+        <!-- 5. EARLY PRELIMS -->
+        <section>
+            <h2 class="tier-title title-early-prelims">Early Prelims</h2>
+            <div id="earlyPrelimsContainer"></div>
+        </section>
+    </main>
+
+
+    <script src="auth.js"></script>
+    <script src="roster.js"></script>
+    <script src="cards.js"></script>
+    
+</body>
+</html>

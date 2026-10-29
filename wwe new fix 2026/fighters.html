@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Fights - Master Roster</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230369a1'/%3E%3Ctext x='32' y='46' text-anchor='middle' font-size='42' font-family='Arial' font-weight='700' fill='white'%3EW%3C/text%3E%3C/svg%3E">
+    <!-- Built-in styles to guarantee the light blue look without needing external files -->
+    <style>
+        body { background-color: #e0f2fe; color: #1f2937; font-family: sans-serif; margin: 0; padding-bottom: 64px; cursor: default; }
+        button, a { cursor: pointer; }
+        button:disabled { cursor: not-allowed; }
+        header { background-color: #0369a1; border-bottom: 2px solid #bae6fd; padding: 24px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; }
+        .header-container { max-width: 56rem; margin: 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 16px; }
+        @media (min-width: 768px) { .header-container { flex-direction: row; } }
+        h1 { color: #ffffff; font-size: 1.875rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; }
+        nav { display: flex; flex-wrap: wrap; gap: 8px; }
+        nav a { padding: 8px 16px; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; text-decoration: none; transition: 0.2s; }
+        .nav-inactive { background-color: rgba(7, 89, 133, 0.4); color: #bae6fd; }
+        .nav-inactive:hover { background-color: #075985; color: #ffffff; }
+        .nav-active { background-color: #dc2626; color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        main { max-width: 56rem; margin: 32px auto 0 auto; padding: 0 16px; display: grid; grid-template-columns: 1fr; gap: 32px; position: relative; z-index: 1; overflow: visible; }
+        @media (min-width: 768px) { main { grid-template-columns: 1fr 2fr; } }
+        .retired-legend-card {
+            box-shadow: 0 0 15px 5px rgba(255, 215, 0, 0.6), inset 0 0 10px rgba(255, 215, 0, 0.4);
+            border: 2px solid #ffd700 !important;
+            transition: all 0.3s ease-in-out;
+        }
+        .portrait-frame-base { position: relative; display: inline-flex !important; width: 60px; height: 60px; border-radius: 50%; justify-content: center !important; align-items: center !important; text-align: center !important; vertical-align: middle; box-sizing: border-box; margin-right: 10px; transition: all 0.3s ease-in-out; }
+        .fighter-portrait-img, .portrait-frame-base > img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+        .portrait-frame-base > .win-badge { position: absolute !important; }
+        .streak-purple { border: 4px solid #8a2be2 !important; box-shadow: 0 0 8px #8a2be2; }
+        .streak-green { border: 4px solid #00ff7f !important; box-shadow: 0 0 12px #00ff7f; }
+        .streak-blue { border: 4px solid #00bfff !important; box-shadow: 0 0 12px #00bfff; }
+        .streak-rainbow-diamond { border: 4px solid transparent !important; background: linear-gradient(45deg, #ff007f, #7f00ff, #00bfff, #00ff7f, #ffea00, #ff007f) border-box; -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0); -webkit-mask-composite: destination-out; mask-composite: exclude; box-shadow: 0 0 18px rgba(0, 191, 255, 0.7); animation: rainbowCamo 4s linear infinite; }
+        @keyframes rainbowCamo { 0% { filter: hue-rotate(0deg); } 100% { filter: hue-rotate(360deg); } }
+        .border-tier-1 { box-sizing: border-box; border: 4px solid #8a2be2 !important; box-shadow: 0 0 8px #8a2be2; }
+        .border-tier-2 { box-sizing: border-box; border: 4px solid #00ff7f !important; box-shadow: 0 0 12px #00ff7f; }
+        .border-tier-3 { box-sizing: border-box; border: 4px solid #00bfff !important; box-shadow: 0 0 12px #00bfff; }
+        .border-tier-4 { border: 4px solid transparent !important; box-sizing: border-box; background: linear-gradient(45deg, #ff007f, #7f00ff, #00bfff, #00ff7f, #ffea00, #ff007f) border-box; box-shadow: 0 0 18px rgba(0, 191, 255, 0.7); animation: rainbowCamo 4s linear infinite; }
+        #rosterComparePanel, #rosterComparePanel * { position: relative; z-index: 25; }
+        #rosterComparePanel input { cursor: text; }
+        #rosterComparePanel button { cursor: pointer; }
+        .form-section { background-color: #ffffff; padding: 24px; border-radius: 12px; border: 1px solid #bae6fd; box-shadow: 0 1px 3px rgba(0,0,0,0.05); height: max-content; }
+        h2 { font-size: 1.25rem; font-weight: 700; margin-top: 0; margin-bottom: 16px; color: #0c4a6e; border-bottom: 2px solid #f0f9ff; padding-bottom: 8px; }
+        .form-group { margin-bottom: 16px; }
+        label { display: block; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #0369a1; margin-bottom: 4px; }
+        input, select { width: 100%; box-sizing: border-box; background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 10px; font-size: 0.875rem; color: #111827; outline: none; }
+        input:focus, select:focus { border-color: #0284c7; }
+        .submit-btn { width: 100%; background-color: #dc2626; color: #ffffff; font-weight: 700; padding: 10px; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .submit-btn:hover { background-color: #b91c1c; }
+        .roster-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .roster-header h2 { border: none; padding: 0; margin: 0; color: #0c4a6e; }
+        .badge { font-size: 0.875rem; background-color: #bae6fd; padding: 4px 12px; border-radius: 9999px; color: #0c4a6e; font-weight: 600; }
+        .roster-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+        @media (min-width: 640px) { .roster-grid { grid-template-columns: 1fr 1fr; } }
+        .card { background-color: #ffffff; border: 1px solid #bae6fd; border-radius: 12px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; justify-content: space-between; }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .card-title { font-size: 1.125rem; font-weight: 700; color: #0c4a6e; margin: 0; }
+        .card-sub { font-size: 0.75rem; font-weight: 600; color: #0284c7; text-transform: uppercase; margin: 2px 0 0 0; }
+        .delete-btn { background: none; border: none; color: #9ca3af; cursor: pointer; font-size: 0.75rem; transition: 0.2s; }
+        .delete-btn:hover { color: #dc2626; }
+        .record-banner { margin-top: 16px; background-color: #f0f9ff; border: 1px solid #e0f2fe; border-radius: 8px; padding: 8px; text-align: center; }
+        .record-label { display: block; font-size: 0.75rem; color: #0369a1; text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
+        .record-nums { font-size: 1.25rem; font-weight: 900; color: #0c4a6e; }
+        .breakdown-section { margin-top: 12px; padding-top: 12px; border-top: 1px solid #f0f9ff; }
+        .breakdown-title { display: block; font-weight: 700; color: #16a34a; font-size: 0.75rem; margin-bottom: 4px; text-transform: uppercase; }
+        .breakdown-box { background-color: #f9fafb; border: 1px solid #f3f4f6; border-radius: 6px; padding: 6px; }
+        .breakdown-row { display: flex; justify-content: space-between; font-size: 0.75rem; color: #4b5563; padding: 2px 4px; }
+        .breakdown-row:not(:last-child) { border-bottom: 1px dashed #f3f4f6; }
+        .breakdown-val { font-weight: 700; color: #111827; }
+        .finish-stat-value { display: inline-flex !important; justify-content: center !important; align-items: center !important; width: 100%; min-height: 18px; box-sizing: border-box; font-size: 14px !important; font-weight: 800 !important; line-height: 18px; }
+        .empty-text { color: #0369a1; font-style: italic; text-align: center; padding: 32px; background-color: rgba(255,255,255,0.5); border: 1px dashed #bae6fd; border-radius: 12px; grid-column: span 2; margin: 0; }
+        .roster-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)) !important;
+    gap: 16px !important;
+    width: 100% !important;
+}
+body { position: relative; }
+
+    </style>
+    <link rel="stylesheet" href="layout.css">
+</head>
+<body>
+    <!-- MASTER SYNCED NAV HEADER (CENTER ALIGNED) -->
+    <nav class="navbar-sidebar-left" style="background-color: #0284c7; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); font-family: sans-serif; position: sticky; top: 0; z-index: 1000; width: 100%; box-sizing: border-box; left: 0; right: 0;">
+        <h1 class="logo" style="color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; flex: 0 0 200px;">WWE Universe</h1>
+        
+        <!-- CENTERED LINKS DECK -->
+        <div class="nav-links" style="display: flex; gap: 16px; justify-content: center; flex: 1; flex-wrap: wrap;">
+            <a href="index.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fight Cards</a>
+            <a href="fighters.html" style="background: #ef4444; color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase; box-shadow: 0 2px 4px rgba(239,68,68,0.2);">Master Roster</a>
+            <a href="future_fighters.html">FUTURE FIGHTERS</a>
+            <a href="history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Event History</a>
+            <a href="fighter-history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fighter History</a>
+            <a href="lineage.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Championship Lineage</a>
+            <a href="charts.html?v=10.16" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Roster Analytics</a>
+            <a href="match_analyzer.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">CHAMPIONSHIP ANALYZER</a>
+        </div>
+
+        </nav>
+
+
+
+    <main style="max-width: 1400px; margin: 32px auto; padding: 0 24px; display: block; width: 100%;">
+
+<!-- TOGGLE LINK PANEL (HIDDEN SAFELY) -->
+<div style="margin-top: 0px; text-align: center; margin-bottom: 20px; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+    <button type="button" onclick="toggleBulkImporter()" style="background: none; border: none; color: #0284c7; font-weight: bold; font-size: 0.75rem; cursor: pointer; text-decoration: underline;">🛠️ Toggle Bulk Sheet Importer</button>
+    <button type="button" onclick="syncWWE2K24Roster()" style="background: none; border: none; color: #f59e0b; font-weight: bold; font-size: 0.75rem; cursor: pointer; text-decoration: underline;">🎮 Sync WWE 2K24 Roster</button>
+    <button type="button" onclick="restoreLegacyRoster()" style="background: none; border: none; color: #dc2626; font-weight: bold; font-size: 0.75rem; cursor: pointer; text-decoration: underline;">♻️ Restore Legacy Roster</button>
+    <button type="button" onclick="downloadAppBackup()" style="background: none; border: none; color: #0f766e; font-weight: bold; font-size: 0.75rem; cursor: pointer; text-decoration: underline;">⬇️ Download Backup</button>
+    <a href="#" id="btnSaveUniverse" style="background: none; border: none; color: #7c3aed; font-weight: bold; font-size: 0.75rem; cursor: pointer; text-decoration: underline;">💾 Save Entire Universe State</a>
+    <button type="button" onclick="downloadRosterBackup()" style="background: none; border: none; color: #166534; font-weight: bold; font-size: 0.75rem; cursor: pointer; text-decoration: underline;">⬇️ Download Roster JSON</button>
+    <button type="button" onclick="importAppBackup()" style="background: none; border: none; color: #0c4a6e; font-weight: bold; font-size: 0.75rem; cursor: pointer; text-decoration: underline;">⬆️ Import Backup</button>
+    <!-- Clear All Fighter Records (removed) -->
+</div>
+
+        <section class="form-section" style="margin-bottom: 30px; max-width: 600px;">
+            <h2>Add New Fighter</h2>
+            <form id="fighterForm">
+                <div class="form-group">
+                    <label>Fighter Name</label>
+                    <input type="text" id="fighterName" required placeholder="e.g. Roman Reigns" style="width:100%;">
+                </div>
+                <div class="form-group">
+                    <label>Gender (For Win Text Colors)</label>
+                    <select id="fighterGender" style="width:100%;">
+                        <option value="male">Male (Turns Green on Win)</option>
+                        <option value="female">Female (Turns Pink on Win)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Division / Weight Class</label>
+                    <select id="fighterDivision" required style="width:100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; background: white;">
+                        <option value="Cruiser Weight">Cruiser Weight</option>
+                        <option value="Light HeavyWeight">Light HeavyWeight</option>
+                        <option value="HeavyWeight" selected>HeavyWeight</option>
+                        <option value="Super HeavyWeight">Super HeavyWeight</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-top: 8px;">
+                    <button type="button" id="addFighterButton" class="submit-btn">Add to Roster</button>
+                </div>
+            </form>
+        </section>
+
+<div id="bulkImporterWrapper" style="display: none; margin-bottom: 20px;">
+    <section class="form-section" style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #bae6fd; box-shadow: 0 1px 3px rgba(0,0,0,0.05); max-width: 600px;">
+        <h3 style="margin-top:0; color:#0369a1; font-size:1.1rem; font-weight:bold; text-transform:uppercase;">📦 Bulk Sheet Importer</h3>
+        <p style="margin:2px 0 12px 0; font-size:0.7rem; color:#64748b; font-weight:600;">Paste a list of names (one name per line) from your Google Sheet below:</p>
+        <div style="margin-bottom:12px;">
+            <textarea id="bulkNamesInput" rows="6" placeholder="Roman Reigns&#10;Cody Rhodes&#10;Seth Rollins" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-family: sans-serif; font-size: 0.85rem; box-sizing: border-box; resize: vertical; outline: none;"></textarea>
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <div style="flex: 1;">
+                <label style="font-size:0.75rem; font-weight:bold; color:#475569; display:block; margin-bottom:4px;">GENDER</label>
+                <select id="bulkGender" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; background:white;">
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                </select>
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size:0.75rem; font-weight:bold; color:#475569; display:block; margin-bottom:4px;">DIVISION</label>
+                <select id="bulkDivision" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; background:white;">
+                    <option value="Heavyweight">Heavyweight</option>
+                    <option value="Cruiserweight">Cruiserweight</option>
+                    <option value="Midcard">Midcard</option>
+                    <option value="Tag Team">Tag Team</option>
+                </select>
+            </div>
+        </div>
+        <button type="button" onclick="importBulkSuperstars()" style="width: 100%; background: #16a34a; border: none; color: white; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.85rem; text-transform: uppercase;">Import List</button>
+    </section>
+</div>
+
+<!-- MAIN ROSTER GRID (FULL WIDTH) -->
+<section style="width: 100%;">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+        <h2 style="margin: 0; color: #0f172a; font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">Active Roster</h2>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <input type="text" id="rosterSearchInput" onkeyup="filterRosterCards()" placeholder="🔍 Search fighter..." style="padding: 6px 12px; border-radius: 6px; border: 1px solid #bae6fd; font-size: 0.85rem; width: 200px; outline: none;">
+            <span id="rosterCount" style="background: #0369a1; color: white; padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: bold;">0 Fighters</span>
+            <label style="display:flex; align-items:center; gap:6px; color:#075985; font-size:0.72rem; font-weight:800; white-space:nowrap;">
+                <input type="checkbox" id="showRetiredLegends" onchange="toggleRetiredLegends()" style="width:auto;">
+                Show Retired Legends
+            </label>
+        </div>
+    </div>
+    <div id="rosterGrid" class="roster-grid"></div>
+</section>
+
+</main>
+<script src="auth.js"></script>
+<script src="roster.js"></script>
+
+</body>
+</html>

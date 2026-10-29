@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Universe - Championship Analyzer</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { background: #e0f2fe; color: #1f2937; font-family: sans-serif; margin: 0; min-height: 100vh; }
+        nav { background: #0284c7; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; gap: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 1000; }
+        .logo { color: white; font-size: 1.5rem; font-weight: 900; letter-spacing: 0.05em; text-transform: uppercase; margin: 0; white-space: nowrap; }
+        .nav-links { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+        .nav-btn { background: transparent; color: #e0f2fe; padding: 8px 12px; border-radius: 6px; font-size: 0.82rem; font-weight: 700; text-decoration: none; text-transform: uppercase; }
+        .nav-btn:hover { background: rgba(255,255,255,0.12); color: white; }
+        .nav-btn.active { background: #ef4444; color: white; box-shadow: 0 2px 4px rgba(239,68,68,0.2); }
+        main { width: min(1120px, calc(100% - 40px)); margin: 48px auto; }
+        .page-heading { margin-bottom: 24px; }
+        .page-heading h1 { color: #0c4a6e; font-size: clamp(1.8rem, 4vw, 2.5rem); margin: 0 0 10px; text-transform: uppercase; }
+        .page-heading p { color: #475569; line-height: 1.6; margin: 0; max-width: 760px; }
+        .analyzer-panel { background: white; border: 1px solid #bae6fd; border-radius: 16px; padding: clamp(20px, 4vw, 36px); box-shadow: 0 8px 24px rgba(3,105,161,0.1); }
+        .analyzer-panel label { display: block; color: #0369a1; font-size: 0.8rem; font-weight: 800; margin-bottom: 8px; text-transform: uppercase; }
+        .analyzer-panel input { width: 100%; padding: 14px 16px; border: 1px solid #7dd3fc; border-radius: 10px; background: #f0f9ff; color: #111827; font-size: 1rem; }
+        .analyzer-panel input:focus { outline: 3px solid rgba(14,165,233,0.2); border-color: #0284c7; }
+        .title-match-results { display: grid; gap: 12px; margin-top: 24px; }
+        .title-match-result { padding: 16px 18px; border: 1px solid currentColor; border-radius: 10px; background: #f8fafc; font-size: 1rem; line-height: 1.6; overflow-wrap: anywhere; }
+        .title-match-result.won { color: #166534; border-color: #86efac; background: #f0fdf4; }
+        .title-match-result.defended { color: #075985; border-color: #7dd3fc; background: #f0f9ff; }
+        .title-match-result.lost { color: #991b1b; border-color: #fca5a5; background: #fef2f2; }
+        .title-match-result.challenger-fail { color: #475569; border-color: #cbd5e1; }
+        .title-match-empty { color: #475569; font-style: italic; padding: 18px 0; }
+        @media (max-width: 780px) { nav { align-items: flex-start; flex-direction: column; } main { margin-top: 28px; } }
+    </style>
+    <link rel="stylesheet" href="layout.css">
+</head>
+<body>
+    <nav class="navbar-sidebar-left">
+        <h1 class="logo">WWE Universe</h1>
+        <div class="nav-links">
+            <a href="index.html" class="nav-btn">Fight Cards</a>
+            <a href="fighters.html" class="nav-btn">Master Roster</a>
+            <a href="future_fighters.html" class="nav-btn">FUTURE FIGHTERS</a>
+            <a href="history.html" class="nav-btn">Event History</a>
+            <a href="fighter-history.html" class="nav-btn">Fighter History</a>
+            <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="charts.html?v=10.16" class="nav-btn">Roster Analytics</a>
+            <a href="match_analyzer.html" class="nav-btn active">CHAMPIONSHIP ANALYZER</a>
+        </div>
+    </nav>
+    <main>
+        <header class="page-heading">
+            <h1>Championship Match Analyzer</h1>
+            <p>Look up a roster member to review their championship wins, defenses, losses, and title-challenge history.</p>
+        </header>
+        <section class="analyzer-panel" aria-label="Championship match lookup">
+            <label for="fighterTitleMatchLookup">Look up fighter title history</label>
+            <input id="fighterTitleMatchLookup" type="text" list="fighterTitleMatchNames" autocomplete="off" placeholder="Type a roster name...">
+            <datalist id="fighterTitleMatchNames"></datalist>
+            <div id="fighterTitleMatchResults" class="title-match-results" aria-live="polite"></div>
+        </section>
+    </main>
+    <script src="match_analyzer.js?v=10.20"></script>
+</body>
+</html>
