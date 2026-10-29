@@ -1294,30 +1294,53 @@ async function hydrateRosterFighterPhotos() {
 
 async function loadRosterPortraitsForDisplay() {
     window._fighterPhotoCache = window._fighterPhotoCache || Object.create(null);
-    await Promise.all(fighters.map(async fighter => {
+    if (!('indexedDB' in window)) return;
+
+    const db = await openFighterPhotoDB();
+    const photosByKey = await new Promise((resolve, reject) => {
+        const tx = db.transaction('photos', 'readonly');
+        const request = tx.objectStore('photos').openCursor();
+        const photos = new Map();
+
+        request.onsuccess = () => {
+            const cursor = request.result;
+            if (!cursor) {
+                resolve(photos);
+                return;
+            }
+
+            const photo = cursor.value;
+            if (typeof photo === 'string' && photo.startsWith('data:image') && !isGeneratedFallbackPortrait(photo)) {
+                photos.set(String(cursor.key).trim().toLowerCase(), photo);
+                window._fighterPhotoCache[String(cursor.key)] = photo;
+            }
+            cursor.continue();
+        };
+        request.onerror = () => reject(request.error || new Error('Failed to scan saved fighter portraits'));
+        tx.onerror = () => reject(tx.error || new Error('Failed to read saved fighter portraits'));
+    });
+
+    fighters.forEach(fighter => {
         if (isCustomPhotoValue(fighter.photo)) return;
 
+        const normalizedName = normalizeLookupKey(fighter.name);
         const keys = [
             fighter.photo_key,
             fighter.photoKey,
-            fighter.id ? `fighter-photo-${fighter.id}` : ''
-        ].filter((key, index, list) => key && list.indexOf(key) === index);
+            fighter.id,
+            fighter.id && `fighter-photo-${fighter.id}`,
+            normalizedName,
+            normalizedName && `fighter-photo-${normalizedName}`
+        ].filter(Boolean);
 
         for (const key of keys) {
-            const cached = window._fighterPhotoCache[String(key)];
-            if (typeof cached === 'string' && cached) {
-                fighter.photo = cached;
-                return;
-            }
-
-            const photo = await loadFighterPhotoFromIDB(key);
-            if (typeof photo === 'string' && photo) {
-                window._fighterPhotoCache[String(key)] = photo;
+            const photo = photosByKey.get(String(key).trim().toLowerCase());
+            if (photo) {
                 fighter.photo = photo;
-                return;
+                break;
             }
         }
-    }));
+    });
 }
 
 function recoverPortraitsFromLocalStorage() {
