@@ -2172,7 +2172,7 @@ function renderRosterGrid() {
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 6px; font-size: 0.58rem; color: #64748b; gap: 2px;">
-                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${totalStandardWins}</span><span>PIN/OTH</span></div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${totalStandardWins}</span><span>PIN</span></div>
                 <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${koWins}</span><span>KO</span></div>
                 <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${subWins}</span><span>SUB</span></div>
             </div>
@@ -2407,7 +2407,7 @@ function renderRosterGridWithoutReload() {
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 6px; font-size: 0.58rem; color: #64748b; gap: 2px;">
-                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${totalStandardWins}</span><span>PIN/OTH</span></div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${totalStandardWins}</span><span>PIN</span></div>
                 <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${koWins}</span><span>KO</span></div>
                 <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${subWins}</span><span>SUB</span></div>
             </div>

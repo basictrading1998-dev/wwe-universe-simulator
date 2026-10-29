@@ -3684,7 +3684,7 @@ window.suggestOpponent = function(id) {
               <span style="font-size:0.65rem; color:#38bdf8; font-weight:bold; text-transform:uppercase;">${c.division}</span>
               <div style="margin:12px 0 6px 0;"><span style="font-size:1.3rem; font-weight:900; color:#10b981; display:block;">${c.wins} - ${c.losses}</span></div>
               <div style="display:grid; grid-template-columns:1fr 1fr 1fr; width:100%; border-top:1px solid #334155; padding-top:8px; font-size:0.6rem; color:#64748b; gap:4px; text-align:center;">
-                  <div><span style="color:#fff; display:block; font-weight:800; font-size:0.75rem;">${totalStandardWins}</span>PIN/OTH</div>
+                  <div><span style="color:#fff; display:block; font-weight:800; font-size:0.75rem;">${totalStandardWins}</span>PIN</div>
                   <div><span style="color:#fff; display:block; font-weight:800; font-size:0.75rem;">${koWins}</span>KO</div>
                   <div><span style="color:#fff; display:block; font-weight:800; font-size:0.75rem;">${subWins}</span>SUB</div>
               </div>
