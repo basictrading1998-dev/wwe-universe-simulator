@@ -1967,7 +1967,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     try {
         await loadAndHydrateFighters();
-        await hydrateRosterFighterPhotos();
         auditTitleDefenses();
     } catch (err) {
         console.warn('Photo DB migration/hydration failed', err);
@@ -2154,14 +2153,10 @@ function renderRosterGrid() {
         let titleFightsCount = f.total_title_fights || 0;
 
         const fighter = f;
-        const fighterImgSrc = [
-            fighter.image,
-            fighter.profile_pic,
-            fighter.photo,
-            fighter.photo_key && window._fighterPhotoCache[String(fighter.photo_key)]
-        ].find(source => typeof source === 'string' && source.trim())?.trim() || '';
-        const avatarContent = fighterImgSrc
-            ? `<img src="${escapeRosterMarkup(fighterImgSrc)}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
+        const liveImage = fighter.image || fighter.profile_pic || fighter.photo
+            || (fighter.photo_key && window._fighterPhotoCache[String(fighter.photo_key)]);
+        const avatarContent = typeof liveImage === 'string' && liveImage.trim()
+            ? `<img src="${escapeRosterMarkup(liveImage)}" class="fighter-portrait-circle" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
             : `<div class="initials-circle" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">${escapeRosterMarkup(fighter.name.charAt(0))}</div>`;
 
         card.innerHTML = `
@@ -2383,14 +2378,10 @@ function renderRosterGridWithoutReload() {
         let titleFightsCount = f.total_title_fights || 0;
 
         const fighter = f;
-        const fighterImgSrc = [
-            fighter.image,
-            fighter.profile_pic,
-            fighter.photo,
-            fighter.photo_key && window._fighterPhotoCache[String(fighter.photo_key)]
-        ].find(source => typeof source === 'string' && source.trim())?.trim() || '';
-        const avatarContent = fighterImgSrc
-            ? `<img src="${escapeRosterMarkup(fighterImgSrc)}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
+        const liveImage = fighter.image || fighter.profile_pic || fighter.photo
+            || (fighter.photo_key && window._fighterPhotoCache[String(fighter.photo_key)]);
+        const avatarContent = typeof liveImage === 'string' && liveImage.trim()
+            ? `<img src="${escapeRosterMarkup(liveImage)}" class="fighter-portrait-circle" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
             : `<div class="initials-circle" style="width:100%; height:100%; display:flex; align-items:center; justify-content:center;">${escapeRosterMarkup(fighter.name.charAt(0))}</div>`;
 
         card.innerHTML = `
