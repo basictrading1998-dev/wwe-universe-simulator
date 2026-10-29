@@ -3657,6 +3657,10 @@ window.suggestOpponent = function(id) {
             let c = item.fighter; 
             let card = document.createElement('div');
             card.style.cssText = 'background:#1e293b; border:1px solid #334155; border-radius:10px; padding:16px; display:flex; flex-direction:column; align-items:center; position:relative;';
+            const totalWins = Math.max(0, Number(c.wins || 0));
+            const koWins = Math.min(Math.max(0, Number(c.win_ko || 0)), totalWins);
+            const subWins = Math.min(Math.max(0, Number(c.win_submission || 0)), totalWins - koWins);
+            const totalStandardWins = totalWins - koWins - subWins;
             
             let rustBadgeHtml = '';
             if (item.isCurrentOpponent) {
@@ -3680,9 +3684,9 @@ window.suggestOpponent = function(id) {
               <span style="font-size:0.65rem; color:#38bdf8; font-weight:bold; text-transform:uppercase;">${c.division}</span>
               <div style="margin:12px 0 6px 0;"><span style="font-size:1.3rem; font-weight:900; color:#10b981; display:block;">${c.wins} - ${c.losses}</span></div>
               <div style="display:grid; grid-template-columns:1fr 1fr 1fr; width:100%; border-top:1px solid #334155; padding-top:8px; font-size:0.6rem; color:#64748b; gap:4px; text-align:center;">
-                  <div><span style="color:#fff; display:block; font-weight:800; font-size:0.75rem;">${c.win_pinfall||0}</span>PINS</div>
-                  <div><span style="color:#fff; display:block; font-weight:800; font-size:0.75rem;">${c.win_ko||0}</span>KO</div>
-                  <div><span style="color:#fff; display:block; font-weight:800; font-size:0.75rem;">${c.win_submission||0}</span>SUB</div>
+                  <div><span style="color:#fff; display:block; font-weight:800; font-size:0.75rem;">${totalStandardWins}</span>PIN/OTH</div>
+                  <div><span style="color:#fff; display:block; font-weight:800; font-size:0.75rem;">${koWins}</span>KO</div>
+                  <div><span style="color:#fff; display:block; font-weight:800; font-size:0.75rem;">${subWins}</span>SUB</div>
               </div>
               <button onclick="bookSuggested('${c.id}')" style="width:100%; background:#10b981; border:none; color:white; font-weight:bold; padding:8px; border-radius:6px; margin-top:14px; font-size:0.75rem; cursor:pointer;">Book Fight</button>`;
             grid.appendChild(card);
