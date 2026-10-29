@@ -2115,6 +2115,9 @@ function renderRosterGrid() {
         const card = document.createElement('div');
         card.style.cssText = "background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;";
         card.id = `fighter-card-${f.id}`;
+        const pinWins = Number(f.win_pinfall || 0);
+        const koWins = Number(f.win_ko || 0);
+        const subWins = Number(f.win_submission || 0);
         
         let rate = (f.wins + f.losses) === 0 ? 0 : Math.round((f.wins / (f.wins + f.losses)) * 100);
         let totalFights = Number(f.total_fights ?? f.match_count ?? f.matches ?? f.totalMatches ?? ((Number(f.wins) || 0) + (Number(f.losses) || 0)));
@@ -2168,9 +2171,9 @@ function renderRosterGrid() {
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 6px; font-size: 0.58rem; color: #64748b; gap: 2px;">
-                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_pinfall || 0}</span>PINS</div>
-                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_ko || 0}</span>KO</div>
-                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_submission || 0}</span>SUB</div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${pinWins}</span><span>PIN</span></div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${koWins}</span><span>KO</span></div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${subWins}</span><span>SUB</span></div>
             </div>
             <div style="margin-top: 10px; display: flex; gap: 4px; width: 100%;">
                 <button onclick="editSuperstar('${f.id}')" style="flex: 1; background: #f1f5f9; border: none; padding: 4px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #475569; cursor: pointer;">✏️ Edit</button>
@@ -2346,6 +2349,9 @@ function renderRosterGridWithoutReload() {
         const card = document.createElement('div');
         card.style.cssText = "background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;";
         card.id = `fighter-card-${f.id}`;
+        const pinWins = Number(f.win_pinfall || 0);
+        const koWins = Number(f.win_ko || 0);
+        const subWins = Number(f.win_submission || 0);
         
         let rate = (f.wins + f.losses) === 0 ? 0 : Math.round((f.wins / (f.wins + f.losses)) * 100);
         let totalFights = Number(f.total_fights ?? f.match_count ?? f.matches ?? f.totalMatches ?? ((Number(f.wins) || 0) + (Number(f.losses) || 0)));
@@ -2399,9 +2405,9 @@ function renderRosterGridWithoutReload() {
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 6px; font-size: 0.58rem; color: #64748b; gap: 2px;">
-                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_pinfall || 0}</span>PINS</div>
-                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_ko || 0}</span>KO</div>
-                <div><span class="finish-stat-value" style="color: #1e293b;">${f.win_submission || 0}</span>SUB</div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${pinWins}</span><span>PIN</span></div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${koWins}</span><span>KO</span></div>
+                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${subWins}</span><span>SUB</span></div>
             </div>
             <div style="margin-top: 10px; display: flex; gap: 4px; width: 100%;">
                 <button onclick="editSuperstar('${f.id}')" style="flex: 1; background: #f1f5f9; border: none; padding: 4px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #475569; cursor: pointer;">✏️ Edit</button>
