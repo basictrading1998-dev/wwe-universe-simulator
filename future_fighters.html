@@ -63,6 +63,10 @@
         </header>
         <section class="staging-panel" aria-labelledby="draftHeading">
             <h3 id="draftHeading">Draft Upcoming Superstars</h3>
+            <div class="future-gender-counters" style="display: flex; gap: 15px; margin-bottom: 10px;">
+                <span id="futureMaleCount" style="color: #63b3ed; font-weight: bold; background: #2d3748; padding: 5px 10px; border-radius: 4px;">Males: 0</span>
+                <span id="futureFemaleCount" style="color: #f687b3; font-weight: bold; background: #2d3748; padding: 5px 10px; border-radius: 4px;">Females: 0</span>
+            </div>
             <form id="stagedFighterForm" class="staging-form">
                 <div class="field">
                     <label for="stagedFighterName">Name</label>
@@ -99,7 +103,10 @@
         <section class="pool-section" aria-labelledby="poolHeading">
             <div class="pool-heading">
                 <h3 id="poolHeading">Staged Future Talent Pool</h3>
-                <span id="stagedFighterCount" class="pool-count">0 fighters</span>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <button id="organizeStagedFighters" class="add-button" type="button">Organize A–Z</button>
+                    <span id="stagedFighterCount" class="pool-count">0 fighters</span>
+                </div>
             </div>
             <div id="stagedFighterGrid" class="talent-grid"></div>
         </section>

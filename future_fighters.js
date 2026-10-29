@@ -7,6 +7,9 @@
     const form = document.getElementById('stagedFighterForm');
     const grid = document.getElementById('stagedFighterGrid');
     const count = document.getElementById('stagedFighterCount');
+    const organizeButton = document.getElementById('organizeStagedFighters');
+    const maleCount = document.getElementById('futureMaleCount');
+    const femaleCount = document.getElementById('futureFemaleCount');
     const status = document.getElementById('stagingStatus');
     const photoInput = document.getElementById('stagedFighterPhotoFile');
     const photoPreview = document.getElementById('stagedFighterPhotoPreview');
@@ -52,6 +55,15 @@
     function renderStagedFighters() {
         try {
             const stagedFighters = readStagedFighters();
+            let males = 0;
+            let females = 0;
+            stagedFighters.forEach(fighter => {
+                const gender = typeof fighter.gender === 'string' ? fighter.gender.toLowerCase() : '';
+                if (gender === 'male') males++;
+                if (gender === 'female') females++;
+            });
+            maleCount.textContent = `Males: ${males}`;
+            femaleCount.textContent = `Females: ${females}`;
             count.textContent = `${stagedFighters.length} ${stagedFighters.length === 1 ? 'fighter' : 'fighters'}`;
             grid.replaceChildren();
 
@@ -95,6 +107,21 @@
             grid.replaceChildren(makeElement('p', 'empty-state', error.message));
             count.textContent = 'Unavailable';
             showStatus(error.message, true);
+        }
+    }
+
+    function organizeStagedFighters() {
+        try {
+            const stagedFighters = readStagedFighters();
+            stagedFighters.sort((first, second) =>
+                String(first.name || '').localeCompare(String(second.name || ''), undefined, { sensitivity: 'base' })
+            );
+            localStorage.setItem(STAGED_FIGHTERS_KEY, JSON.stringify(stagedFighters));
+            renderStagedFighters();
+            showStatus('Staged fighters organized alphabetically from A to Z.');
+        } catch (error) {
+            console.error('Unable to organize staged fighters.', error);
+            showStatus(error instanceof Error ? error.message : 'Unable to organize staged fighters.', true);
         }
     }
 
@@ -445,5 +472,6 @@
 
     photoInput.addEventListener('change', handleStagedPhotoFile);
     form.addEventListener('submit', addStagedFighter);
+    organizeButton.addEventListener('click', organizeStagedFighters);
     renderStagedFighters();
 })();
