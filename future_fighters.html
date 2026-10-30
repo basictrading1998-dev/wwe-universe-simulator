@@ -24,6 +24,9 @@
         .add-button, .graduate-button { border: 0; border-radius: 8px; padding: 11px 16px; font-weight: 800; cursor: pointer; }
         .add-button { background: #0284c7; color: white; }
         .add-button:hover { background: #0369a1; }
+        .cancel-edit-button, .edit-button { border: 1px solid #0284c7; border-radius: 8px; padding: 10px 16px; background: white; color: #0369a1; font-weight: 800; cursor: pointer; }
+        .cancel-edit-button[hidden] { display: none; }
+        .cancel-edit-button:hover, .edit-button:hover { background: #f0f9ff; }
         .status-message { min-height: 1.25em; margin: 14px 0 0; color: #166534; font-weight: 700; }
         .status-message.error { color: #b91c1c; }
         .pool-section { margin-top: 32px; }
@@ -36,7 +39,8 @@
         .talent-photo img { width: 100%; height: 100%; object-fit: cover; }
         .talent-name { margin: 0; color: #0f172a; font-size: 1rem; font-weight: 900; }
         .talent-meta { color: #64748b; font-size: .75rem; font-weight: 800; text-transform: uppercase; }
-        .graduate-button { width: 100%; margin-top: 8px; background: #16a34a; color: white; }
+        .edit-button, .graduate-button { width: 100%; }
+        .graduate-button { margin-top: 8px; background: #16a34a; color: white; }
         .graduate-button:hover { background: #15803d; }
         .empty-state { padding: 32px; border: 1px dashed #7dd3fc; border-radius: 12px; color: #475569; background: rgba(255,255,255,.6); text-align: center; }
         @media (max-width: 640px) { main { padding: 0 16px; } .staging-panel { padding: 18px; } }
@@ -96,7 +100,10 @@
                         <span id="stagedFighterPhotoStatus" class="talent-meta" aria-live="polite">Choose a picture to crop it.</span>
                     </div>
                 </div>
-                <button class="add-button" type="submit">Add to Staging Pool</button>
+                <div class="form-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button id="saveStagedFighter" class="add-button" type="submit">Add to Staging Pool</button>
+                    <button id="cancelStagedFighterEdit" class="cancel-edit-button" type="button" hidden>Cancel Edit</button>
+                </div>
             </form>
             <p id="stagingStatus" class="status-message" role="status" aria-live="polite"></p>
         </section>

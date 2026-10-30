@@ -11,10 +11,16 @@
     const maleCount = document.getElementById('futureMaleCount');
     const femaleCount = document.getElementById('futureFemaleCount');
     const status = document.getElementById('stagingStatus');
+    const nameInput = document.getElementById('stagedFighterName');
+    const genderSelect = document.getElementById('stagedFighterGender');
+    const divisionSelect = document.getElementById('stagedFighterDivision');
     const photoInput = document.getElementById('stagedFighterPhotoFile');
     const photoPreview = document.getElementById('stagedFighterPhotoPreview');
     const photoStatus = document.getElementById('stagedFighterPhotoStatus');
+    const submitButton = document.getElementById('saveStagedFighter');
+    const cancelEditButton = document.getElementById('cancelStagedFighterEdit');
     let stagedPhoto = '';
+    let editingFighterIndex = null;
 
     function showStatus(message, isError = false) {
         status.textContent = message;
@@ -55,6 +61,7 @@
     function renderStagedFighters() {
         try {
             const stagedFighters = readStagedFighters();
+            organizeButton.disabled = editingFighterIndex !== null;
             let males = 0;
             let females = 0;
             stagedFighters.forEach(fighter => {
@@ -72,7 +79,7 @@
                 return;
             }
 
-            stagedFighters.forEach(fighter => {
+            stagedFighters.forEach((fighter, index) => {
                 const card = makeElement('article', 'talent-card');
                 const photo = makeElement('div', 'talent-photo');
                 const name = String(fighter.name || 'Unnamed Fighter');
@@ -97,10 +104,16 @@
                     makeElement('span', 'talent-meta', `${String(fighter.division || 'Unassigned')} · ${String(fighter.gender || 'Unspecified')}`)
                 );
 
+                const editButton = makeElement('button', 'edit-button', 'Edit Details');
+                editButton.type = 'button';
+                editButton.disabled = editingFighterIndex !== null;
+                editButton.addEventListener('click', () => editStagedFighter(index));
+
                 const graduateButton = makeElement('button', 'graduate-button', '🚀 Move to Main Roster');
                 graduateButton.type = 'button';
+                graduateButton.disabled = editingFighterIndex !== null;
                 graduateButton.addEventListener('click', () => graduateFighter(fighter.id));
-                card.appendChild(graduateButton);
+                card.append(editButton, graduateButton);
                 grid.appendChild(card);
             });
         } catch (error) {
@@ -308,7 +321,7 @@
             photoPreview.appendChild(image);
             photoStatus.textContent = 'Cropped profile picture ready.';
             dialog.remove();
-            showStatus('Cropped photo ready. Add the fighter to save it to staging.');
+            showStatus('Cropped photo ready. Save the fighter to apply it.');
         } catch (error) {
             console.error('Unable to crop staged fighter image.', error);
             showStatus(error instanceof Error ? error.message : 'Unable to crop this image.', true);
@@ -342,6 +355,63 @@
         reader.readAsDataURL(file);
     }
 
+    function showFighterPhotoPreview(photo) {
+        photoPreview.replaceChildren();
+        if (!photo) {
+            photoPreview.textContent = '?';
+            return;
+        }
+        const image = document.createElement('img');
+        image.src = photo;
+        image.alt = 'Profile picture preview';
+        photoPreview.appendChild(image);
+    }
+
+    function editStagedFighter(index) {
+        try {
+            const stagedFighters = readStagedFighters();
+            const fighter = stagedFighters[index];
+            if (!fighter) throw new Error('This staged fighter was not found. Refresh the page and try again.');
+
+            editingFighterIndex = index;
+            stagedPhoto = '';
+            nameInput.value = String(fighter.name || '');
+            genderSelect.value = String(fighter.gender || 'male').toLowerCase();
+            divisionSelect.value = String(fighter.division || 'Cruiserweight');
+            photoInput.value = '';
+            showFighterPhotoPreview(typeof fighter.photo === 'string' ? fighter.photo : '');
+            photoStatus.textContent = fighter.photo ? 'Choose a new picture to replace the current one.' : 'Choose a picture to crop it.';
+            submitButton.textContent = 'Save Fighter Changes';
+            cancelEditButton.hidden = false;
+            organizeButton.disabled = true;
+            renderStagedFighters();
+            showStatus(`Editing ${String(fighter.name || 'fighter')}.`);
+            form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            nameInput.focus();
+        } catch (error) {
+            console.error('Unable to edit staged fighter.', error);
+            showStatus(error instanceof Error ? error.message : 'Unable to edit staged fighter.', true);
+        }
+    }
+
+    function resetStagedFighterForm() {
+        editingFighterIndex = null;
+        stagedPhoto = '';
+        form.reset();
+        photoInput.value = '';
+        showFighterPhotoPreview('');
+        photoStatus.textContent = 'Choose a picture to crop it.';
+        submitButton.textContent = 'Add to Staging Pool';
+        cancelEditButton.hidden = true;
+        organizeButton.disabled = false;
+        renderStagedFighters();
+    }
+
+    function cancelStagedFighterEdit() {
+        resetStagedFighterForm();
+        showStatus('Edit cancelled.');
+    }
+
     function addStagedFighter(event) {
         event.preventDefault();
         const formData = new FormData(form);
@@ -360,22 +430,30 @@
         }
 
         try {
-            const photo = stagedPhoto || '';
             const stagedFighters = readStagedFighters();
+            if (editingFighterIndex !== null) {
+                const fighter = stagedFighters[editingFighterIndex];
+                if (!fighter) throw new Error('This staged fighter was not found. Refresh the page and try again.');
+                fighter.name = name;
+                fighter.gender = gender;
+                fighter.division = division;
+                if (stagedPhoto) fighter.photo = stagedPhoto;
+                localStorage.setItem(STAGED_FIGHTERS_KEY, JSON.stringify(stagedFighters));
+                resetStagedFighterForm();
+                showStatus(`${name} updated in the staging pool.`);
+                return;
+            }
+
             stagedFighters.push({
                 id: makeFighterId(),
                 name,
                 gender,
                 division,
-                photo
+                photo: stagedPhoto || ''
             });
             localStorage.setItem(STAGED_FIGHTERS_KEY, JSON.stringify(stagedFighters));
-            form.reset();
-            stagedPhoto = '';
-            photoPreview.textContent = '?';
-            photoStatus.textContent = 'Choose a picture to crop it.';
+            resetStagedFighterForm();
             showStatus(`${name} added to the staging pool.`);
-            renderStagedFighters();
         } catch (error) {
             console.error('Unable to stage future fighter.', error);
             showStatus(error instanceof Error ? error.message : 'Unable to save staged fighter.', true);
@@ -472,6 +550,7 @@
 
     photoInput.addEventListener('change', handleStagedPhotoFile);
     form.addEventListener('submit', addStagedFighter);
+    cancelEditButton.addEventListener('click', cancelStagedFighterEdit);
     organizeButton.addEventListener('click', organizeStagedFighters);
     renderStagedFighters();
 })();
