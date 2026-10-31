@@ -1,7 +1,9 @@
 (() => {
     'use strict';
 
-    const STAGED_FIGHTERS_KEY = 'wwe_staged_fighters';
+    const STAGED_DATABASE_NAME = 'WWEUniverseFuturePool';
+    const STAGED_STORE_NAME = 'staged_fighters';
+    const LEGACY_STAGED_FIGHTERS_KEY = 'wwe_staged_fighters';
     const ROSTER_KEY = 'wwe_fighters';
     const LEGACY_ROSTER_KEY = 'fighters';
     const form = document.getElementById('stagedFighterForm');
@@ -21,6 +23,8 @@
     const cancelEditButton = document.getElementById('cancelStagedFighterEdit');
     let stagedPhoto = '';
     let editingFighterIndex = null;
+    let stagedDatabasePromise;
+    let stagedMigrationPromise;
 
     function showStatus(message, isError = false) {
         status.textContent = message;
@@ -43,12 +47,137 @@
         return value;
     }
 
-    function readStagedFighters() {
-        const stagedFighters = parseArray(localStorage.getItem(STAGED_FIGHTERS_KEY), STAGED_FIGHTERS_KEY);
+    function openStagedDatabase() {
+        if (stagedDatabasePromise) return stagedDatabasePromise;
+        if (!window.indexedDB) {
+            return Promise.reject(new Error('IndexedDB is unavailable. Future Fighters could not load.'));
+        }
+
+        stagedDatabasePromise = new Promise((resolve, reject) => {
+            const request = window.indexedDB.open(STAGED_DATABASE_NAME, 1);
+            request.onupgradeneeded = () => {
+                if (!request.result.objectStoreNames.contains(STAGED_STORE_NAME)) {
+                    request.result.createObjectStore(STAGED_STORE_NAME, { keyPath: 'name' });
+                }
+            };
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error || new Error('Unable to open the Future Fighters database.'));
+            request.onblocked = () => reject(new Error('The Future Fighters database upgrade is blocked by another open page.'));
+        });
+        stagedDatabasePromise.catch(() => {
+            stagedDatabasePromise = null;
+        });
+        return stagedDatabasePromise;
+    }
+
+    function transactionComplete(transaction) {
+        return new Promise((resolve, reject) => {
+            transaction.oncomplete = () => resolve();
+            transaction.onabort = () => reject(transaction.error || new Error('The Future Fighters database transaction was aborted.'));
+            transaction.onerror = () => reject(transaction.error || new Error('The Future Fighters database transaction failed.'));
+        });
+    }
+
+    function requestResult(request) {
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error || new Error('A Future Fighters database request failed.'));
+        });
+    }
+
+    function validateStagedFighters(stagedFighters) {
         if (stagedFighters.some(fighter => !fighter || typeof fighter !== 'object' || Array.isArray(fighter))) {
             throw new Error('Saved staging pool contains an invalid entry. No changes were made.');
         }
+        const names = new Set();
+        stagedFighters.forEach(fighter => {
+            if (typeof fighter.name !== 'string' || !fighter.name.trim()) {
+                throw new Error('Every staged fighter needs a name to use the Future Fighters database.');
+            }
+            if (names.has(fighter.name)) {
+                throw new Error(`More than one staged fighter is named "${fighter.name}". Names must be unique.`);
+            }
+            names.add(fighter.name);
+        });
         return stagedFighters;
+    }
+
+    async function readStagedFighters() {
+        if (!stagedMigrationPromise) stagedMigrationPromise = migrateLegacyStagedFighters();
+        await stagedMigrationPromise;
+        const database = await openStagedDatabase();
+        const transaction = database.transaction(STAGED_STORE_NAME, 'readonly');
+        const completed = transactionComplete(transaction);
+        const request = requestResult(transaction.objectStore(STAGED_STORE_NAME).getAll());
+        const [stagedFighters] = await Promise.all([request, completed]);
+        return validateStagedFighters(stagedFighters);
+    }
+
+    async function migrateLegacyStagedFighters() {
+        const database = await openStagedDatabase();
+        const countTransaction = database.transaction(STAGED_STORE_NAME, 'readonly');
+        const countCompleted = transactionComplete(countTransaction);
+        const countRequest = requestResult(countTransaction.objectStore(STAGED_STORE_NAME).count());
+        const [existingCount] = await Promise.all([countRequest, countCompleted]);
+        if (existingCount > 0) return;
+
+        const legacyData = localStorage.getItem(LEGACY_STAGED_FIGHTERS_KEY);
+        if (legacyData === null) return;
+        const legacyFighters = validateStagedFighters(parseArray(legacyData, LEGACY_STAGED_FIGHTERS_KEY));
+        const writeTransaction = database.transaction(STAGED_STORE_NAME, 'readwrite');
+        const writeCompleted = transactionComplete(writeTransaction);
+        const store = writeTransaction.objectStore(STAGED_STORE_NAME);
+        legacyFighters.forEach(fighter => store.put(fighter));
+        await writeCompleted;
+        try {
+            localStorage.removeItem(LEGACY_STAGED_FIGHTERS_KEY);
+        } catch (error) {
+            console.error('Future Fighters were migrated, but the old localStorage copy could not be removed.', error);
+            showStatus('Future Fighters were migrated, but the old browser copy could not be removed.', true);
+        }
+    }
+
+    async function saveStagedFighter(fighter, previousName = null) {
+        const database = await openStagedDatabase();
+        const transaction = database.transaction(STAGED_STORE_NAME, 'readwrite');
+        const completed = transactionComplete(transaction);
+        const store = transaction.objectStore(STAGED_STORE_NAME);
+        let duplicateName = false;
+        const request = store.get(fighter.name);
+        request.onsuccess = () => {
+            if (request.result && fighter.name !== previousName) {
+                duplicateName = true;
+                transaction.abort();
+                return;
+            }
+            if (previousName && previousName !== fighter.name) store.delete(previousName);
+            store.put(fighter);
+        };
+        try {
+            await completed;
+        } catch (error) {
+            if (duplicateName) throw new Error(`A staged fighter named "${fighter.name}" already exists.`);
+            throw error;
+        }
+    }
+
+    async function saveAllStagedFighters(stagedFighters) {
+        validateStagedFighters(stagedFighters);
+        const database = await openStagedDatabase();
+        const transaction = database.transaction(STAGED_STORE_NAME, 'readwrite');
+        const completed = transactionComplete(transaction);
+        const store = transaction.objectStore(STAGED_STORE_NAME);
+        store.clear();
+        stagedFighters.forEach(fighter => store.put(fighter));
+        await completed;
+    }
+
+    async function removeStagedFighter(name) {
+        const database = await openStagedDatabase();
+        const transaction = database.transaction(STAGED_STORE_NAME, 'readwrite');
+        const completed = transactionComplete(transaction);
+        transaction.objectStore(STAGED_STORE_NAME).delete(name);
+        await completed;
     }
 
     function makeElement(tag, className, text) {
@@ -58,9 +187,9 @@
         return element;
     }
 
-    function renderStagedFighters() {
+    async function renderStagedFighters() {
         try {
-            const stagedFighters = readStagedFighters();
+            const stagedFighters = await readStagedFighters();
             organizeButton.disabled = editingFighterIndex !== null;
             let males = 0;
             let females = 0;
@@ -123,13 +252,13 @@
         }
     }
 
-    function organizeStagedFighters() {
+    async function organizeStagedFighters() {
         try {
-            const stagedFighters = readStagedFighters();
+            const stagedFighters = await readStagedFighters();
             stagedFighters.sort((first, second) =>
                 String(first.name || '').localeCompare(String(second.name || ''), undefined, { sensitivity: 'base' })
             );
-            localStorage.setItem(STAGED_FIGHTERS_KEY, JSON.stringify(stagedFighters));
+            await saveAllStagedFighters(stagedFighters);
             renderStagedFighters();
             showStatus('Staged fighters organized alphabetically from A to Z.');
         } catch (error) {
@@ -367,9 +496,9 @@
         photoPreview.appendChild(image);
     }
 
-    function editStagedFighter(index) {
+    async function editStagedFighter(index) {
         try {
-            const stagedFighters = readStagedFighters();
+            const stagedFighters = await readStagedFighters();
             const fighter = stagedFighters[index];
             if (!fighter) throw new Error('This staged fighter was not found. Refresh the page and try again.');
 
@@ -412,7 +541,7 @@
         showStatus('Edit cancelled.');
     }
 
-    function addStagedFighter(event) {
+    async function addStagedFighter(event) {
         event.preventDefault();
         const formData = new FormData(form);
         const name = String(formData.get('name') || '').trim();
@@ -430,28 +559,30 @@
         }
 
         try {
-            const stagedFighters = readStagedFighters();
+            const stagedFighters = await readStagedFighters();
             if (editingFighterIndex !== null) {
                 const fighter = stagedFighters[editingFighterIndex];
                 if (!fighter) throw new Error('This staged fighter was not found. Refresh the page and try again.');
-                fighter.name = name;
-                fighter.gender = gender;
-                fighter.division = division;
-                if (stagedPhoto) fighter.photo = stagedPhoto;
-                localStorage.setItem(STAGED_FIGHTERS_KEY, JSON.stringify(stagedFighters));
+                const updatedFighter = {
+                    ...fighter,
+                    name,
+                    gender,
+                    division,
+                    ...(stagedPhoto ? { photo: stagedPhoto } : {})
+                };
+                await saveStagedFighter(updatedFighter, fighter.name);
                 resetStagedFighterForm();
                 showStatus(`${name} updated in the staging pool.`);
                 return;
             }
 
-            stagedFighters.push({
+            await saveStagedFighter({
                 id: makeFighterId(),
                 name,
                 gender,
                 division,
                 photo: stagedPhoto || ''
             });
-            localStorage.setItem(STAGED_FIGHTERS_KEY, JSON.stringify(stagedFighters));
             resetStagedFighterForm();
             showStatus(`${name} added to the staging pool.`);
         } catch (error) {
@@ -468,22 +599,19 @@
         }
     }
 
-    function graduateFighter(fighterId) {
+    async function graduateFighter(fighterId) {
         if (!fighterId) {
             showStatus('This staged fighter has no ID and cannot be moved.', true);
             return;
         }
 
         let previousRosterValue = null;
-        let previousStagedValue = null;
         let rosterWritten = false;
-        let stagedWritten = false;
 
         try {
             previousRosterValue = localStorage.getItem(ROSTER_KEY);
             const previousLegacyValue = localStorage.getItem(LEGACY_ROSTER_KEY);
-            previousStagedValue = localStorage.getItem(STAGED_FIGHTERS_KEY);
-            const stagedFighters = readStagedFighters();
+            const stagedFighters = await readStagedFighters();
             const stagedIndex = stagedFighters.findIndex(fighter => fighter && fighter.id === fighterId);
             if (stagedIndex < 0) {
                 throw new Error('This staged fighter was not found. Refresh the page and try again.');
@@ -529,8 +657,7 @@
             roster.push(graduatedFighter);
             localStorage.setItem(ROSTER_KEY, JSON.stringify(roster));
             rosterWritten = true;
-            localStorage.setItem(STAGED_FIGHTERS_KEY, JSON.stringify(stagedFighters));
-            stagedWritten = true;
+            await removeStagedFighter(stagedFighter.name);
             window.dispatchEvent(new CustomEvent('wwe_fighters:changed', {
                 detail: { source: 'future_fighters.js', count: roster.length }
             }));
@@ -539,7 +666,6 @@
         } catch (error) {
             try {
                 if (rosterWritten) restoreStorageValue(ROSTER_KEY, previousRosterValue);
-                if (stagedWritten) restoreStorageValue(STAGED_FIGHTERS_KEY, previousStagedValue);
             } catch (rollbackError) {
                 console.error('Failed to restore storage after an unsuccessful roster graduation.', rollbackError);
             }
