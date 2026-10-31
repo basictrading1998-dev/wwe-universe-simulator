@@ -85,55 +85,80 @@
         });
     }
 
-    function validateStagedFighters(stagedFighters) {
-        if (stagedFighters.some(fighter => !fighter || typeof fighter !== 'object' || Array.isArray(fighter))) {
-            throw new Error('Saved staging pool contains an invalid entry. No changes were made.');
-        }
-        const names = new Set();
+    function uniqueValidStagedFighters(stagedFighters) {
+        const byName = new Map();
         stagedFighters.forEach(fighter => {
-            if (typeof fighter.name !== 'string' || !fighter.name.trim()) {
-                throw new Error('Every staged fighter needs a name to use the Future Fighters database.');
+            if (!fighter || typeof fighter !== 'object' || Array.isArray(fighter) ||
+                typeof fighter.name !== 'string' || !fighter.name.trim()) {
+                console.warn('Skipping an invalid staged fighter while loading the pool.');
+                return;
             }
-            if (names.has(fighter.name)) {
-                throw new Error(`More than one staged fighter is named "${fighter.name}". Names must be unique.`);
+            if (byName.has(fighter.name)) {
+                console.warn(`Duplicate staged fighter "${fighter.name}" found; keeping the latest entry.`);
             }
-            names.add(fighter.name);
+            byName.set(fighter.name, fighter);
         });
-        return stagedFighters;
+        return Array.from(byName.values());
+    }
+
+    function readLegacyStagedFighters() {
+        try {
+            return uniqueValidStagedFighters(
+                parseArray(localStorage.getItem(LEGACY_STAGED_FIGHTERS_KEY), LEGACY_STAGED_FIGHTERS_KEY)
+            );
+        } catch (error) {
+            console.error('Unable to use the legacy Future Fighters pool.', error);
+            return [];
+        }
     }
 
     async function readStagedFighters() {
-        if (!stagedMigrationPromise) stagedMigrationPromise = migrateLegacyStagedFighters();
-        await stagedMigrationPromise;
-        const database = await openStagedDatabase();
-        const transaction = database.transaction(STAGED_STORE_NAME, 'readonly');
-        const completed = transactionComplete(transaction);
-        const request = requestResult(transaction.objectStore(STAGED_STORE_NAME).getAll());
-        const [stagedFighters] = await Promise.all([request, completed]);
-        return validateStagedFighters(stagedFighters);
+        try {
+            if (!stagedMigrationPromise) stagedMigrationPromise = migrateLegacyStagedFighters();
+            await stagedMigrationPromise;
+            const database = await openStagedDatabase();
+            const transaction = database.transaction(STAGED_STORE_NAME, 'readonly');
+            const completed = transactionComplete(transaction);
+            const request = requestResult(transaction.objectStore(STAGED_STORE_NAME).getAll());
+            const [stagedFighters] = await Promise.all([request, completed]);
+            return uniqueValidStagedFighters([...readLegacyStagedFighters(), ...stagedFighters]);
+        } catch (error) {
+            console.error('Unable to read Future Fighters from IndexedDB; trying the saved browser copy.', error);
+            const legacyFighters = readLegacyStagedFighters();
+            if (legacyFighters.length > 0) {
+                showStatus('IndexedDB could not be read. Showing the saved browser copy.', true);
+                return legacyFighters;
+            }
+            throw error;
+        }
     }
 
     async function migrateLegacyStagedFighters() {
-        const database = await openStagedDatabase();
-        const countTransaction = database.transaction(STAGED_STORE_NAME, 'readonly');
-        const countCompleted = transactionComplete(countTransaction);
-        const countRequest = requestResult(countTransaction.objectStore(STAGED_STORE_NAME).count());
-        const [existingCount] = await Promise.all([countRequest, countCompleted]);
-        if (existingCount > 0) return;
-
-        const legacyData = localStorage.getItem(LEGACY_STAGED_FIGHTERS_KEY);
-        if (legacyData === null) return;
-        const legacyFighters = validateStagedFighters(parseArray(legacyData, LEGACY_STAGED_FIGHTERS_KEY));
-        const writeTransaction = database.transaction(STAGED_STORE_NAME, 'readwrite');
-        const writeCompleted = transactionComplete(writeTransaction);
-        const store = writeTransaction.objectStore(STAGED_STORE_NAME);
-        legacyFighters.forEach(fighter => store.put(fighter));
-        await writeCompleted;
         try {
-            localStorage.removeItem(LEGACY_STAGED_FIGHTERS_KEY);
+            const database = await openStagedDatabase();
+            const legacyData = localStorage.getItem(LEGACY_STAGED_FIGHTERS_KEY);
+            if (legacyData === null) return;
+            const legacyFighters = uniqueValidStagedFighters(parseArray(legacyData, LEGACY_STAGED_FIGHTERS_KEY));
+            const writeTransaction = database.transaction(STAGED_STORE_NAME, 'readwrite');
+            const writeCompleted = transactionComplete(writeTransaction);
+            const store = writeTransaction.objectStore(STAGED_STORE_NAME);
+            const keysRequest = store.getAllKeys();
+            keysRequest.onsuccess = () => {
+                const existingNames = new Set(keysRequest.result);
+                legacyFighters.forEach(fighter => {
+                    if (!existingNames.has(fighter.name)) store.put(fighter);
+                });
+            };
+            await writeCompleted;
+            try {
+                localStorage.removeItem(LEGACY_STAGED_FIGHTERS_KEY);
+            } catch (error) {
+                console.error('Future Fighters were migrated, but the old localStorage copy could not be removed.', error);
+                showStatus('Future Fighters were migrated, but the old browser copy could not be removed.', true);
+            }
         } catch (error) {
-            console.error('Future Fighters were migrated, but the old localStorage copy could not be removed.', error);
-            showStatus('Future Fighters were migrated, but the old browser copy could not be removed.', true);
+            console.error('Unable to migrate the legacy Future Fighters pool; retaining it as a render fallback.', error);
+            showStatus('The saved browser copy could not be migrated. Attempting to display it.', true);
         }
     }
 
@@ -162,13 +187,13 @@
     }
 
     async function saveAllStagedFighters(stagedFighters) {
-        validateStagedFighters(stagedFighters);
+        const validFighters = uniqueValidStagedFighters(stagedFighters);
         const database = await openStagedDatabase();
         const transaction = database.transaction(STAGED_STORE_NAME, 'readwrite');
         const completed = transactionComplete(transaction);
         const store = transaction.objectStore(STAGED_STORE_NAME);
         store.clear();
-        stagedFighters.forEach(fighter => store.put(fighter));
+        validFighters.forEach(fighter => store.put(fighter));
         await completed;
     }
 
