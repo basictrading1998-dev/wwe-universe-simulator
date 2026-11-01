@@ -41,7 +41,9 @@
         .history-slider-deck { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; width: 100%; min-width: 0; flex-wrap: nowrap; }
         .history-slider-deck::-webkit-scrollbar { height: 4px; }
         .history-slider-deck::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-        .history-badge-brick { flex: 0 0 auto; min-width: 140px; border-radius: 6px; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; border-left: 3px solid transparent; background: #1e293b; }
+        .history-badge-brick { position: relative; flex: 0 0 auto; min-width: 140px; border-radius: 6px; padding: 24px 28px 6px 10px; display: flex; flex-direction: column; gap: 2px; box-sizing: border-box; border-left: 3px solid transparent; background: #1e293b; }
+        .delete-history-card { position: absolute; top: 4px; right: 4px; background: rgba(229, 62, 62, 0.2); color: #feb2b2; border: none; border-radius: 50%; width: 20px; height: 20px; font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+        .delete-history-card:hover { background: rgba(229, 62, 62, 0.45); }
         .brick-win { background: rgba(22, 163, 74, 0.08); border: 1px solid rgba(22, 163, 74, 0.15); border-left-color: #16a34a; }
         .brick-loss { background: rgba(220, 38, 38, 0.08); border: 1px solid rgba(220, 38, 38, 0.15); border-left-color: #dc2626; }
         .brick-status-lbl { font-size: 0.55rem; font-weight: 900; color: white; display: inline-block; padding: 1px 4px; border-radius: 3px; max-width: max-content; margin-bottom: 2px; }
@@ -397,9 +399,279 @@
                 rightDeckHtml += '</div>';
 
                 row.innerHTML = leftProfileHtml + rightDeckHtml;
+                row.querySelectorAll('.history-badge-brick').forEach((brick, historyIndex) => {
+                    const deleteButton = document.createElement('button');
+                    deleteButton.type = 'button';
+                    deleteButton.className = 'delete-history-card';
+                    deleteButton.title = 'Delete Match Log';
+                    deleteButton.setAttribute('aria-label', `Delete ${f.name}'s match against ${historyArray[historyIndex].opponent || 'opponent'}`);
+                    deleteButton.textContent = '🗑️';
+                    deleteButton.dataset.fighterId = String(f.id || f.name);
+                    deleteButton.dataset.historyIndex = String(historyIndex);
+                    brick.appendChild(deleteButton);
+                });
                 container.appendChild(row);
             });
         }
+
+        function getFighterHistorySource(fighter) {
+            for (const key of ['compiled_history_deck', 'history_deck', 'history']) {
+                if (Array.isArray(fighter[key])) return { key, entries: fighter[key] };
+            }
+            return { key: 'compiled_history_deck', entries: [] };
+        }
+
+        function sameHistoryMatch(first, second) {
+            const normalize = value => String(value || '').trim().toLowerCase();
+            return normalize(first.showName) === normalize(second.showName) &&
+                normalize(first.method) === normalize(second.method) &&
+                String(first.rematchNumber ?? '') === String(second.rematchNumber ?? '');
+        }
+
+        function normalizeHistoryValue(value) {
+            return String(value || '').trim().toLowerCase();
+        }
+
+        function isMatchingHistoryEntry(entry, reference, outcome, opponentName) {
+            return String(entry?.outcome || '').toLowerCase() === outcome &&
+                normalizeHistoryValue(entry.opponent) === normalizeHistoryValue(opponentName) &&
+                sameHistoryMatch(entry, reference);
+        }
+
+        function removeHistoryOccurrence(fighter, key, reference, outcome, opponentName, occurrence) {
+            if (!Array.isArray(fighter[key])) return false;
+            let matchingIndex = -1;
+            let seen = 0;
+            for (let index = 0; index < fighter[key].length; index++) {
+                if (!isMatchingHistoryEntry(fighter[key][index], reference, outcome, opponentName)) continue;
+                if (seen === occurrence) {
+                    matchingIndex = index;
+                    break;
+                }
+                seen++;
+            }
+            if (matchingIndex < 0) return false;
+            fighter[key].splice(matchingIndex, 1);
+            return true;
+        }
+
+        function findStoredMatchState(match, winnerName, loserName, occurrence) {
+            const keys = [];
+            for (let index = 0; index < localStorage.length; index++) {
+                const key = localStorage.key(index);
+                if (key && key.startsWith('wwe_matches_')) keys.push(key);
+            }
+            const candidates = [];
+            keys.forEach(key => {
+                const stored = JSON.parse(localStorage.getItem(key) || '{}');
+                if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+                    throw new Error(`Saved match data in ${key} has an unexpected format.`);
+                }
+                Object.entries(stored).forEach(([matchId, state]) => {
+                    if (!state || typeof state !== 'object') return;
+                    if (normalizeHistoryValue(state.winnerName) !== normalizeHistoryValue(winnerName) ||
+                        normalizeHistoryValue(state.loserName) !== normalizeHistoryValue(loserName) ||
+                        normalizeHistoryValue(state.showName) !== normalizeHistoryValue(match.showName) ||
+                        normalizeHistoryValue(state.methodName) !== normalizeHistoryValue(match.method)) return;
+                    if (match.rematchNumber !== undefined && String(match.rematchNumber) !== '' &&
+                        String(state.rematchNumber ?? '') !== String(match.rematchNumber ?? '')) return;
+                    candidates.push({ key, matchId, state });
+                });
+            });
+            return candidates[occurrence] || null;
+        }
+
+        function deleteHistoryMatch(fighterId, historyIndex) {
+            if (!confirm('Are you sure you want to permanently delete this match entry from history? This will reverse the win/loss stats for both fighters.')) return;
+
+            try {
+                const fighterIndex = fighters.findIndex(f => String(f.id || f.name) === fighterId);
+                if (fighterIndex < 0) throw new Error('Could not find this fighter in the master roster.');
+                const sourceFighter = fighters[fighterIndex];
+                const sourceHistory = getFighterHistorySource(sourceFighter);
+                const match = sourceHistory.entries[historyIndex];
+                if (!match || !['win', 'loss'].includes(String(match.outcome || '').toLowerCase()) || !match.opponent) {
+                    throw new Error('Could not safely identify this match entry.');
+                }
+
+                const sourceOutcome = String(match.outcome).toLowerCase();
+                const opponentIndex = fighters.findIndex(f =>
+                    normalizeHistoryValue(f.name) === normalizeHistoryValue(match.opponent)
+                );
+                if (opponentIndex < 0 || opponentIndex === fighterIndex) {
+                    throw new Error('Could not find the opponent in the master roster.');
+                }
+                const opponent = fighters[opponentIndex];
+                const mirrorOutcome = sourceOutcome === 'win' ? 'loss' : 'win';
+                const matchingSourcesBefore = sourceHistory.entries
+                    .slice(0, historyIndex)
+                    .filter(entry => isMatchingHistoryEntry(entry, match, sourceOutcome, match.opponent))
+                    .length;
+                const updatedFighters = fighters.slice();
+                const updatedSource = { ...sourceFighter };
+                const updatedOpponent = { ...opponent };
+                const historyKeys = ['compiled_history_deck', 'history_deck', 'history'];
+                historyKeys.forEach(key => {
+                    if (Array.isArray(sourceFighter[key])) updatedSource[key] = sourceFighter[key].slice();
+                    if (Array.isArray(opponent[key])) updatedOpponent[key] = opponent[key].slice();
+                });
+
+                let sourceEntryRemoved = false;
+                let opponentEntryRemoved = false;
+                for (const key of historyKeys) {
+                    if (!removeHistoryOccurrence(updatedSource, key, match, sourceOutcome, match.opponent, matchingSourcesBefore)) continue;
+                    sourceEntryRemoved = true;
+                    if (removeHistoryOccurrence(updatedOpponent, key, match, mirrorOutcome, sourceFighter.name, matchingSourcesBefore)) {
+                        opponentEntryRemoved = true;
+                    }
+                }
+                if (!sourceEntryRemoved) throw new Error('Could not remove the selected entry from the fighter history.');
+                if (!opponentEntryRemoved) {
+                    for (const key of historyKeys) {
+                        if (removeHistoryOccurrence(updatedOpponent, key, match, mirrorOutcome, sourceFighter.name, matchingSourcesBefore)) {
+                            opponentEntryRemoved = true;
+                            break;
+                        }
+                    }
+                }
+                if (!opponentEntryRemoved) throw new Error('Could not find the matching entry in the opponent’s history.');
+
+                const winner = sourceOutcome === 'win' ? updatedSource : updatedOpponent;
+                const loser = sourceOutcome === 'loss' ? updatedSource : updatedOpponent;
+                winner.wins = Math.max(0, Number(winner.wins || 0) - 1);
+                loser.losses = Math.max(0, Number(loser.losses || 0) - 1);
+                const method = String(match.method || '').toLowerCase();
+                const methodStat = method.includes('pinfall') ? 'win_pinfall'
+                    : method.includes('submission') ? 'win_submission'
+                    : method.includes('ko') || method.includes('tko') ? 'win_ko'
+                    : null;
+                if (methodStat) winner[methodStat] = Math.max(0, Number(winner[methodStat] || 0) - 1);
+
+                const winnerHistory = getFighterHistorySource(winner).entries;
+                let streak = 0;
+                for (let index = winnerHistory.length - 1; index >= 0; index--) {
+                    if (String(winnerHistory[index].outcome || '').toLowerCase() !== 'win') break;
+                    streak++;
+                }
+                winner.win_streak = streak;
+
+                const winnerName = winner.name;
+                const loserName = loser.name;
+                const eventHistory = JSON.parse(localStorage.getItem('wwe_event_history') || '[]');
+                if (!Array.isArray(eventHistory)) throw new Error('Archived match history has an unexpected format.');
+                const archivedMatches = [];
+                eventHistory.forEach((event, eventIndex) => {
+                    if (!Array.isArray(event?.matches)) return;
+                    event.matches.forEach((archivedMatch, matchIndex) => {
+                        if (normalizeHistoryValue(event.showTitle || event.name) !== normalizeHistoryValue(match.showName) ||
+                            normalizeHistoryValue(archivedMatch.winner || archivedMatch.winnerName) !== normalizeHistoryValue(winnerName) ||
+                            normalizeHistoryValue(archivedMatch.loser || archivedMatch.loserName) !== normalizeHistoryValue(loserName) ||
+                            normalizeHistoryValue(archivedMatch.method || archivedMatch.methodName) !== normalizeHistoryValue(match.method)) return;
+                        if (match.rematchNumber !== undefined && String(match.rematchNumber) !== '' &&
+                            String(archivedMatch.rematchNumber ?? '') !== String(match.rematchNumber ?? '')) return;
+                        archivedMatches.push({ eventIndex, matchIndex, match: archivedMatch, showId: event.showId || '' });
+                    });
+                });
+                const archivedRecord = archivedMatches[matchingSourcesBefore] || null;
+                let storedMatch;
+                if (archivedRecord?.showId && archivedRecord.match.matchId) {
+                    const key = `wwe_matches_${archivedRecord.showId}`;
+                    const savedMatches = JSON.parse(localStorage.getItem(key) || '{}');
+                    storedMatch = { key, matchId: archivedRecord.match.matchId, state: savedMatches[archivedRecord.match.matchId] || null };
+                } else {
+                    storedMatch = findStoredMatchState(match, winnerName, loserName, matchingSourcesBefore);
+                }
+                const matchMetadata = {
+                    ...(storedMatch?.state || {}),
+                    ...(archivedRecord?.match || {}),
+                    isTitle: archivedRecord?.match.isTitle === true || storedMatch?.state?.isTitle === true,
+                    titleRetained: archivedRecord?.match.titleRetained === true || storedMatch?.state?.titleRetained === true,
+                    lifetimeDefenseCounted: archivedRecord?.match.lifetimeDefenseCounted === true || storedMatch?.state?.lifetimeDefenseCounted === true,
+                    titleId: archivedRecord?.match.titleId || storedMatch?.state?.titleId || ''
+                };
+
+                const updatedEvents = eventHistory.map(event => ({ ...event }));
+                if (archivedRecord) {
+                    updatedEvents[archivedRecord.eventIndex] = {
+                        ...updatedEvents[archivedRecord.eventIndex],
+                        matches: updatedEvents[archivedRecord.eventIndex].matches.slice()
+                    };
+                    updatedEvents[archivedRecord.eventIndex].matches.splice(archivedRecord.matchIndex, 1);
+                }
+
+                const storageUpdates = new Map([
+                    ['wwe_fighters', JSON.stringify(updatedFighters)]
+                ]);
+                if (archivedRecord) storageUpdates.set('wwe_event_history', JSON.stringify(updatedEvents));
+                if (storedMatch) {
+                    const savedMatches = JSON.parse(localStorage.getItem(storedMatch.key) || '{}');
+                    if (!savedMatches || typeof savedMatches !== 'object' || Array.isArray(savedMatches)) {
+                        throw new Error(`Saved match data in ${storedMatch.key} has an unexpected format.`);
+                    }
+                    delete savedMatches[storedMatch.matchId];
+                    storageUpdates.set(storedMatch.key, JSON.stringify(savedMatches));
+                }
+
+                if (matchMetadata?.isTitle === true && matchMetadata.titleRetained === true &&
+                    matchMetadata.lifetimeDefenseCounted === true) {
+                    winner.lifetime_defenses = Math.max(0, Number(winner.lifetime_defenses || 0) - 1);
+                    winner.defenses = Math.max(0, Number(winner.defenses || 0) - 1);
+                    storageUpdates.set('wwe_fighters', JSON.stringify(updatedFighters));
+                    const titleId = matchMetadata.titleId;
+                    if (titleId) {
+                        const titles = JSON.parse(localStorage.getItem('wwe_titles') || '[]');
+                        if (!Array.isArray(titles)) throw new Error('Championship data has an unexpected format.');
+                        const title = titles.find(item => item.id === titleId);
+                        if (title) {
+                            title.defenses = Math.max(0, Number(title.defenses || 0) - 1);
+                            storageUpdates.set('wwe_titles', JSON.stringify(titles));
+                        }
+                    }
+                }
+
+                updatedFighters[fighterIndex] = updatedSource;
+                updatedFighters[opponentIndex] = updatedOpponent;
+                storageUpdates.set('wwe_fighters', JSON.stringify(updatedFighters));
+                const previousValues = new Map();
+                storageUpdates.forEach((value, key) => previousValues.set(key, localStorage.getItem(key)));
+                const writtenKeys = [];
+                try {
+                    storageUpdates.forEach((value, key) => {
+                        localStorage.setItem(key, value);
+                        writtenKeys.push(key);
+                    });
+                } catch (error) {
+                    writtenKeys.reverse().forEach(key => {
+                        const previous = previousValues.get(key);
+                        try {
+                            if (previous === null) localStorage.removeItem(key);
+                            else localStorage.setItem(key, previous);
+                        } catch (rollbackError) {
+                            console.error(`Unable to restore ${key} after a failed history deletion.`, rollbackError);
+                        }
+                    });
+                    throw error;
+                }
+
+                fighters = updatedFighters;
+                historyFighters = fighters.map(f => normalizeHistoryFighterRecord(f));
+                renderWidescreenHistoryMatrix();
+                const savedA = localStorage.getItem('wwe_history_compare_fighter_a') || '';
+                const savedB = localStorage.getItem('wwe_history_compare_fighter_b') || '';
+                const savedSearch = document.getElementById('historyFilterBox')?.value || '';
+                if (savedA && savedB) applySavedHistoryCompareFilter();
+                else if (savedSearch) liveFilterHistoryRows();
+            } catch (error) {
+                console.error('Unable to save the deleted match history entry.', error);
+                alert(`${error.message || 'The match could not be deleted.'} No changes were kept.`);
+            }
+        }
+
+        document.getElementById('historyMasterLogContainer').addEventListener('click', event => {
+            const button = event.target.closest('.delete-history-card');
+            if (!button) return;
+            deleteHistoryMatch(button.dataset.fighterId, Number(button.dataset.historyIndex));
+        });
 
         window.liveFilterHistoryRows = function() {
             const queryEl = document.getElementById('historyFilterBox');
