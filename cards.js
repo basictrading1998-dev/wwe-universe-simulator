@@ -1457,7 +1457,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!window.skipDraftSaveOnUnload) saveCurrentCardDraft(event);
     });
     restoreSessionWarnings();
+    const hasUnsubmittedMatchLoggingState = () => Array.from(document.querySelectorAll('.match-row')).some(matchRow => {
+        if (completedMatches[matchRow.id]) return false;
+        if (document.activeElement && matchRow.contains(document.activeElement)) return true;
+        if (matchRow.dataset.rematchPending === 'true') return true;
+        const logButton = document.getElementById(`${matchRow.id}-log-btn`);
+        if (!logButton) return false;
+        const slot1 = document.getElementById(`${matchRow.id}-slot1`)?.querySelector('.fighter-search-input');
+        const slot2 = document.getElementById(`${matchRow.id}-slot2`)?.querySelector('.fighter-search-input');
+        const winner = document.getElementById(`${matchRow.id}-winner-select`);
+        const method = document.getElementById(`${matchRow.id}-method-select`);
+        return !!(slot1?.value.trim() || slot2?.value.trim() || winner?.value || method?.value);
+    });
     window.addEventListener('focus', () => {
+        if (hasUnsubmittedMatchLoggingState()) return;
         restoreSessionWarnings();
         refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits on focus.', error));
     });
@@ -1477,7 +1490,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         refreshFightCardViewAfterNavigation('after page restore');
     });
     document.addEventListener('visibilitychange', () => {
-        if (!document.hidden) {
+        if (!document.hidden && !hasUnsubmittedMatchLoggingState()) {
             refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits after tab switch.', error));
         }
     });
@@ -4000,6 +4013,14 @@ window.logMatchResult = function(id) {
     if (unlogBtn) unlogBtn.style.display = 'inline-flex';
     updateFinalizeButtonState();
     updateRandomizerState();
+    clearRematchWarningStorage(id);
+    clearWarningMatchState(id);
+    clearDuplicateApproval(id);
+    sessionStorage.removeItem(`match_${id}_rematch_warning_active`);
+    sessionStorage.removeItem(`match_${id}_variant_approved`);
+    delete activeRematchWarnings[id];
+    if (row) delete row.dataset.rematchPending;
+    refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card view after logging a result.', error));
 };
 
 function restoreWinStreakAfterUnlog(fighter) {
