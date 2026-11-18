@@ -900,12 +900,8 @@ function updateFinalizedShowDropdownStyles() {
         );
         const isFinalized = finalizedIds.has(option.value);
         option.classList.toggle('dropdown-card-finalized', isFinalized);
-        option.style.removeProperty('color');
-        option.style.removeProperty('font-weight');
-        if (!isFinalized && hasDraftedFights) {
-            option.style.setProperty('color', '#d97706');
-            option.style.setProperty('font-weight', 'bold');
-        }
+        option.style.color = isFinalized ? '#00ff7f' : hasDraftedFights ? '#d97706' : '';
+        option.style.fontWeight = isFinalized || hasDraftedFights ? 'bold' : '';
     });
 }
 
@@ -953,6 +949,7 @@ function applyCompletedShowVisuals() {
             el.disabled = true;
         }
     });
+    updateFinalizedShowDropdownStyles();
 }
 
 // Announcer system removed
