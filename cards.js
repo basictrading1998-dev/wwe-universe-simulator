@@ -876,9 +876,36 @@ function getFinalizedShowIds() {
 function updateFinalizedShowDropdownStyles() {
     const selector = document.getElementById('activeShowSelector');
     if (!selector) return;
+    refreshShowStateFromStorage();
     const finalizedIds = getFinalizedShowIds();
     Array.from(selector.options).forEach(option => {
-        option.classList.toggle('dropdown-card-finalized', finalizedIds.has(option.value));
+        const show = futureShows.find(item => item.id === option.value);
+        const hasNamedMatchSlot = match => {
+            if (!match || typeof match !== 'object') return false;
+            return ['fighter1', 'fighter2', 'f1Name', 'f2Name', 'slot1Name', 'slot2Name', 'winnerName', 'loserName', 'winner', 'loser']
+                .some(key => typeof match[key] === 'string' && match[key].trim() !== '');
+        };
+        const hasStoredDrafts = show && [ `wwe_draft_${show.id}`, `wwe_matches_${show.id}` ].some(storageKey => {
+            try {
+                const savedMatches = JSON.parse(localStorage.getItem(storageKey) || '{}');
+                return savedMatches && typeof savedMatches === 'object' && !Array.isArray(savedMatches) &&
+                    Object.values(savedMatches).some(hasNamedMatchSlot);
+            } catch (error) {
+                console.warn(`Unable to read match data for ${show.name || show.id} while updating the show selector.`, error);
+                return false;
+            }
+        });
+        const hasDraftedFights = Boolean(
+            (Array.isArray(show?.matches) && show.matches.some(hasNamedMatchSlot)) || hasStoredDrafts
+        );
+        const isFinalized = finalizedIds.has(option.value);
+        option.classList.toggle('dropdown-card-finalized', isFinalized);
+        option.style.removeProperty('color');
+        option.style.removeProperty('font-weight');
+        if (!isFinalized && hasDraftedFights) {
+            option.style.setProperty('color', '#d97706');
+            option.style.setProperty('font-weight', 'bold');
+        }
     });
 }
 
@@ -893,6 +920,7 @@ function setShowCompleted(showId, value) {
         delete show.completedAt;
     }
     localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+    updateMatchSwapSelectorsState();
 }
 
 window.restartCurrentShow = function() {
@@ -908,6 +936,7 @@ window.restartCurrentShow = function() {
 };
 
 function applyCompletedShowVisuals() {
+    updateMatchSwapSelectorsState();
     if (!isShowCompleted(activeShowId)) return;
     document.querySelectorAll('.match-row').forEach(row => {
         row.style.opacity = '0.55';
@@ -1187,12 +1216,10 @@ function buildShowSchedulerHeader() {
     const select = document.createElement('select');
     select.id = 'activeShowSelector';
     select.style.cssText = 'padding:6px 10px; border:1px solid #cbd5e1; border-radius:4px; background:white; font-weight:bold; cursor:pointer;';
-    const finalizedShowIds = getFinalizedShowIds();
     futureShows.forEach(show => {
         const option = document.createElement('option');
         option.value = show.id;
         option.textContent = show.name;
-        if (finalizedShowIds.has(show.id)) option.classList.add('dropdown-card-finalized');
         if (show.id === activeShowId) option.selected = true;
         select.appendChild(option);
     });
@@ -1200,6 +1227,7 @@ function buildShowSchedulerHeader() {
         window.switchActiveShowCard(this.value);
     });
     headerRow.appendChild(select);
+    updateFinalizedShowDropdownStyles();
     
     // Show name input field
     const currentShow = futureShows.find(s => s.id === activeShowId);
@@ -1347,6 +1375,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         let num = (id.includes('mainEvent') || id.includes('coMain')) ? 1 : 4;
         renderCardRows(box, num, id, id.includes('mainEvent'));
     });
+    populateMatchSwapSelectors();
     restoreCurrentCardDraft();
     refreshFightCardView().catch(error => console.warn('Unable to restore fight-card portraits.', error));
     buildShowSchedulerHeader();
@@ -1663,6 +1692,13 @@ window.bulkAddFutureShows = function(count) {
 };
 
 function renderCardRows(box, num, tierId, isMain) {
+    const tierLabels = {
+        mainEventContainer: 'Main Event',
+        coMainContainer: 'Co-Main Event',
+        mainCardContainer: 'Main Card',
+        prelimsContainer: 'Prelims',
+        earlyPrelimsContainer: 'Early Prelims'
+    };
     for (let i = 1; i <= num; i++) {
         const uId = `${tierId}-m${i}`;
         // If the row already exists, skip creating it so bulk-add can safely call renderCardRows
@@ -1670,6 +1706,7 @@ function renderCardRows(box, num, tierId, isMain) {
         const matchRow = document.createElement('div');
         matchRow.className = 'match-row';
         matchRow.id = uId;
+        matchRow.dataset.matchLabel = `${tierLabels[tierId] || tierId} ${(tierId === 'mainEventContainer' || tierId === 'coMainContainer') ? '' : i}`.trim();
         matchRow.dataset.isMain = isMain ? 'true' : 'false';
         matchRow.style.cssText = "background:#fff; border:1px solid #bae6fd; border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px; margin-bottom:12px; position:relative; box-shadow: 0 1px 3px rgba(0,0,0,0.05); width:100%; box-sizing:border-box;";
         if (isMain) { matchRow.style.background = "linear-gradient(to right, #fff, #fff5f5, #fff)"; matchRow.style.borderColor = "#fca5a5"; }
@@ -1791,6 +1828,160 @@ function renderCardRows(box, num, tierId, isMain) {
             }
         }
     }
+}
+
+function populateMatchSwapSelectors() {
+    const matchRows = Array.from(document.querySelectorAll('.match-row'));
+    const refreshedControls = new Set();
+    matchRows.forEach(row => {
+        const section = row.parentElement?.closest('section');
+        const heading = section?.querySelector('.tier-title');
+        if (!heading) return;
+        let label = heading.querySelector('.tier-title-label');
+        if (!label) {
+            label = document.createElement('span');
+            label.className = 'tier-title-label';
+            label.textContent = heading.textContent.trim();
+            heading.replaceChildren(label);
+            heading.style.display = 'flex';
+            heading.style.alignItems = 'center';
+            heading.style.justifyContent = 'space-between';
+            heading.style.flexWrap = 'wrap';
+            heading.style.gap = '8px';
+        }
+        let controls = heading.querySelector('.match-swap-controls');
+        if (!controls) {
+            controls = document.createElement('span');
+            controls.className = 'match-swap-controls';
+            controls.style.cssText = 'display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:6px;';
+            heading.appendChild(controls);
+        }
+        if (!refreshedControls.has(controls)) {
+            controls.replaceChildren();
+            refreshedControls.add(controls);
+        }
+
+        const selector = document.createElement('select');
+        selector.className = 'match-swap-select';
+        selector.setAttribute('aria-label', `Swap ${row.dataset.matchLabel}`);
+        selector.title = `Swap ${row.dataset.matchLabel} with another match slot`;
+        selector.style.cssText = 'max-width:145px; padding:3px 5px; border:1px solid #cbd5e1; border-radius:5px; background:white; color:#334155; font-size:0.65rem; font-weight:bold;';
+        selector.replaceChildren(new Option('⇄ Swap Match...', ''));
+        matchRows.filter(otherRow => otherRow !== row).forEach(otherRow => {
+            selector.add(new Option(otherRow.dataset.matchLabel || otherRow.id, otherRow.id));
+        });
+        selector.addEventListener('change', () => {
+            const targetMatchId = selector.value;
+            selector.value = '';
+            if (targetMatchId) swapActiveShowMatches(row.id, targetMatchId);
+        });
+        controls.appendChild(selector);
+    });
+    updateMatchSwapSelectorsState();
+}
+
+function updateMatchSwapSelectorsState() {
+    const isFinalized = isShowCompleted(activeShowId);
+    document.querySelectorAll('.match-swap-select').forEach(selector => {
+        selector.disabled = isFinalized;
+        selector.title = isFinalized
+            ? 'Unfinalize this card before swapping matches.'
+            : `Swap ${selector.getAttribute('aria-label')?.replace(/^Swap /, '') || 'this match'} with another match slot`;
+    });
+}
+
+function swapStoredMatchEntries(entries, firstId, secondId) {
+    const firstExists = Object.prototype.hasOwnProperty.call(entries, firstId);
+    const secondExists = Object.prototype.hasOwnProperty.call(entries, secondId);
+    const firstEntry = entries[firstId];
+    const secondEntry = entries[secondId];
+    if (secondExists) entries[firstId] = secondEntry;
+    else delete entries[firstId];
+    if (firstExists) entries[secondId] = firstEntry;
+    else delete entries[secondId];
+}
+
+function readMatchEntriesForSwap(storageKey) {
+    const entries = JSON.parse(localStorage.getItem(storageKey) || '{}');
+    if (!entries || typeof entries !== 'object' || Array.isArray(entries)) {
+        throw new Error(`Saved match data in ${storageKey} has an unexpected format.`);
+    }
+    return entries;
+}
+
+function swapActiveShowMatches(firstId, secondId) {
+    if (!activeShowId || !document.getElementById(firstId) || !document.getElementById(secondId)) return;
+    if (isShowCompleted(activeShowId)) {
+        customAlert('Unfinalize this card before swapping matches.', 'Swap Match');
+        return;
+    }
+
+    const draftStorageKey = getCurrentDraftStorageKey();
+    const matchesStorageKey = getActiveShowMatchesStorageKey();
+    if (!matchesStorageKey) {
+        customAlert('Could not find the active show match data.', 'Swap Match');
+        return;
+    }
+
+    try {
+        saveCurrentCardDraft();
+        const draftEntries = readMatchEntriesForSwap(draftStorageKey);
+        const matchEntries = readMatchEntriesForSwap(matchesStorageKey);
+        swapStoredMatchEntries(draftEntries, firstId, secondId);
+        swapStoredMatchEntries(matchEntries, firstId, secondId);
+
+        const previousDraft = localStorage.getItem(draftStorageKey);
+        const previousMatches = localStorage.getItem(matchesStorageKey);
+        try {
+            localStorage.setItem(draftStorageKey, JSON.stringify(draftEntries));
+            localStorage.setItem(matchesStorageKey, JSON.stringify(matchEntries));
+        } catch (error) {
+            try {
+                if (previousDraft === null) localStorage.removeItem(draftStorageKey);
+                else localStorage.setItem(draftStorageKey, previousDraft);
+                if (previousMatches === null) localStorage.removeItem(matchesStorageKey);
+                else localStorage.setItem(matchesStorageKey, previousMatches);
+            } catch (rollbackError) {
+                console.error('Unable to restore match data after a failed swap.', rollbackError);
+            }
+            throw error;
+        }
+
+        completedMatches = matchEntries;
+        [firstId, secondId].forEach(matchId => {
+            clearMatchRowWarningsForInput(matchId);
+            sessionStorage.removeItem(getBookingConflictStorageKey(activeShowId, matchId));
+        });
+        rerenderActiveFightCard();
+    } catch (error) {
+        console.error('Unable to swap the selected match slots.', error);
+        customAlert(error instanceof Error ? error.message : 'The match slots could not be swapped.', 'Swap Match');
+    }
+}
+
+function rerenderActiveFightCard() {
+    const tierIds = ['mainEventContainer', 'coMainContainer', 'mainCardContainer', 'prelimsContainer', 'earlyPrelimsContainer'];
+    const rowsByTier = new Map(tierIds.map(id => [id, []]));
+    document.querySelectorAll('.match-row').forEach(row => {
+        const tierId = tierIds.find(id => row.id.startsWith(`${id}-m`));
+        if (tierId) rowsByTier.get(tierId).push(row);
+    });
+
+    rowsByTier.forEach(rows => rows.forEach(row => row.remove()));
+    tierIds.forEach(tierId => {
+        const container = document.getElementById(tierId);
+        const rows = rowsByTier.get(tierId);
+        if (container && rows.length) {
+            renderCardRows(container, rows.length, tierId, tierId === 'mainEventContainer');
+        }
+    });
+    populateMatchSwapSelectors();
+    restoreCurrentCardDraft();
+    refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits after swapping matches.', error));
+    applyCompletedShowVisuals();
+    updateFinalizeButtonState();
+    updateRandomizerState();
+    updateFighterScheduleLocator();
 }
 
 window.triggerSearchFill = function(uId, slotType) {
@@ -5058,6 +5249,7 @@ function saveCurrentCardDraft() {
         };
     });
     localStorage.setItem(getCurrentDraftStorageKey(), JSON.stringify(draftData));
+    updateFinalizedShowDropdownStyles();
 }
 
 function restoreCurrentCardDraft() {

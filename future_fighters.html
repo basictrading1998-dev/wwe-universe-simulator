@@ -32,7 +32,13 @@
         .pool-section { margin-top: 32px; }
         .pool-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
         .pool-heading h3 { margin: 0; color: #0c4a6e; text-transform: uppercase; }
+        .pool-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
         .pool-count { color: #0369a1; font-size: .85rem; font-weight: 800; }
+        .pool-search { width: min(240px, 100%); box-sizing: border-box; padding: 10px 12px; border: 1px solid #bae6fd; border-radius: 8px; background: #f8fcff; color: #1f2937; font: inherit; }
+        .future-gender-counters, .future-division-counters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .future-division-count { color: #0c4a6e; font-size: .8rem; font-weight: 700; background: #e0f2fe; padding: 5px 8px; border-radius: 4px; }
+        .future-division-male { color: #2563eb; }
+        .future-division-female { color: #db2777; }
         .talent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
         .talent-card { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px; background: #fff; border: 1px solid #bae6fd; border-radius: 12px; box-shadow: 0 2px 8px rgba(15,23,42,.06); text-align: center; }
         .talent-photo { display: flex; align-items: center; justify-content: center; width: 76px; height: 76px; overflow: hidden; border: 2px solid #38bdf8; border-radius: 50%; background: #f0f9ff; color: #0369a1; font-size: 1.5rem; font-weight: 900; }
@@ -67,9 +73,15 @@
         </header>
         <section class="staging-panel" aria-labelledby="draftHeading">
             <h3 id="draftHeading">Draft Upcoming Superstars</h3>
-            <div class="future-gender-counters" style="display: flex; gap: 15px; margin-bottom: 10px;">
+            <div class="future-gender-counters">
                 <span id="futureMaleCount" style="color: #63b3ed; font-weight: bold; background: #2d3748; padding: 5px 10px; border-radius: 4px;">Males: 0</span>
                 <span id="futureFemaleCount" style="color: #f687b3; font-weight: bold; background: #2d3748; padding: 5px 10px; border-radius: 4px;">Females: 0</span>
+            </div>
+            <div class="future-division-counters" aria-label="Future fighters by weight class and gender">
+                <span class="future-division-count">Cruiserweights: <span id="futureCruiserweightMaleCount" class="future-division-male">0 (MALE)</span>, <span id="futureCruiserweightFemaleCount" class="future-division-female">0 (FEMALE)</span></span>
+                <span class="future-division-count">Light Heavyweights: <span id="futureLightHeavyweightMaleCount" class="future-division-male">0 (MALE)</span>, <span id="futureLightHeavyweightFemaleCount" class="future-division-female">0 (FEMALE)</span></span>
+                <span class="future-division-count">Heavyweights: <span id="futureHeavyweightMaleCount" class="future-division-male">0 (MALE)</span>, <span id="futureHeavyweightFemaleCount" class="future-division-female">0 (FEMALE)</span></span>
+                <span class="future-division-count">Super Heavyweights: <span id="futureSuperHeavyweightMaleCount" class="future-division-male">0 (MALE)</span>, <span id="futureSuperHeavyweightFemaleCount" class="future-division-female">0 (FEMALE)</span></span>
             </div>
             <form id="stagedFighterForm" class="staging-form">
                 <div class="field">
@@ -110,7 +122,8 @@
         <section class="pool-section" aria-labelledby="poolHeading">
             <div class="pool-heading">
                 <h3 id="poolHeading">Staged Future Talent Pool</h3>
-                <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="pool-tools">
+                    <input id="stagedFighterSearch" class="pool-search" type="search" placeholder="Search fighters..." aria-label="Search staged fighters">
                     <button id="organizeStagedFighters" class="add-button" type="button">Organize A–Z</button>
                     <span id="stagedFighterCount" class="pool-count">0 fighters</span>
                 </div>

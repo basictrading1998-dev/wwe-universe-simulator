@@ -10,8 +10,27 @@
     const grid = document.getElementById('stagedFighterGrid');
     const count = document.getElementById('stagedFighterCount');
     const organizeButton = document.getElementById('organizeStagedFighters');
+    const searchInput = document.getElementById('stagedFighterSearch');
     const maleCount = document.getElementById('futureMaleCount');
     const femaleCount = document.getElementById('futureFemaleCount');
+    const divisionCountElements = {
+        cruiserweight: {
+            male: document.getElementById('futureCruiserweightMaleCount'),
+            female: document.getElementById('futureCruiserweightFemaleCount')
+        },
+        'light heavyweight': {
+            male: document.getElementById('futureLightHeavyweightMaleCount'),
+            female: document.getElementById('futureLightHeavyweightFemaleCount')
+        },
+        heavyweight: {
+            male: document.getElementById('futureHeavyweightMaleCount'),
+            female: document.getElementById('futureHeavyweightFemaleCount')
+        },
+        'super heavyweight': {
+            male: document.getElementById('futureSuperHeavyweightMaleCount'),
+            female: document.getElementById('futureSuperHeavyweightFemaleCount')
+        }
+    };
     const status = document.getElementById('stagingStatus');
     const nameInput = document.getElementById('stagedFighterName');
     const genderSelect = document.getElementById('stagedFighterGender');
@@ -218,22 +237,46 @@
             organizeButton.disabled = editingFighterIndex !== null;
             let males = 0;
             let females = 0;
+            const divisionCounts = Object.fromEntries(
+                Object.keys(divisionCountElements).map(division => [division, { male: 0, female: 0 }])
+            );
             stagedFighters.forEach(fighter => {
                 const gender = typeof fighter.gender === 'string' ? fighter.gender.toLowerCase() : '';
+                const division = typeof fighter.division === 'string' ? fighter.division.toLowerCase() : '';
                 if (gender === 'male') males++;
                 if (gender === 'female') females++;
+                if (divisionCounts[division] && Object.prototype.hasOwnProperty.call(divisionCounts[division], gender)) {
+                    divisionCounts[division][gender]++;
+                }
             });
             maleCount.textContent = `Males: ${males}`;
             femaleCount.textContent = `Females: ${females}`;
-            count.textContent = `${stagedFighters.length} ${stagedFighters.length === 1 ? 'fighter' : 'fighters'}`;
+            Object.entries(divisionCountElements).forEach(([division, elements]) => {
+                elements.male.textContent = `${divisionCounts[division].male} (MALE)`;
+                elements.female.textContent = `${divisionCounts[division].female} (FEMALE)`;
+            });
+            const searchQuery = searchInput.value.trim().toLocaleLowerCase();
+            const visibleFighters = stagedFighters
+                .map((fighter, index) => ({ fighter, index }))
+                .filter(({ fighter }) => {
+                    const searchable = `${fighter.name || ''} ${fighter.division || ''} ${fighter.gender || ''}`.toLocaleLowerCase();
+                    return searchable.includes(searchQuery);
+                });
+            count.textContent = searchQuery
+                ? `${visibleFighters.length} of ${stagedFighters.length} fighters`
+                : `${stagedFighters.length} ${stagedFighters.length === 1 ? 'fighter' : 'fighters'}`;
             grid.replaceChildren();
 
             if (stagedFighters.length === 0) {
                 grid.appendChild(makeElement('p', 'empty-state', 'No future talent staged yet. Use the form above to add a fighter.'));
                 return;
             }
+            if (visibleFighters.length === 0) {
+                grid.appendChild(makeElement('p', 'empty-state', 'No staged fighters match your search.'));
+                return;
+            }
 
-            stagedFighters.forEach((fighter, index) => {
+            visibleFighters.forEach(({ fighter, index }) => {
                 const card = makeElement('article', 'talent-card');
                 const photo = makeElement('div', 'talent-photo');
                 const name = String(fighter.name || 'Unnamed Fighter');
@@ -700,6 +743,7 @@
     }
 
     photoInput.addEventListener('change', handleStagedPhotoFile);
+    searchInput.addEventListener('input', renderStagedFighters);
     form.addEventListener('submit', addStagedFighter);
     cancelEditButton.addEventListener('click', cancelStagedFighterEdit);
     organizeButton.addEventListener('click', organizeStagedFighters);

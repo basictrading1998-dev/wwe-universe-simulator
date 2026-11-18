@@ -364,6 +364,11 @@
 
                 // Searches through fallback histories to catch old logs safely
                 let historyArray = f.compiled_history_deck || f.history_deck || f.history || [];
+                historyArray.sort((a, b) => {
+                    const numA = parseInt(String(a.showName || a.cardNumber || '').replace(/\D/g, ''), 10) || 0;
+                    const numB = parseInt(String(b.showName || b.cardNumber || '').replace(/\D/g, ''), 10) || 0;
+                    return numA - numB;
+                });
                 let rightDeckHtml = '<div class="history-slider-deck">';
 
                 if (historyArray.length === 0) {
