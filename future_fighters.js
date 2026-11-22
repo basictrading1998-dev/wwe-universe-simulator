@@ -50,6 +50,10 @@
         status.classList.toggle('error', isError);
     }
 
+    function exactNameKey(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
     function parseArray(raw, key) {
         if (raw === null) return [];
         let value;
@@ -112,10 +116,11 @@
                 console.warn('Skipping an invalid staged fighter while loading the pool.');
                 return;
             }
-            if (byName.has(fighter.name)) {
+            const nameKey = exactNameKey(fighter.name);
+            if (byName.has(nameKey)) {
                 console.warn(`Duplicate staged fighter "${fighter.name}" found; keeping the latest entry.`);
             }
-            byName.set(fighter.name, fighter);
+            byName.set(nameKey, fighter);
         });
         return Array.from(byName.values());
     }
@@ -163,9 +168,13 @@
             const store = writeTransaction.objectStore(STAGED_STORE_NAME);
             const keysRequest = store.getAllKeys();
             keysRequest.onsuccess = () => {
-                const existingNames = new Set(keysRequest.result);
+                const existingNames = new Set(keysRequest.result.map(exactNameKey));
                 legacyFighters.forEach(fighter => {
-                    if (!existingNames.has(fighter.name)) store.put(fighter);
+                    const nameKey = exactNameKey(fighter.name);
+                    if (!existingNames.has(nameKey)) {
+                        store.put(fighter);
+                        existingNames.add(nameKey);
+                    }
                 });
             };
             await writeCompleted;
@@ -187,9 +196,15 @@
         const completed = transactionComplete(transaction);
         const store = transaction.objectStore(STAGED_STORE_NAME);
         let duplicateName = false;
-        const request = store.get(fighter.name);
+        const request = store.getAll();
         request.onsuccess = () => {
-            if (request.result && fighter.name !== previousName) {
+            const nameKey = exactNameKey(fighter.name);
+            const duplicate = request.result.some(existing =>
+                existing &&
+                exactNameKey(existing.name) === nameKey &&
+                existing.name !== previousName
+            );
+            if (duplicate) {
                 duplicateName = true;
                 transaction.abort();
                 return;
@@ -654,6 +669,10 @@
             resetStagedFighterForm();
             showStatus(`${name} added to the staging pool.`);
         } catch (error) {
+            if (error instanceof Error && error.message.startsWith('A staged fighter named ')) {
+                showStatus(error.message, true);
+                return;
+            }
             console.error('Unable to stage future fighter.', error);
             showStatus(error instanceof Error ? error.message : 'Unable to save staged fighter.', true);
         }
@@ -689,15 +708,21 @@
             const rosterSource = previousRosterValue === null ? previousLegacyValue : previousRosterValue;
             const roster = parseArray(rosterSource, previousRosterValue === null ? LEGACY_ROSTER_KEY : ROSTER_KEY);
             if (stagedFighter.id && roster.some(fighter => fighter && fighter.id === stagedFighter.id)) {
-                throw new Error('This fighter is already in the main roster.');
+                showStatus('This fighter is already in the main roster.', true);
+                return;
             }
 
-            const gender = String(stagedFighter.gender || 'male').toLowerCase();
-            const division = String(stagedFighter.division || 'Heavyweight');
             const name = String(stagedFighter.name || '').trim();
             if (!name) {
                 throw new Error('This staged fighter has no name and cannot be moved.');
             }
+            if (roster.some(fighter => exactNameKey(fighter?.name) === exactNameKey(name))) {
+                showStatus(`"${name}" is already in the main roster.`, true);
+                return;
+            }
+
+            const gender = String(stagedFighter.gender || 'male').toLowerCase();
+            const division = String(stagedFighter.division || 'Heavyweight');
             if (!['male', 'female'].includes(gender) ||
                 !['Cruiserweight', 'Light Heavyweight', 'Heavyweight', 'Super Heavyweight'].includes(division)) {
                 throw new Error('This staged fighter has an invalid gender or weight class.');

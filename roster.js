@@ -729,6 +729,10 @@ function normalizeLookupKey(value) {
         .toLowerCase();
 }
 
+function normalizeExactFighterName(value) {
+    return String(value || '').trim().toLowerCase();
+}
+
 function getRosterGenderFromName(name) {
     const normalizedName = normalizeLookupKey(name);
     return femaleFighterTemplates.some(template => normalizeLookupKey(template.name) === normalizedName) ? 'female' : 'male';
@@ -1962,7 +1966,7 @@ function ensureFemaleRosterEntries() {
     let rosterChanged = false;
 
     femaleFighterTemplates.forEach(template => {
-        const existing = fighters.find(f => f.name.toLowerCase() === template.name.toLowerCase());
+        const existing = fighters.find(f => normalizeExactFighterName(f.name) === normalizeExactFighterName(template.name));
         if (!existing) {
             fighters.push(normalizeFighterRecord({
                 id: `f-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
@@ -2137,7 +2141,10 @@ window.restoreLegacyRoster = async function() {
             if (!Array.isArray(parsed)) return;
 
             parsed.map(normalizeFighterRecord).filter(Boolean).forEach(legacyFighter => {
-                const exists = fighters.some(current => current.id === legacyFighter.id || current.name.toLowerCase() === legacyFighter.name.toLowerCase());
+                const exists = fighters.some(current =>
+                    current.id === legacyFighter.id ||
+                    normalizeExactFighterName(current.name) === normalizeExactFighterName(legacyFighter.name)
+                );
                 if (!exists) {
                     fighters.push(legacyFighter);
                     restored++;
@@ -3414,8 +3421,8 @@ function setupSidebarFormEngine() {
         addBtn.disabled = true;
         try {
             await loadAndHydrateFighters();
-            const nameKey = normalizeLookupKey(name);
-            if (fighters.some(fighter => normalizeLookupKey(fighter.name) === nameKey)) {
+            const nameKey = normalizeExactFighterName(name);
+            if (fighters.some(fighter => normalizeExactFighterName(fighter.name) === nameKey)) {
                 alert(`"${name}" is already in the roster.`);
                 nameInput.focus();
                 return;
@@ -3533,7 +3540,8 @@ window.importBulkSuperstars = async function() {
     let added = 0;
 
     names.forEach((name, index) => {
-        const exists = fighters.some(f => f.name.toLowerCase() === name.toLowerCase());
+        const nameKey = normalizeExactFighterName(name);
+        const exists = fighters.some(f => normalizeExactFighterName(f.name) === nameKey);
         if (!exists) {
             fighters.push(normalizeFighterRecord({
                 id: `f-${timestamp}-${index}`,
@@ -3563,14 +3571,13 @@ window.importBulkSuperstars = async function() {
 
 window.syncWWE2K24Roster = async function() {
     await loadAndHydrateFighters();
-    const existingKeys = fighters.map(f => normalizeLookupKey(f.name));
     let added = 0;
     let updated = 0;
     const timestamp = Date.now();
 
     wwe2k24RosterNamesList.forEach((name, index) => {
-        const nameKey = normalizeLookupKey(name);
-        const existing = fighters.find(f => normalizeLookupKey(f.name) === nameKey);
+        const nameKey = normalizeExactFighterName(name);
+        const existing = fighters.find(f => normalizeExactFighterName(f.name) === nameKey);
         const gender = existing ? (existing.gender || 'male') : getRosterGenderFromName(name);
         const suggestedDivision = getRosterDivisionForName(name, gender) || (gender === 'female' ? 'Light HeavyWeight' : 'Heavyweight');
         const portrait = getWWE2K24Portrait(name);
@@ -3810,7 +3817,8 @@ window.saveInlineEdit = function(id) {
     }
     if (newName !== String(fighter.name || '').trim()) {
         const duplicate = fighters.find(item =>
-            item !== fighter && normalizeLookupKey(item.name) === normalizeLookupKey(newName)
+            item !== fighter &&
+            normalizeExactFighterName(item.name) === normalizeExactFighterName(newName)
         );
         if (duplicate) {
             alert('A fighter with that name is already in the roster.');

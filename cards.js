@@ -6624,12 +6624,18 @@ window.logMatchResult = function(id) {
     const resolveFighterInput = (input) => {
         const idValue = input.getAttribute('data-fighter-id');
         const nameValue = input.value.trim();
+        const exactName = nameValue.toLowerCase();
         let fighter = null;
         if (idValue) {
-            fighter = fighters.find(f => f.id === idValue);
+            const fighterById = fighters.find(f => f.id === idValue);
+            if (fighterById && String(fighterById.name || '').trim().toLowerCase() === exactName) {
+                fighter = fighterById;
+            }
         }
         if (!fighter && nameValue) {
-            fighter = getFighterByIdOrName(nameValue);
+            fighter = fighters.find(f =>
+                String(f.name || '').trim().toLowerCase() === exactName
+            ) || null;
             if (fighter) {
                 input.setAttribute('data-fighter-id', fighter.id);
             }
