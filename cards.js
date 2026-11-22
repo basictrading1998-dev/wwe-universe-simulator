@@ -4256,10 +4256,10 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
         hideDuplicateWarning(matchRowId);
     };
     if (allowBtn) allowBtn.onclick = function() {
-        const approvalKey = getDuplicateApprovalKey(matchRowId);
-        const fighterNames = getMatchFighterNames(matchRowId);
-        sessionStorage.setItem(approvalKey, 'true');
-        sessionStorage.setItem(`${approvalKey}_fighters`, JSON.stringify(fighterNames));
+        if (!persistDuplicateApproval(matchRowId)) {
+            customAlert('Both fighters must be selected before allowing this pairing.', 'Duplicate Match');
+            return;
+        }
         clearWarningMatchState(matchRowId, 'sameName');
         container.style.display = 'none';
         if (!container.dataset.warningMarkup) container.dataset.warningMarkup = container.innerHTML;
@@ -4372,7 +4372,40 @@ function getMatchFighterNames(matchRowId) {
     };
 }
 
+function getDuplicateApprovalPairKey(names) {
+    const slot1 = normalizeLookupKey(names?.slot1);
+    const slot2 = normalizeLookupKey(names?.slot2);
+    return slot1 && slot2 ? `${slot1}|${slot2}` : '';
+}
+
+function persistDuplicateApproval(matchRowId) {
+    const approvedPair = getDuplicateApprovalPairKey(getMatchFighterNames(matchRowId));
+    if (!approvedPair) return false;
+
+    saveCurrentCardDraft();
+    const storageKey = getCurrentDraftStorageKey();
+    const draftData = JSON.parse(localStorage.getItem(storageKey) || '{}');
+    const match = draftData[matchRowId];
+    if (!match) return false;
+    match.allowDuplicate = true;
+    match.approvedPair = approvedPair;
+    localStorage.setItem(storageKey, JSON.stringify(draftData));
+
+    const approvalKey = getDuplicateApprovalKey(matchRowId);
+    sessionStorage.removeItem(approvalKey);
+    sessionStorage.removeItem(`${approvalKey}_fighters`);
+    return true;
+}
+
 function clearDuplicateApprovalForChangedInput(matchRowId) {
+    const currentApprovedPairKey = getDuplicateApprovalPairKey(getMatchFighterNames(matchRowId));
+    const draftData = JSON.parse(localStorage.getItem(getCurrentDraftStorageKey()) || '{}');
+    const savedMatch = draftData[matchRowId];
+    if (savedMatch?.allowDuplicate === true && savedMatch.approvedPair !== currentApprovedPairKey) {
+        clearDuplicateApproval(matchRowId);
+        return;
+    }
+
     const approvalKey = getDuplicateApprovalKey(matchRowId);
     if (sessionStorage.getItem(approvalKey) !== 'true') return;
 
@@ -4403,6 +4436,14 @@ function clearDuplicateApprovalForChangedInput(matchRowId) {
 }
 
 function isDuplicateApprovalCurrent(matchRowId) {
+    const currentApprovedPair = getDuplicateApprovalPairKey(getMatchFighterNames(matchRowId));
+    const draftData = JSON.parse(localStorage.getItem(getCurrentDraftStorageKey()) || '{}');
+    const savedMatch = draftData[matchRowId];
+    if (savedMatch?.allowDuplicate === true) {
+        if (currentApprovedPair && savedMatch.approvedPair === currentApprovedPair) return true;
+        clearDuplicateApproval(matchRowId);
+    }
+
     const approvalKey = getDuplicateApprovalKey(matchRowId);
     if (sessionStorage.getItem(approvalKey) !== 'true') return false;
 
@@ -4425,13 +4466,22 @@ function isDuplicateApprovalCurrent(matchRowId) {
         clearDuplicateApproval(matchRowId);
         return false;
     }
-    return true;
+    return persistDuplicateApproval(matchRowId);
 }
 
 function clearDuplicateApproval(matchRowId) {
     const approvalKey = getDuplicateApprovalKey(matchRowId);
     sessionStorage.removeItem(approvalKey);
     sessionStorage.removeItem(`${approvalKey}_fighters`);
+
+    const storageKey = getCurrentDraftStorageKey();
+    const draftData = JSON.parse(localStorage.getItem(storageKey) || '{}');
+    const match = draftData[matchRowId];
+    if (match && (match.allowDuplicate === true || Object.prototype.hasOwnProperty.call(match, 'approvedPair'))) {
+        match.allowDuplicate = false;
+        delete match.approvedPair;
+        localStorage.setItem(storageKey, JSON.stringify(draftData));
+    }
 }
 
 window.toggleTitleFight = function(matchRowId, checkbox) {
@@ -8212,10 +8262,29 @@ function getCurrentDraftStorageKey() {
 
 function saveCurrentCardDraft() {
     let draftData = {};
+    let previousDraftData = {};
+    const storageKey = getCurrentDraftStorageKey();
+    try {
+        previousDraftData = JSON.parse(localStorage.getItem(storageKey) || '{}');
+        if (!previousDraftData || typeof previousDraftData !== 'object' || Array.isArray(previousDraftData)) {
+            previousDraftData = {};
+        }
+    } catch (error) {
+        console.error(`Unable to preserve duplicate approvals from ${storageKey}:`, error);
+    }
+
     document.querySelectorAll('.match-row').forEach(row => {
         const id = row.id;
         const s1 = document.getElementById(`${id}-slot1`).querySelector('.fighter-search-input');
         const s2 = document.getElementById(`${id}-slot2`).querySelector('.fighter-search-input');
+        const approvedPair = getDuplicateApprovalPairKey({
+            slot1: s1 ? s1.value : '',
+            slot2: s2 ? s2.value : ''
+        });
+        const previousMatch = previousDraftData[id];
+        const allowDuplicate = !!approvedPair &&
+            previousMatch?.allowDuplicate === true &&
+            previousMatch.approvedPair === approvedPair;
         const gender = document.getElementById(`${id}-slot1`)?.getAttribute('data-gender') || 'male';
         const acceptedRematch = getMatchRowAcceptedRematch(id);
         const titleCheckbox = document.getElementById(`${id}-title-check`);
@@ -8229,6 +8298,8 @@ function saveCurrentCardDraft() {
             f1Id: s1 ? s1.getAttribute('data-fighter-id') : '',
             f2Name: s2 ? s2.value : '',
             f2Id: s2 ? s2.getAttribute('data-fighter-id') : '',
+            allowDuplicate,
+            approvedPair: allowDuplicate ? approvedPair : '',
             gender: gender,
             titleChecked: titleCheckbox ? titleCheckbox.checked : false,
             titleSelected: titleInput ? titleInput.value : '',
@@ -8246,7 +8317,7 @@ function saveCurrentCardDraft() {
             fightTimerStartedAt: timerState ? timerState.startedAt : 0
         };
     });
-    localStorage.setItem(getCurrentDraftStorageKey(), JSON.stringify(draftData));
+    localStorage.setItem(storageKey, JSON.stringify(draftData));
     updateFinalizedShowDropdownStyles();
 }
 
