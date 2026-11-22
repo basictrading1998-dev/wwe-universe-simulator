@@ -1,12 +1,215 @@
 const activeRematchWarnings = {};
 
+function formatEventTimestamp(isoString) {
+    if (typeof isoString !== 'string' || !isoString.trim()) return '';
+    const date = new Date(isoString);
+    if (!Number.isFinite(date.getTime())) return '';
+
+    const now = new Date();
+    const dayDifference = (
+        Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) -
+        Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+    ) / 86400000;
+    const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    if (dayDifference === 0) return `Today • ${time}`;
+    if (dayDifference === 1) return `Yesterday • ${time}`;
+
+    const dateLabel = date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+    });
+    return `${dateLabel} • ${time}`;
+}
+
+function getCardsTitleRules() {
+    const legacyMinimum = localStorage.getItem('titleWinMinimum') === '10' ? 10 : 5;
+    let storedRules = {};
+    const raw = localStorage.getItem('universeTitleRules');
+    if (raw) {
+        try {
+            storedRules = JSON.parse(raw) || {};
+        } catch (error) {
+            console.error('Unable to read title eligibility rules in fight cards.', error);
+        }
+    }
+    return {
+        initialTitleWins: Number(storedRules.initialTitleWins) === 10 ? 10
+            : Number(storedRules.initialTitleWins) === 5 ? 5 : legacyMinimum,
+        baseRebuildWins: [3, 4, 5].includes(Number(storedRules.baseRebuildWins))
+            ? Number(storedRules.baseRebuildWins) : 3,
+        extraLossPenalty: [1, 2, 3].includes(Number(storedRules.extraLossPenalty))
+            ? Number(storedRules.extraLossPenalty) : 2
+    };
+}
+
+function getCardsTitleWinMinimum() {
+    return getCardsTitleRules().initialTitleWins;
+}
+
+function getCardsRebuildLossCount(fighter, required = fighter?.rebuild_wins_required) {
+    if (!(Number(required) > 0)) return 0;
+    const savedCount = Math.max(0, Math.floor(Number(fighter?.rebuild_loss_count) || 0));
+    if (savedCount > 0) return savedCount;
+    return Math.max(1, Math.ceil((Number(required) - 3) / 2) + 1);
+}
+
+function getCardsRebuildWinsRequired(lossCount, rules = getCardsTitleRules()) {
+    if (!(Number(lossCount) > 0)) return 0;
+    const cap = Math.min(15, Math.max(1, Number(rules.initialTitleWins) || 15));
+    return Math.min(
+        cap,
+        Math.max(1, Number(rules.baseRebuildWins) || 3) +
+            (Math.max(1, Math.floor(Number(lossCount) || 1)) - 1) * Math.max(1, Number(rules.extraLossPenalty) || 2)
+    );
+}
+
+function normalizeCardsTitleGate(fighter, rules = getCardsTitleRules()) {
+    let required = Math.max(0, Math.floor(Number(fighter?.rebuild_wins_required) || 0));
+    let lossCount = getCardsRebuildLossCount(fighter, required);
+    let comebackCompleted = fighter?.title_comeback_completed === true;
+    let dominantExChampionRebuild = fighter?.dominant_ex_champ_rebuild === true;
+    if (required > 0) {
+        required = dominantExChampionRebuild ? 1 : getCardsRebuildWinsRequired(lossCount, rules);
+        if (Math.max(0, Math.floor(Number(fighter?.win_streak) || 0)) >= required) {
+            required = 0;
+            lossCount = 0;
+            comebackCompleted = true;
+            dominantExChampionRebuild = false;
+        } else {
+            comebackCompleted = false;
+        }
+    } else {
+        lossCount = 0;
+        dominantExChampionRebuild = false;
+    }
+    return {
+        rebuildWinsRequired: required,
+        rebuildLossCount: lossCount,
+        comebackCompleted,
+        dominantExChampionRebuild
+    };
+}
+
+function getTitleEligibilityStatus(fighter) {
+    const minimum = getCardsTitleWinMinimum();
+    const winStreak = Math.max(0, Math.floor(Number(fighter?.win_streak) || 0));
+    const rebuildWinsRequired = Math.max(0, Math.floor(Number(fighter?.rebuild_wins_required) || 0));
+    if (rebuildWinsRequired > 0) {
+        const remaining = Math.max(0, rebuildWinsRequired - winStreak);
+        return {
+            eligible: false,
+            status: winStreak > 0 ? 'rebuilding' : 'locked',
+            label: fighter?.dominant_ex_champ_rebuild === true && rebuildWinsRequired === 1
+                ? `🟡 EX-CHAMP REBUILD (${winStreak}/1 WIN)`
+                : winStreak > 0
+                ? `🟡 REBUILDING (${winStreak}/${rebuildWinsRequired} WINS)`
+                : `🔴 LOCKED (NEEDS ${rebuildWinsRequired}W)`,
+            remaining,
+            winStreak,
+            required: rebuildWinsRequired
+        };
+    }
+    if (fighter?.title_comeback_completed === true || winStreak >= minimum) {
+        return { eligible: true, status: 'eligible', label: '🟢 TITLE ELIGIBLE', remaining: 0, winStreak, required: minimum };
+    }
+    return {
+        eligible: false,
+        status: 'contender',
+        label: `⚪ CONTENDER (${winStreak}/${minimum}W)`,
+        remaining: Math.max(0, minimum - winStreak),
+        winStreak,
+        required: minimum
+    };
+}
+
+function applyTitleGateWin(fighter, rules) {
+    const required = Math.max(0, Math.floor(Number(fighter.rebuild_wins_required) || 0));
+    if (required > 0 && Number(fighter.win_streak) >= required) {
+        fighter.rebuild_wins_required = 0;
+        fighter.rebuild_loss_count = 0;
+        fighter.title_comeback_completed = true;
+        fighter.dominant_ex_champ_rebuild = false;
+    } else if (required === 0 && Number(fighter.win_streak) >= rules.initialTitleWins) {
+        fighter.title_comeback_completed = false;
+    }
+}
+
+function applyTitleGateLoss(fighter, rules, dominantExChampionException = false) {
+    const required = Math.max(0, Math.floor(Number(fighter.rebuild_wins_required) || 0));
+    fighter.rebuild_loss_count = required > 0
+        ? getCardsRebuildLossCount(fighter, required) + 1
+        : 1;
+    fighter.dominant_ex_champ_rebuild = dominantExChampionException;
+    fighter.rebuild_wins_required = dominantExChampionException
+        ? 1
+        : getCardsRebuildWinsRequired(fighter.rebuild_loss_count, rules);
+    fighter.title_comeback_completed = false;
+}
+
+function getDominantTitleLossDefenseCount(fighter, titleId) {
+    if (!fighter || !titleId) return 0;
+
+    let titles;
+    try {
+        titles = JSON.parse(localStorage.getItem('wwe_titles') || '[]');
+    } catch (error) {
+        throw new Error(`Unable to verify title reign defenses: ${error.message}`);
+    }
+    if (!Array.isArray(titles)) throw new Error('The saved championship list is not valid.');
+
+    const title = titles.find(item => item && String(item.id) === String(titleId));
+    if (!title) return 0;
+    const championIdentity = title.championId ||
+        (title.champion && typeof title.champion === 'object'
+            ? title.champion.id || title.champion.name
+            : title.champion) || '';
+    const normalizedIdentity = String(championIdentity).trim().toLowerCase();
+    const isCurrentChampion = String(championIdentity) === String(fighter.id) ||
+        normalizedIdentity === String(fighter.name || '').trim().toLowerCase();
+    if (!isCurrentChampion) return 0;
+
+    const defenseCounts = [title.currentReignDefenses, title.defenses, fighter.current_reign_defenses]
+        .map(value => Number(value))
+        .filter(Number.isFinite);
+    return defenseCounts.length
+        ? Math.max(0, Math.floor(Math.max(...defenseCounts)))
+        : 0;
+}
+
+window.getTitleEligibilityStatus = getTitleEligibilityStatus;
+
+function getCardsCareerPeakWinStreak(fighter) {
+    let historyPeak = 0;
+    [fighter?.compiled_history_deck, fighter?.history_deck, fighter?.history].forEach(history => {
+        if (!Array.isArray(history)) return;
+        history.forEach(entry => {
+            historyPeak = Math.max(
+                historyPeak,
+                Math.floor(Number(entry?.winStreak) || 0),
+                Math.floor(Number(entry?.win_streak) || 0)
+            );
+        });
+    });
+    return Math.max(
+        0,
+        Math.floor(Number(fighter?.peak_win_streak) || 0),
+        Math.floor(Number(fighter?.win_streak) || 0),
+        historyPeak
+    );
+}
+
 function loadFightersFromStorage() {
     const raw = localStorage.getItem('wwe_fighters') || localStorage.getItem('fighters');
     if (!raw) return [];
     try {
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
-        return parsed.map(f => ({
+        const titleRules = getCardsTitleRules();
+        const normalizedFighters = parsed.map(f => {
+            const titleGate = normalizeCardsTitleGate(f, titleRules);
+            return ({
             id: f.id || `f-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
             name: f.name || `${f.firstName || ''} ${f.lastName || ''}`.trim() || 'Unknown Fighter',
             gender: (f.gender || 'male').toString().toLowerCase(),
@@ -20,14 +223,68 @@ function loadFightersFromStorage() {
             win_pinfall: Number(f.win_pinfall ?? f.pin_wins ?? 0),
             win_ko: Number(f.win_ko ?? f.ko_wins ?? 0),
             win_submission: Number(f.win_submission ?? f.sub_wins ?? 0),
+            pin_wins: Number(f.pin_wins ?? f.win_pinfall ?? 0),
+            ko_wins: Number(f.ko_wins ?? f.win_ko ?? 0),
+            sub_wins: Number(f.sub_wins ?? f.win_submission ?? 0),
+            fotn_bonuses: Math.max(0, Math.floor(Number(f.fotn_bonuses) || 0)),
+            potn_bonuses: Math.max(0, Math.floor(Number(f.potn_bonuses) || 0)),
+            career_bonuses: Math.max(0, Math.floor(Number(f.fotn_bonuses) || 0)) +
+                Math.max(0, Math.floor(Number(f.potn_bonuses) || 0)),
+            is_boss: f.is_boss === true,
+            boss_slays: Math.max(0, Math.floor(Number(f.boss_slays) || 0)),
+            countout_wins: Number(f.countout_wins || 0),
+            dq_wins: Number(f.dq_wins || 0),
             win_streak: Number(f.win_streak || 0),
+            rebuild_wins_required: titleGate.rebuildWinsRequired,
+            rebuild_loss_count: titleGate.rebuildLossCount,
+            title_comeback_completed: titleGate.comebackCompleted,
+            dominant_ex_champ_rebuild: titleGate.dominantExChampionRebuild,
+            peak_win_streak: getCardsCareerPeakWinStreak(f),
+            lose_streak: typeof window.getCurrentLoseStreak === 'function'
+                ? window.getCurrentLoseStreak(f)
+                : Math.max(0, Math.floor(Number(f.lose_streak) || 0)),
+            manual_stats_override: f.manual_stats_override === true,
+            manual_win_streak_override: f.manual_win_streak_override === true,
             retired: f.retired === true,
             photo: f.photo || f.image || '',
             photo_key: f.photo_key || '',
             compiled_history_deck: Array.isArray(f.compiled_history_deck) ? f.compiled_history_deck : Array.isArray(f.history_deck) ? f.history_deck : Array.isArray(f.history) ? f.history : [],
             history_deck: Array.isArray(f.history_deck) ? f.history_deck : [],
-            history: Array.isArray(f.history) ? f.history : []
-        }));
+            history: Array.isArray(f.history) ? f.history : [],
+            fast_tracked: f.fast_tracked === true
+            });
+        });
+        const needsTitleGateMigration = parsed.some((fighter, index) =>
+            !fighter || typeof fighter !== 'object' ||
+            Number(fighter.rebuild_wins_required) !==
+                normalizedFighters[index]?.rebuild_wins_required ||
+            Number(fighter.rebuild_loss_count) !==
+                normalizedFighters[index]?.rebuild_loss_count ||
+            fighter.title_comeback_completed !==
+                normalizedFighters[index]?.title_comeback_completed ||
+            fighter.dominant_ex_champ_rebuild !==
+                normalizedFighters[index]?.dominant_ex_champ_rebuild
+        );
+        if (needsTitleGateMigration) {
+            const migrated = parsed.map((fighter, index) => fighter && typeof fighter === 'object'
+                ? {
+                    ...fighter,
+                    rebuild_wins_required: normalizedFighters[index]?.rebuild_wins_required || 0,
+                    rebuild_loss_count: normalizedFighters[index]?.rebuild_loss_count || 0,
+                    title_comeback_completed: normalizedFighters[index]?.title_comeback_completed === true,
+                    dominant_ex_champ_rebuild: normalizedFighters[index]?.dominant_ex_champ_rebuild === true
+                }
+                : fighter);
+            try {
+                localStorage.setItem(
+                    localStorage.getItem('wwe_fighters') === null ? 'fighters' : 'wwe_fighters',
+                    JSON.stringify(migrated)
+                );
+            } catch (error) {
+                console.error('Unable to initialize title eligibility counters.', error);
+            }
+        }
+        return normalizedFighters;
     } catch {
         return [];
     }
@@ -59,6 +316,7 @@ function isGeneratedFallbackPortrait(photo) {
 }
 
 function saveFighters(list = fighters) {
+    if (window.wweUniverseResetInProgress) return;
     const baseList = list === undefined || list === null ? getFighterList() : list;
     const payload = (baseList || []).map(f => {
         if (!f || typeof f !== 'object') return null;
@@ -76,6 +334,18 @@ function saveFighters(list = fighters) {
         normalized.win_pinfall = Number(normalized.win_pinfall ?? normalized.pin_wins ?? 0);
         normalized.win_ko = Number(normalized.win_ko ?? normalized.ko_wins ?? 0);
         normalized.win_submission = Number(normalized.win_submission ?? normalized.sub_wins ?? 0);
+        normalized.lose_streak = Math.max(0, Math.floor(Number(normalized.lose_streak) || 0));
+        const titleGate = normalizeCardsTitleGate(normalized);
+        normalized.rebuild_wins_required = titleGate.rebuildWinsRequired;
+        normalized.rebuild_loss_count = titleGate.rebuildLossCount;
+        normalized.title_comeback_completed = titleGate.comebackCompleted;
+        normalized.dominant_ex_champ_rebuild = titleGate.dominantExChampionRebuild;
+        normalized.peak_win_streak = getCardsCareerPeakWinStreak(normalized);
+        normalized.fotn_bonuses = Math.max(0, Math.floor(Number(normalized.fotn_bonuses) || 0));
+        normalized.potn_bonuses = Math.max(0, Math.floor(Number(normalized.potn_bonuses) || 0));
+        normalized.career_bonuses = normalized.fotn_bonuses + normalized.potn_bonuses;
+        normalized.is_boss = normalized.is_boss === true;
+        normalized.boss_slays = Math.max(0, Math.floor(Number(normalized.boss_slays) || 0));
         delete normalized.team;
         delete normalized.partner;
         delete normalized.family;
@@ -195,6 +465,41 @@ function normalizeLookupKey(value) {
         .toLowerCase();
 }
 
+let allianceLookupCacheRaw = null;
+let allianceLookupCache = [];
+
+function getUniverseAlliances() {
+    const raw = localStorage.getItem('universeAlliances') || '[]';
+    if (raw === allianceLookupCacheRaw) return allianceLookupCache;
+    allianceLookupCacheRaw = raw;
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('Alliance data is not an array.');
+        allianceLookupCache = parsed.filter(alliance =>
+            alliance && typeof alliance === 'object' &&
+            typeof alliance.name === 'string' &&
+            Array.isArray(alliance.members)
+        ).map(alliance => ({
+            ...alliance,
+            normalizedMemberKeys: new Set(alliance.members.map(normalizeLookupKey).filter(Boolean))
+        }));
+    } catch (error) {
+        allianceLookupCache = [];
+        console.error('Unable to read saved alliances for fight-card protection.', error);
+    }
+    return allianceLookupCache;
+}
+
+function getSharedAllianceForFighters(fighter1, fighter2) {
+    const fighter1Key = normalizeLookupKey(fighter1?.name);
+    const fighter2Key = normalizeLookupKey(fighter2?.name);
+    if (!fighter1Key || !fighter2Key) return null;
+    return getUniverseAlliances().find(alliance =>
+        alliance.normalizedMemberKeys.has(fighter1Key) &&
+        alliance.normalizedMemberKeys.has(fighter2Key)
+    ) || null;
+}
+
 function getWarningStorageKey(matchRowId) {
     return `warning_match_${matchRowId}`;
 }
@@ -277,6 +582,7 @@ if (typeof window !== 'undefined') {
 }
 
 function getActiveWinStreakForPortrait(fighter) {
+    if (typeof window.getCurrentWinStreak === 'function') return window.getCurrentWinStreak(fighter);
     if (!fighter) return 0;
     const wins = Number(fighter.wins || 0);
     const losses = Number(fighter.losses || 0);
@@ -285,20 +591,50 @@ function getActiveWinStreakForPortrait(fighter) {
 }
 
 function getStreakClass(fighter) {
+    if (typeof window.getWinStreakPortraitClass === 'function') {
+        return window.getWinStreakPortraitClass(fighter);
+    }
     const calculatedStreak = getActiveWinStreakForPortrait(fighter);
-    if (calculatedStreak >= 10) return 'border-tier-4';
-    if (calculatedStreak >= 7) return 'border-tier-3';
-    if (calculatedStreak >= 5) return 'border-tier-2';
-    if (calculatedStreak >= 3) return 'border-tier-1';
+    if (calculatedStreak >= 47) return 'streak-tier-master-prestige';
+    if (calculatedStreak >= 43) return 'streak-tier-blood-moon';
+    if (calculatedStreak >= 39) return 'streak-tier-cyber';
+    if (calculatedStreak >= 35) return 'streak-tier-cosmic';
+    if (calculatedStreak >= 31) return 'streak-tier-hellfire';
+    if (calculatedStreak >= 26) return 'streak-tier-lightning';
+    if (calculatedStreak >= 22) return 'streak-tier-rainbow';
+    if (calculatedStreak >= 18) return 'streak-tier-gold';
+    if (calculatedStreak >= 13) return 'streak-tier-blue';
+    if (calculatedStreak >= 7) return 'streak-tier-green';
+    if (calculatedStreak >= 3) return 'streak-tier-purple';
     return '';
 }
 
 function applyStreakPortraitClass(frame, fighter) {
     if (!frame) return;
-    frame.classList.add('portrait-frame-base');
-    frame.classList.remove('streak-purple', 'streak-green', 'streak-blue', 'streak-rainbow-diamond', 'border-tier-1', 'border-tier-2', 'border-tier-3', 'border-tier-4');
     const streakClass = getStreakClass(fighter);
-    if (streakClass) frame.classList.add(streakClass);
+    if (typeof window.applyWinStreakPortraitClass === 'function') {
+        window.applyWinStreakPortraitClass(frame, fighter);
+    } else {
+        frame.classList.add('portrait-frame-base');
+        frame.classList.remove('streak-tier-purple', 'streak-tier-green', 'streak-tier-blue', 'streak-tier-gold', 'streak-tier-rainbow', 'streak-tier-lightning', 'streak-tier-hellfire', 'streak-tier-cosmic', 'streak-tier-cyber', 'streak-tier-blood-moon', 'streak-tier-master-prestige', 'streak-purple', 'streak-green', 'streak-blue', 'streak-rainbow-diamond', 'border-tier-1', 'border-tier-2', 'border-tier-3', 'border-tier-4');
+        if (streakClass) frame.classList.add(streakClass);
+    }
+
+    const slot = frame.closest('.fighter-slot');
+    if (slot) {
+        slot.classList.remove('streak-tier-purple', 'streak-tier-green', 'streak-tier-blue', 'streak-tier-gold', 'streak-tier-rainbow', 'streak-tier-lightning', 'streak-tier-hellfire', 'streak-tier-cosmic', 'streak-tier-cyber', 'streak-tier-blood-moon', 'streak-tier-master-prestige');
+        if (streakClass) slot.classList.add(streakClass);
+    }
+    const applyEffects = window.applyWinStreakEffects || window.applyWinStreakLightningOverlay;
+    if (typeof applyEffects === 'function') applyEffects(frame, fighter);
+    if (typeof window.applyLoseStreakPortraitEffects === 'function') {
+        window.applyLoseStreakPortraitEffects(frame, fighter);
+        if (slot) {
+            slot.classList.remove('cold-streak-slump', 'cold-streak-freeze', 'cold-streak-hot-seat');
+            const coldStreakClass = window.getLoseStreakPortraitClass?.(fighter);
+            if (coldStreakClass) slot.classList.add(coldStreakClass);
+        }
+    }
 }
 
 window.getStreakClass = getStreakClass;
@@ -507,6 +843,361 @@ let futureShows = JSON.parse(localStorage.getItem('wwe_future_shows')) || [];
 let activeShowId = localStorage.getItem('wwe_active_show_id') || '';
 let portraitHydrationOnLoadRan = false;
 let portraitHydrationOnChangeRan = false;
+const matchTimerStates = new Map();
+
+function getShowNumber(show) {
+    const storedNumber = Number(show?.showNumber);
+    if (Number.isInteger(storedNumber) && storedNumber > 0) return storedNumber;
+    const index = futureShows.indexOf(show);
+    return index >= 0 ? index + 1 : futureShows.length + 1;
+}
+
+function getAutomaticShowTier(showNumber) {
+    return showNumber % 4 === 0 ? 'ppv' : 'fight_night';
+}
+
+function getShowTier(show) {
+    if (show?.tierOverride === true && (show.tier === 'fight_night' || show.tier === 'ppv')) {
+        return show.tier;
+    }
+    return getAutomaticShowTier(getShowNumber(show));
+}
+
+function getActiveShowTier() {
+    const show = futureShows.find(item => item.id === activeShowId);
+    return show ? getShowTier(show) : null;
+}
+
+function isUndefeatedProspect(fighter) {
+    return !!fighter &&
+        Number(fighter.wins) >= 2 &&
+        Number(fighter.losses || 0) === 0 &&
+        !fighter.retired;
+}
+window.isUndefeatedProspect = isUndefeatedProspect;
+
+function isFightNightMatchupAllowed(fighter1, fighter2) {
+    if (getSharedAllianceForFighters(fighter1, fighter2)) return false;
+    if (getActiveShowTier() !== 'fight_night') return true;
+    if (isUndefeatedProspect(fighter1) && Number(fighter2?.losses || 0) < 1) return false;
+    if (isUndefeatedProspect(fighter2) && Number(fighter1?.losses || 0) < 1) return false;
+    return true;
+}
+
+function updateProspectProtectionBadge(matchRowId) {
+    const row = document.getElementById(matchRowId);
+    const badge = document.getElementById(`${matchRowId}-prospect-protection-badge`);
+    const statusRow = document.getElementById(`${matchRowId}-prospect-protection-row`);
+    if (!row || !badge || !statusRow) return;
+
+    const getSlotFighter = slotType => {
+        const input = row.querySelector(`.fighter-slot[id$="-${slotType}"] .fighter-search-input`);
+        const fighterId = input?.getAttribute('data-fighter-id');
+        return (fighterId && fighters.find(fighter => fighter.id === fighterId)) ||
+            getFighterByIdOrName(input?.value.trim());
+    };
+    const fighter1 = getSlotFighter('slot1');
+    const fighter2 = getSlotFighter('slot2');
+    const tier = getActiveShowTier();
+
+    badge.className = 'prospect-protection-badge';
+    if (tier === 'fight_night' && isUndefeatedProspect(fighter1) && isUndefeatedProspect(fighter2)) {
+        badge.classList.add('prospect-protection-badge--protected');
+        badge.textContent = '🛡️ PROSPECT PROTECTION • Save Undefeated Clash for PPV?';
+    } else if (tier === 'ppv' &&
+        Number(fighter1?.wins) >= 3 && Number(fighter1?.losses || 0) === 0 && !fighter1?.retired &&
+        Number(fighter2?.wins) >= 3 && Number(fighter2?.losses || 0) === 0 && !fighter2?.retired) {
+        badge.classList.add('prospect-protection-badge--collision');
+        badge.textContent = `🔥 UNDEFEATED COLLISION (${Number(fighter1.wins)}-0 vs ${Number(fighter2.wins)}-0)`;
+    } else {
+        statusRow.hidden = true;
+        badge.textContent = '';
+        updateTitleShotProtectionAlert(matchRowId);
+        updateShortNoticeBadge(matchRowId);
+        updateAllianceClashAlert(matchRowId);
+        return;
+    }
+
+    statusRow.hidden = false;
+    updateTitleShotProtectionAlert(matchRowId);
+    updateShortNoticeBadge(matchRowId);
+    updateAllianceClashAlert(matchRowId);
+}
+
+function updateAllianceClashAlert(matchRowId) {
+    const row = document.getElementById(matchRowId);
+    if (!row) return;
+    let banner = row.querySelector('.alliance-clash-alert');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.className = 'alliance-clash-alert';
+        banner.hidden = true;
+        row.insertBefore(banner, row.querySelector(`#${matchRowId}-booking-panel`));
+    }
+
+    if (completedMatches[matchRowId] || isShowCompleted(activeShowId)) {
+        banner.hidden = true;
+        banner.textContent = '';
+        return;
+    }
+    const fighter1 = getFighterByIdOrName(
+        row.querySelector(`#${matchRowId}-slot1 .fighter-search-input`)?.getAttribute('data-fighter-id') ||
+        row.querySelector(`#${matchRowId}-slot1 .fighter-search-input`)?.value.trim()
+    );
+    const fighter2 = getFighterByIdOrName(
+        row.querySelector(`#${matchRowId}-slot2 .fighter-search-input`)?.getAttribute('data-fighter-id') ||
+        row.querySelector(`#${matchRowId}-slot2 .fighter-search-input`)?.value.trim()
+    );
+    const alliance = getSharedAllianceForFighters(fighter1, fighter2);
+    banner.hidden = !alliance;
+    banner.textContent = alliance
+        ? `💔 FAMILY / FRIEND / ROMANTIC CLASH • ${alliance.name}!`
+        : '';
+}
+
+function isShortNoticeTitleEligible(fighter) {
+    return !!fighter &&
+        Number(fighter.win_streak) >= getCardsTitleRules().initialTitleWins &&
+        (Number(fighter.rebuild_wins_required) || 0) === 0;
+}
+
+function isFighterBookedForTitleOnAnotherUnfinalizedShow(fighter) {
+    const fighterKey = normalizeLookupKey(fighter?.name);
+    if (!fighterKey) return false;
+    const finalizedShowIds = getFinalizedShowIds();
+
+    return futureShows.some(show => {
+        if (!show || show.id === activeShowId || show.completed || finalizedShowIds.has(show.id)) return false;
+        return [`wwe_matches_${show.id}`, `wwe_draft_${show.id}`].some(storageKey => {
+            const raw = localStorage.getItem(storageKey);
+            if (!raw) return false;
+            let entries;
+            try {
+                entries = JSON.parse(raw);
+            } catch (error) {
+                console.error(`Unable to inspect title bookings in ${storageKey}.`, error);
+                return false;
+            }
+            if (!entries || typeof entries !== 'object' || Array.isArray(entries)) return false;
+            return Object.values(entries).some(entry => {
+                if (!entry || !(entry.isTitle === true || entry.titleChecked === true)) return false;
+                const names = [entry.slot1Name, entry.slot2Name, entry.f1Name, entry.f2Name];
+                const ids = [entry.slot1Id, entry.slot2Id, entry.f1Id, entry.f2Id];
+                return names.some(name => normalizeLookupKey(name) === fighterKey) ||
+                    (fighter.id && ids.some(id => String(id || '') === String(fighter.id)));
+            });
+        });
+    });
+}
+
+function updateTitleShotProtectionAlert(matchRowId) {
+    const row = document.getElementById(matchRowId);
+    if (!row) return;
+    let banner = row.querySelector('.title-shot-protection-alert');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.className = 'title-shot-protection-alert';
+        banner.hidden = true;
+        row.insertBefore(banner, row.querySelector(`#${matchRowId}-booking-panel`));
+    }
+
+    if (isShowCompleted(activeShowId) || completedMatches[matchRowId] ||
+        document.getElementById(`${matchRowId}-title-check`)?.checked) {
+        banner.hidden = true;
+        banner.replaceChildren();
+        return;
+    }
+
+    const protectedFighters = ['slot1', 'slot2'].map(slotSide => {
+        const input = row.querySelector(`#${matchRowId}-${slotSide} .fighter-search-input`);
+        const fighter = getFighterByIdOrName(input?.getAttribute('data-fighter-id') || input?.value.trim());
+        return fighter && (isShortNoticeTitleEligible(fighter) ||
+            isFighterBookedForTitleOnAnotherUnfinalizedShow(fighter))
+            ? { fighter, slotSide }
+            : null;
+    }).filter(Boolean);
+
+    banner.replaceChildren();
+    banner.hidden = protectedFighters.length === 0;
+    protectedFighters.forEach(({ fighter, slotSide }) => {
+        const message = document.createElement('span');
+        message.className = 'title-shot-protection-alert__message';
+        message.textContent = `🛡️ TITLE SHOT PROTECTION: ${fighter.name} is Title Eligible — Risking Title Shot in Non-Title Bout!`;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'title-shot-protection-alert__action';
+        button.textContent = '⚡ Auto-Replace (Short Notice)';
+        const showIndex = futureShows.findIndex(show => show.id === activeShowId);
+        const matchIndex = Array.from(document.querySelectorAll('.match-row')).indexOf(row);
+        button.addEventListener('click', () =>
+            window.replaceWithShortNotice(showIndex, matchIndex, slotSide)
+        );
+        banner.append(message, button);
+    });
+}
+
+function updateShortNoticeBadge(matchRowId) {
+    const row = document.getElementById(matchRowId);
+    const badge = row?.querySelector('.short-notice-replacement-pill');
+    if (!row || !badge) return;
+    const matchState = completedMatches[matchRowId];
+    const fighterName = row.dataset.shortNoticeFighter || matchState?.shortNoticeFighter || '';
+    const isShortNotice = row.dataset.shortNotice === 'true' || matchState?.shortNotice === true;
+    badge.hidden = !isShortNotice;
+    badge.textContent = isShortNotice ? '⚡ SHORT NOTICE REPLACEMENT' : '';
+    badge.title = fighterName ? `Replacement: ${fighterName}` : '';
+}
+
+window.replaceWithShortNotice = function(showIndex, matchIndex, slotSide) {
+    const show = futureShows[Number(showIndex)];
+    const rows = Array.from(document.querySelectorAll('.match-row'));
+    const row = rows[Number(matchIndex)];
+    if (!show || show.id !== activeShowId || !row ||
+        !['slot1', 'slot2'].includes(slotSide) ||
+        isShowCompleted(show.id) || completedMatches[row.id]) {
+        return customAlert('This match is no longer available for a short-notice replacement.', 'Short-Notice Replacement');
+    }
+    if (document.getElementById(`${row.id}-title-check`)?.checked) {
+        return customAlert('Protected fighters cannot be replaced from a title bout.', 'Short-Notice Replacement');
+    }
+
+    refreshFightersFromStorage(true);
+    const protectedInput = row.querySelector(`#${row.id}-${slotSide} .fighter-search-input`);
+    const opponentSide = slotSide === 'slot1' ? 'slot2' : 'slot1';
+    const opponentInput = row.querySelector(`#${row.id}-${opponentSide} .fighter-search-input`);
+    const protectedFighter = getFighterByIdOrName(protectedInput?.getAttribute('data-fighter-id') || protectedInput?.value.trim());
+    const opponent = getFighterByIdOrName(opponentInput?.getAttribute('data-fighter-id') || opponentInput?.value.trim());
+    if (!protectedInput || !protectedFighter || !opponent ||
+        !(isShortNoticeTitleEligible(protectedFighter) ||
+            isFighterBookedForTitleOnAnotherUnfinalizedShow(protectedFighter))) {
+        return customAlert('The protected fighter or opponent could not be verified. No changes were made.', 'Short-Notice Replacement');
+    }
+
+    const bookedKeys = new Set();
+    rows.forEach(cardRow => {
+        ['slot1', 'slot2'].forEach(side => {
+            if (cardRow === row && side === slotSide) return;
+            const input = cardRow.querySelector(`.fighter-slot[id$="-${side}"] .fighter-search-input`);
+            const key = normalizeLookupKey(input?.value);
+            if (key) bookedKeys.add(key);
+        });
+    });
+    const gender = normalizeSmartBookGender(opponent.gender);
+    const rankings = typeof window.getDivisionRankings === 'function' ? window.getDivisionRankings() : [];
+    const rankByName = new Map();
+    (Array.isArray(rankings) ? rankings : []).forEach(group => {
+        (group.rankings || []).forEach(entry => {
+            const key = normalizeLookupKey(entry.fighter?.name);
+            if (key) {
+                const rank = Number(entry.rankNumber) ||
+                    Number(String(entry.rank || '').match(/^#(\d+)$/)?.[1]) || 99;
+                rankByName.set(key, rank);
+            }
+        });
+    });
+    const record = fighter => {
+        const wins = Math.max(0, Number(fighter.wins) || 0);
+        const losses = Math.max(0, Number(fighter.losses) || 0);
+        const fights = wins + losses + Math.max(0, Number(fighter.draws) || 0);
+        return { wins, losses, fights, rate: fights ? wins / fights : 0 };
+    };
+    const opponentRank = rankByName.get(normalizeLookupKey(opponent.name)) || 99;
+    const opponentRecord = record(opponent);
+    const score = fighter => {
+        const fighterRank = rankByName.get(normalizeLookupKey(fighter.name)) || 99;
+        const fighterRecord = record(fighter);
+        return Math.abs(fighterRank - opponentRank) * 2 +
+            Math.abs(fighterRecord.rate - opponentRecord.rate) * 12 +
+            Math.abs(fighterRecord.fights - opponentRecord.fights) * 0.15;
+    };
+    const candidates = fighters.filter(fighter =>
+        fighter && fighter.retired !== true &&
+        normalizeSmartBookGender(fighter.gender) === gender &&
+        normalizeLookupKey(fighter.name) !== normalizeLookupKey(opponent.name) &&
+        normalizeLookupKey(fighter.name) !== normalizeLookupKey(protectedFighter.name) &&
+        !bookedKeys.has(normalizeLookupKey(fighter.name)) &&
+        !getTitleEligibilityStatus(fighter).eligible &&
+        isFightNightMatchupAllowed(fighter, opponent)
+    ).sort((first, second) => score(first) - score(second) ||
+        String(first.name).localeCompare(String(second.name)));
+    const replacement = candidates[0];
+    if (!replacement) {
+        return customAlert('No eligible, unbooked replacement is available in this gender division.', 'Short-Notice Replacement');
+    }
+
+    clearRematchWarningForInput(row.id);
+    clearDuplicateApprovalForChangedInput(row.id);
+    protectedInput.value = replacement.name;
+    protectedInput.setAttribute('data-fighter-id', replacement.id || '');
+    const avatar = row.querySelector(`#${row.id}-${slotSide} .avatar-box`);
+    if (avatar) {
+        avatar.innerHTML = replacement.photo
+            ? `<img src="${replacement.photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`
+            : replacement.name.charAt(0);
+        avatar.style.cssText = 'width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;';
+        avatar.onclick = event => {
+            event.stopPropagation();
+            uploadFighterPhotoFromCard(replacement.id);
+        };
+    }
+    row.dataset.shortNotice = 'true';
+    row.dataset.shortNoticeFighter = replacement.name;
+    updateFighterRecordDisplay(row.id, slotSide, replacement);
+    checkFighterScheduleConflict(row);
+    updateWinnerDropdown(row.id);
+    recheckMatchValidation(row.id, slotSide);
+    refreshTitleFightState(row.id);
+    hydrateSelectedFighterPortrait(protectedInput).catch(() => {});
+    updateShortNoticeBadge(row.id);
+    saveCurrentCardDraft();
+    updateFighterScheduleLocator();
+};
+
+function getNextShowNumber() {
+    return futureShows.reduce((highest, show) => Math.max(highest, getShowNumber(show)), 0) + 1;
+}
+
+function createScheduledShow(showNumber) {
+    const tier = getAutomaticShowTier(showNumber);
+    const tierNumber = tier === 'ppv' ? Math.floor(showNumber / 4) : showNumber - Math.floor(showNumber / 4);
+    const name = tier === 'ppv' ? `PPV ${tierNumber}` : `FIGHT NIGHT ${tierNumber}`;
+    return {
+        id: `show-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        showNumber,
+        tier,
+        tierOverride: false
+    };
+}
+
+function appendScheduledShows(count) {
+    const startNumber = getNextShowNumber();
+    for (let index = 0; index < count; index++) {
+        futureShows.push(createScheduledShow(startNumber + index));
+    }
+    localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+    return startNumber;
+}
+
+function updateCurrentShowTierPresentation() {
+    const show = futureShows.find(item => item.id === activeShowId);
+    if (!show) return;
+
+    const tier = getShowTier(show);
+    const badge = document.getElementById('showTierBadge');
+    const selector = document.getElementById('showTierSelector');
+    document.body.classList.toggle('show-tier-fight-night', tier === 'fight_night');
+    document.body.classList.toggle('show-tier-ppv', tier === 'ppv');
+
+    if (badge) {
+        badge.textContent = tier === 'ppv' ? '🏆 MAJOR PPV EVENT' : '🥊 UFC FIGHT NIGHT';
+        badge.classList.toggle('show-tier-badge-ppv', tier === 'ppv');
+        badge.classList.toggle('show-tier-badge-fight-night', tier === 'fight_night');
+        badge.title = `Show ${getShowNumber(show)} of the 4-show cycle`;
+    }
+    if (selector) selector.value = tier;
+    document.querySelectorAll('.match-row').forEach(row => updateProspectProtectionBadge(row.id));
+}
 
 function refreshShowStateFromStorage() {
     try {
@@ -565,9 +1256,9 @@ function ensureActiveShowSelected() {
         return;
     }
 
-    const newId = 'show-' + Date.now();
-    const defaultName = 'Show';
-    futureShows.push({ id: newId, name: defaultName });
+    const newShow = createScheduledShow(getNextShowNumber());
+    const newId = newShow.id;
+    futureShows.push(newShow);
     localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
     activeShowId = newId;
     localStorage.setItem('wwe_active_show_id', activeShowId);
@@ -637,22 +1328,26 @@ function auditPastRematchStates() {
             const fighterA = String(match.winner || match.winnerName || '').trim();
             const fighterB = String(match.loser || match.loserName || '').trim();
             if (!fighterA || !fighterB) return;
-            const names = [fighterA.toLocaleLowerCase(), fighterB.toLocaleLowerCase()].sort();
+            const names = [normalizeLookupKey(fighterA), normalizeLookupKey(fighterB)].sort();
+            if (!names[0] || !names[1] || names[0] === names[1]) return;
             const pairKey = JSON.stringify(names);
             const priorMeetings = meetingCounts.get(pairKey) || 0;
             const markedRematch = match.isRematch === true;
-            const rematchNumber = priorMeetings > 0
-                ? priorMeetings
-                : markedRematch
-                    ? Math.max(1, Number(match.rematchNumber) || 1)
-                    : 0;
-            match.isRematch = markedRematch || priorMeetings > 0;
+            const isRematch = markedRematch || priorMeetings > 0;
+            const savedNumber = Number(match.rematchNumber) || 0;
+            const legacyMeetingNumber = match.rematchNumberIsMeeting === true ? savedNumber : savedNumber + 1;
+            const rematchNumber = isRematch
+                ? Math.max(2, priorMeetings + 1, legacyMeetingNumber)
+                : 0;
+            match.isRematch = isRematch;
             match.rematchNumber = rematchNumber;
+            match.rematchNumberIsMeeting = true;
             meetingCounts.set(pairKey, priorMeetings + 1);
 
             if (savedMatches && match.matchId && savedMatches[match.matchId]) {
                 savedMatches[match.matchId].isRematch = match.isRematch;
                 savedMatches[match.matchId].rematchNumber = rematchNumber;
+                savedMatches[match.matchId].rematchNumberIsMeeting = true;
             }
         });
 
@@ -733,6 +1428,7 @@ function auditTitleFightAppearances() {
 
     try {
         fighters.forEach(fighter => {
+            if (fighter.manual_stats_override === true) return;
             const total = counts.get(fighter.id) || 0;
             fighter.total_title_fights = total;
             fighter.title_fights = total;
@@ -783,6 +1479,7 @@ function auditLifetimeTitleDefenses() {
 
     try {
         fighters.forEach(fighter => {
+            if (fighter.manual_stats_override === true) return;
             fighter.lifetime_defenses = totals.get(fighter.id) || 0;
         });
         saveFighters(fighters);
@@ -833,6 +1530,7 @@ function loadCompletedMatchesForShow(showId) {
         recovered[match.matchId] = {
             winnerName: match.winner,
             loserName: match.loser,
+            showName: eventRecord.showTitle || eventRecord.name || '',
             winnerGender: winnerFighter ? winnerFighter.gender : 'male',
             slot1Name: match.winner,
             slot2Name: match.loser,
@@ -841,12 +1539,17 @@ function loadCompletedMatchesForShow(showId) {
             gender: inferredGender,
             methodId: match.methodId || '',
             methodName: match.method || '',
+            bonusType: normalizePerformanceBonusType(match.bonusType),
+            loserLoseStreakBefore: Math.max(0, Math.floor(Number(match.loserLoseStreakBefore) || 0)),
             isTitle: Boolean(match.isTitle),
+            shortNotice: match.shortNotice === true,
+            shortNoticeFighter: match.shortNoticeFighter || '',
             titleId: match.titleId || '',
             titleName: match.customTitleName || '',
             isRematch: match.isRematch === true,
-                rematchNumber: Number(match.rematchNumber) || 0,
-                titleFightAppearanceCounted: match.totalTitleFightAppearanceCounted === true
+            rematchNumber: Number(match.rematchNumber) || 0,
+            rematchNumberIsMeeting: match.rematchNumberIsMeeting === true,
+            titleFightAppearanceCounted: match.totalTitleFightAppearanceCounted === true
             };
     });
 
@@ -905,15 +1608,18 @@ function updateFinalizedShowDropdownStyles() {
     });
 }
 
-function setShowCompleted(showId, value) {
+function setShowCompleted(showId, value, finalizedAt = '') {
     refreshShowStateFromStorage();
     const show = futureShows.find(s => s.id === showId);
     if (!show) return;
     show.completed = !!value;
     if (value) {
-        show.completedAt = new Date().toISOString();
+        const timestamp = finalizedAt || new Date().toISOString();
+        show.completedAt = timestamp;
+        show.finalizedAt = timestamp;
     } else {
         delete show.completedAt;
+        delete show.finalizedAt;
     }
     localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
     updateMatchSwapSelectorsState();
@@ -941,6 +1647,9 @@ function applyCompletedShowVisuals() {
     });
     document.querySelectorAll('.match-row input, .match-row select, .match-row button').forEach(el => {
         if (el.classList && el.classList.contains('announce-btn')) {
+            el.disabled = false;
+            el.style.pointerEvents = 'auto';
+        } else if (el.classList && el.classList.contains('performance-bonus-select')) {
             el.disabled = false;
             el.style.pointerEvents = 'auto';
         } else if (el.classList && el.classList.contains('randomizer-btn')) {
@@ -1248,6 +1957,27 @@ function buildShowSchedulerHeader() {
         if (e.key === 'Enter') this.blur();
     });
     headerRow.appendChild(nameInput);
+
+    const showTierBadge = document.createElement('span');
+    showTierBadge.id = 'showTierBadge';
+    showTierBadge.className = 'show-tier-badge';
+    showTierBadge.setAttribute('aria-live', 'polite');
+    headerRow.appendChild(showTierBadge);
+
+    const showTierSelector = document.createElement('select');
+    showTierSelector.id = 'showTierSelector';
+    showTierSelector.setAttribute('aria-label', 'Show tier override');
+    showTierSelector.style.cssText = 'padding:6px 8px; border:1px solid #cbd5e1; border-radius:4px; background:white; font-weight:bold; cursor:pointer;';
+    showTierSelector.innerHTML = '<option value="fight_night">🥊 FIGHT NIGHT</option><option value="ppv">🏆 MAJOR PPV</option>';
+    showTierSelector.addEventListener('change', function() {
+        const selectedShow = futureShows.find(show => show.id === activeShowId);
+        if (!selectedShow) return;
+        selectedShow.tier = this.value;
+        selectedShow.tierOverride = true;
+        localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+        updateCurrentShowTierPresentation();
+    });
+    headerRow.appendChild(showTierSelector);
     
     // Bulk add shows
     const bulkDiv = document.createElement('div');
@@ -1311,6 +2041,16 @@ function buildShowSchedulerHeader() {
     randomBtn.style.cssText = 'background:#7c3aed; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold;';
     randomBtn.addEventListener('click', window.randomizeEntireShow);
     headerRow.appendChild(randomBtn);
+
+    const smartBookButtonTemplate = document.getElementById('smartBookCardButtonTemplate');
+    const smartBookBtn = smartBookButtonTemplate?.content.firstElementChild?.cloneNode(true) ||
+        document.createElement('button');
+    smartBookBtn.type = 'button';
+    smartBookBtn.className = 'smart-book-card-button';
+    smartBookBtn.textContent = '🧠 SMART BOOK CARD';
+    smartBookBtn.title = 'Book open-weight matchups using gender divisions, rankings, records, streaks, titles, and show tier';
+    smartBookBtn.addEventListener('click', window.smartBookFightCard);
+    headerRow.appendChild(smartBookBtn);
     
     const addBtn = document.createElement('button');
     addBtn.textContent = 'ADD SHOW';
@@ -1334,6 +2074,7 @@ function buildShowSchedulerHeader() {
     if (main && firstSection) {
         firstSection.parentNode.insertBefore(section, firstSection.nextSibling);
     }
+    updateCurrentShowTierPresentation();
     updateFighterScheduleLocator();
 }
 
@@ -1404,7 +2145,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const typedName = e.target.value.trim().toLowerCase();
                 const exactFighter = fighters.find(f => f.name.toLowerCase() === typedName);
                 e.target.setAttribute('data-fighter-id', exactFighter ? exactFighter.id : '');
+                updateTaleOfTheTapeButton(id);
                 if (matchRow.dataset.validationBatch === 'true') return;
+                delete matchRow.dataset.smartBookedTitle;
                 const slot1Input = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input');
                 const slot2Input = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input');
                 const slotType = e.target.closest('.fighter-slot')?.id?.replace(`${id}-`, '') || '';
@@ -1428,6 +2171,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                         if (avatar) avatar.classList.remove('ufc-winner-border');
                         if (label) label.style.display = 'none';
+                        updateFighterRecordDisplay(id, slotType, null);
 
                         if (matchRow) {
                             resetMatchRowRematchState(matchRow.id);
@@ -1480,7 +2224,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     window.addEventListener('pagehide', (event) => {
-        if (!window.skipDraftSaveOnUnload) saveCurrentCardDraft(event);
+        if (!window.skipDraftSaveOnUnload && !window.wweUniverseResetInProgress) saveCurrentCardDraft(event);
     });
     restoreSessionWarnings();
     const hasUnsubmittedMatchLoggingState = () => Array.from(document.querySelectorAll('.match-row')).some(matchRow => {
@@ -1506,6 +2250,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     window.addEventListener('wwe_fighters:changed', () => {
         refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits after roster update.', error));
+    });
+    window.addEventListener('universeTitleRules:changed', () => {
+        refreshFightersFromStorage(true);
+        document.querySelectorAll('.match-row').forEach(matchRow => {
+            ['slot1', 'slot2'].forEach(slotType => {
+                const input = matchRow.querySelector(`#${matchRow.id}-${slotType} .fighter-search-input`);
+                const fighter = input
+                    ? getFighterByIdOrName(input.getAttribute('data-fighter-id') || input.value.trim())
+                    : null;
+                updateFighterRecordDisplay(matchRow.id, slotType, fighter);
+            });
+            refreshTitleFightState(matchRow.id);
+        });
     });
     const refreshFightCardViewAfterNavigation = reason => {
         window.requestAnimationFrame(() => {
@@ -1547,17 +2304,12 @@ window.switchActiveShowCard = function(showId) {
 
 
 window.createNewFutureShow = function() {
-    const input = getEventNameInput();
-    const name = input ? input.value.trim() : '';
-    if (!name) return customAlert('Type a name to book an upcoming event card!', 'Create Event');
-
-    const newId = 'show-' + Date.now();
-    futureShows.push({ id: newId, name: name });
+    const newShow = createScheduledShow(getNextShowNumber());
+    futureShows.push(newShow);
     localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
-    localStorage.setItem('wwe_active_show_id', newId);
-    input.value = '';
+    localStorage.setItem('wwe_active_show_id', newShow.id);
     
-    customAlert(`Success! "${name}" added to your future show calendar.`, 'Event Created');
+    customAlert(`Success! "${newShow.name}" added to your future show calendar.`, 'Event Created');
     location.reload();
 };
 
@@ -1585,11 +2337,10 @@ window.deleteCurrentFutureShow = function() {
                 activeShowId = futureShows[0].id;
                 localStorage.setItem('wwe_active_show_id', activeShowId);
             } else {
-                // create a new placeholder show
-                const newId = 'show-' + Date.now();
-                futureShows.push({ id: newId, name: 'Show' });
+                const newShow = createScheduledShow(getNextShowNumber());
+                futureShows.push(newShow);
                 localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
-                activeShowId = newId;
+                activeShowId = newShow.id;
                 localStorage.setItem('wwe_active_show_id', activeShowId);
             }
         }
@@ -1601,38 +2352,10 @@ window.deleteCurrentFutureShow = function() {
 
 window.bulkCreateFutureShows = function() {
     const countEl = document.getElementById('bulkShowCount');
-    const nameInput = getEventNameInput();
     if (!countEl) return alert('Bulk create control not found.');
     const count = Math.max(0, parseInt(countEl.value, 10) || 0);
     if (!count) return alert('Enter a number greater than zero.');
-    // Determine a clean label (strip any trailing number from the provided base)
-    let rawBase = (nameInput && nameInput.value.trim()) ? nameInput.value.trim() : 'Fight Card';
-    const trailingNumMatch = rawBase.match(/^(.*?)[\s-_]*#?(\d+)$/);
-    let label = trailingNumMatch ? trailingNumMatch[1].trim() : rawBase;
-    if (!label) label = 'Fight Card';
-    if (label.toLowerCase() === 'fight card') label = 'Fight Card';
-
-    // Find the highest existing numeric suffix for this label (names like "Label 3")
-    const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp('^' + escapeRegExp(label) + '\\s*(\\d+)$', 'i');
-    let maxIndex = 0;
-    futureShows.forEach(s => {
-        if (!s || !s.name) return;
-        const m = String(s.name).trim().match(re);
-        if (m) {
-            const v = parseInt(m[1], 10) || 0;
-            if (v > maxIndex) maxIndex = v;
-        }
-    });
-
-    const startIndex = Math.max(1, maxIndex + 1);
-    const timestamp = Date.now();
-    for (let i = 0; i < count; i++) {
-        const newId = `show-${timestamp}-${i}-${Math.floor(Math.random() * 9999)}`;
-        const name = `${label} ${startIndex + i}`;
-        futureShows.push({ id: newId, name });
-    }
-    localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
+    appendScheduledShows(count);
     customAlert(`Added ${count} shows to your schedule.`, 'Bulk Shows Created');
     location.reload();
 };
@@ -1662,30 +2385,112 @@ window.bulkAddFutureShows = function(count) {
         customAlert('Please enter a number greater than 0.', 'Bulk Add Shows');
         return;
     }
-    
-    // Find the highest existing FIGHT CARD number
-    let maxCardNumber = 0;
-    futureShows.forEach(show => {
-        const match = show.name.match(/^FIGHT CARD\s*(\d+)$/i);
-        if (match) {
-            const num = parseInt(match[1], 10);
-            if (num > maxCardNumber) maxCardNumber = num;
-        }
-    });
-    
-    const startNumber = maxCardNumber + 1;
-    const timestamp = Date.now();
-    
-    for (let i = 0; i < count; i++) {
-        const newId = `show-${timestamp}-${i}-${Math.floor(Math.random() * 9999)}`;
-        const cardNumber = startNumber + i;
-        const name = `FIGHT CARD ${cardNumber}`;
-        futureShows.push({ id: newId, name });
-    }
-    
-    localStorage.setItem('wwe_future_shows', JSON.stringify(futureShows));
-    customAlert(`Added ${count} show${count === 1 ? '' : 's'}! (FIGHT CARD ${startNumber} - ${startNumber + count - 1})`, 'Bulk Shows Added');
+
+    const startNumber = appendScheduledShows(count);
+    const firstShowName = futureShows.find(show => getShowNumber(show) === startNumber)?.name;
+    const lastShowName = futureShows.find(show => getShowNumber(show) === startNumber + count - 1)?.name;
+    customAlert(`Added ${count} show${count === 1 ? '' : 's'}! (${firstShowName} - ${lastShowName})`, 'Bulk Shows Added');
     location.reload();
+};
+
+function getMatchTimerElapsedMs(state) {
+    if (!state) return 0;
+    return Math.max(0, Number(state.elapsedMs) || 0) +
+        (state.startedAt ? Math.max(0, Date.now() - state.startedAt) : 0);
+}
+
+function formatMatchTimerDisplay(elapsedMs) {
+    const totalSeconds = Math.floor(Math.max(0, Number(elapsedMs) || 0) / 1000);
+    const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+    const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${minutes}:${seconds}`;
+}
+
+function parseMatchFightTime(value) {
+    const match = /^(\d+):([0-5]\d)$/.exec(String(value || '').trim());
+    if (!match) return 0;
+    return (Number(match[1]) * 60 + Number(match[2])) * 1000;
+}
+
+function getMatchFightTime(state) {
+    const elapsedMs = getMatchTimerElapsedMs(state);
+    return Math.floor(elapsedMs / 1000) > 0 ? formatMatchTimerDisplay(elapsedMs) : '';
+}
+
+function updateMatchTimerDisplay(matchId) {
+    const display = document.getElementById(`${matchId}-timer-display`);
+    if (!display) return;
+    display.textContent = formatMatchTimerDisplay(getMatchTimerElapsedMs(matchTimerStates.get(matchId)));
+}
+
+function ensureMatchTimerInterval(matchId, state) {
+    if (!state || !state.startedAt || state.intervalId) return;
+    state.intervalId = window.setInterval(() => updateMatchTimerDisplay(matchId), 1000);
+}
+
+function clearMatchTimerIntervals() {
+    matchTimerStates.forEach(state => {
+        if (state.intervalId) window.clearInterval(state.intervalId);
+        state.intervalId = null;
+    });
+}
+
+function restoreMatchTimerFromDraft(matchId, draft) {
+    const priorState = matchTimerStates.get(matchId);
+    if (priorState?.intervalId) window.clearInterval(priorState.intervalId);
+    const state = {
+        elapsedMs: Math.max(0, Number(draft?.fightTimerElapsedMs) || 0),
+        startedAt: Math.max(0, Number(draft?.fightTimerStartedAt) || 0),
+        intervalId: null
+    };
+    matchTimerStates.set(matchId, state);
+    updateMatchTimerDisplay(matchId);
+    ensureMatchTimerInterval(matchId, state);
+}
+
+function restoreMatchTimerFromSaved(matchId, fightTime) {
+    const priorState = matchTimerStates.get(matchId);
+    if (priorState?.intervalId) window.clearInterval(priorState.intervalId);
+    const state = {
+        elapsedMs: parseMatchFightTime(fightTime),
+        startedAt: 0,
+        intervalId: null
+    };
+    matchTimerStates.set(matchId, state);
+    updateMatchTimerDisplay(matchId);
+}
+
+window.startMatchTimer = function(matchId) {
+    if (!document.getElementById(matchId) || completedMatches[matchId] || isShowCompleted(activeShowId)) return;
+    const state = matchTimerStates.get(matchId) || { elapsedMs: 0, startedAt: 0, intervalId: null };
+    if (!state.startedAt) state.startedAt = Date.now();
+    matchTimerStates.set(matchId, state);
+    ensureMatchTimerInterval(matchId, state);
+    updateMatchTimerDisplay(matchId);
+    saveCurrentCardDraft();
+};
+
+window.stopMatchTimer = function(matchId) {
+    const state = matchTimerStates.get(matchId) || { elapsedMs: 0, startedAt: 0, intervalId: null };
+    if (state.startedAt) {
+        state.elapsedMs = getMatchTimerElapsedMs(state);
+        state.startedAt = 0;
+    }
+    if (state.intervalId) window.clearInterval(state.intervalId);
+    state.intervalId = null;
+    matchTimerStates.set(matchId, state);
+    updateMatchTimerDisplay(matchId);
+    if (typeof saveCurrentCardDraft === 'function') saveCurrentCardDraft();
+    return getMatchFightTime(state);
+};
+
+window.resetMatchTimer = function(matchId) {
+    if (!document.getElementById(matchId) || completedMatches[matchId] || isShowCompleted(activeShowId)) return;
+    const state = matchTimerStates.get(matchId);
+    if (state?.intervalId) window.clearInterval(state.intervalId);
+    matchTimerStates.set(matchId, { elapsedMs: 0, startedAt: 0, intervalId: null });
+    updateMatchTimerDisplay(matchId);
+    saveCurrentCardDraft();
 };
 
 function renderCardRows(box, num, tierId, isMain) {
@@ -1710,9 +2515,10 @@ function renderCardRows(box, num, tierId, isMain) {
 
         matchRow.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; width:100%; border-bottom:1px dashed #e2e8f0; padding-bottom:6px; font-size:0.65rem; font-weight:bold; color:#64748b;">
-                <span>MATCH VARIANT</span>
+                <span>MATCH VARIANT <span id="${uId}-boss-fight-banner" class="boss-fight-banner" hidden>☠️ BOSS FIGHT • BOUNTY ACTIVE</span></span>
+                <span class="short-notice-replacement-pill" hidden></span>
                 <div style="display:flex; gap:4px; align-items:center;">
-                    <button class="randomizer-btn" onclick="randomizeMatchup('${uId}')" style="background:#7c3aed; border:none; color:white; padding:3px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem; transition:0.2s;" title="Pick 2 random fighters of same gender & weight class">🎲 RANDOM</button>
+                    <button class="randomizer-btn" onclick="randomizeMatchup('${uId}')" style="background:#7c3aed; border:none; color:white; padding:3px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem; transition:0.2s;" title="Pick 2 random fighters of the same gender (open weight)">🎲 RANDOM</button>
                     <button class="randomizer-btn" onclick="randomizeMatchup('${uId}')" style="background:#a855f7; border:none; color:white; padding:2px 6px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.55rem; transition:0.2s;" title="Reroll">↻</button>
                     <div style="display:flex; gap:4px; background:#f1f5f9; padding:2px; border-radius:6px;">
                         <button onclick="changeMatchGender('${uId}', 'male')" id="${uId}-btn-male" style="background:#0369a1; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold; font-size:0.6rem;">MALE</button>
@@ -1720,44 +2526,57 @@ function renderCardRows(box, num, tierId, isMain) {
                     </div>
                 </div>
             </div>
+            <div class="rivalry-status-row" id="${uId}-rivalry-status-row" hidden>
+                <span class="rivalry-match-badge" id="${uId}-rivalry-status"></span>
+            </div>
+            <div class="prospect-protection-status-row" id="${uId}-prospect-protection-row" hidden>
+                <span class="prospect-protection-badge" id="${uId}-prospect-protection-badge"></span>
+            </div>
             <div id="${uId}-booking-panel" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
                 
                 <div class="fighter-slot" id="${uId}-slot1" data-gender="male" style="width:38%; display:flex; align-items:center; gap:8px; position:relative; transition: box-shadow 0.25s ease, transform 0.25s ease;">
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
-                        <div class="avatar-frame portrait-frame-base" style="position:relative; width:60px; height:60px;">
+                        <div class="avatar-frame portrait-frame-base" style="position:relative; display:inline-block; overflow:visible; width:60px; height:60px;">
+                            <span class="division-rank-badge" data-rank-fighter-id="" hidden></span>
                             <div class="avatar-box" style="width:60px; height:60px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
                             <div class="win-badge" style="display:none;">✓</div>
                         </div>
                         <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
                     </div>
                     <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:4px;">
-                        <div class="dropdown-search-container" style="width:100%;">
-                            <input type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 1..." onfocus="triggerSearchFill('${uId}', 'slot1')" onkeyup="triggerSearchFill('${uId}', 'slot1')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600;">
-                            <div class="search-results-floating-panel" style="display:none;"></div>
+                        <div class="fighter-name-rank-row" style="display:flex; align-items:center; gap:5px; width:100%;">
+                            <div class="dropdown-search-container" style="flex:1; min-width:0;">
+                                <input type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 1..." onfocus="triggerSearchFill('${uId}', 'slot1')" onkeyup="triggerSearchFill('${uId}', 'slot1')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600;">
+                                <div class="search-results-floating-panel" style="display:none;"></div>
+                            </div>
                         </div>
-                        <div id="${uId}-slot1-record" class="fighter-record" style="font-size:0.75rem; color:#475569; margin-top:4px; min-height:18px; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+                        <div id="${uId}-slot1-record" class="fighter-record" style="font-size:0.75rem; color:#475569; margin-top:4px; min-height:18px; width:100%;"></div>
                     </div>
                 </div>
 
-                <div class="vs-badge" style="display:flex; flex-direction:row; align-items:center; justify-content:center; gap:8px; width:20%;">
+                <div class="vs-badge" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; width:20%;">
                     <span style="font-size:0.75rem; font-weight:900; background:#64748b; color:white; padding:4px 10px; border-radius:4px; letter-spacing:0.05em; ${isMain?'background:#dc2626;':''}">VS</span>
-                    <button onclick="suggestOpponent('${uId}')" style="background:#f0fdf4; border:1px solid #bbf7d0; color:#16a34a; padding:2px 6px; border-radius:4px; cursor:pointer; font-size:0.65rem; font-weight:bold; margin-top:6px;">💡 Suggest</button>
+                    <button type="button" class="tale-of-the-tape-trigger" onclick="openTaleOfTheTape('${uId}')" disabled>📊 Tale of the Tape</button>
+                    <button onclick="suggestOpponent('${uId}')" style="background:#f0fdf4; border:1px solid #bbf7d0; color:#16a34a; padding:2px 6px; border-radius:4px; cursor:pointer; font-size:0.65rem; font-weight:bold;">💡 Suggest</button>
                 </div>
 
                 <div class="fighter-slot" id="${uId}-slot2" data-gender="male" style="width:38%; text-align:right; display:flex; flex-direction:row-reverse; align-items:center; gap:8px; position:relative; min-width:0; transition: box-shadow 0.25s ease, transform 0.25s ease;">
                     <div style="display:flex; flex-direction:column; align-items:center; gap:4px; position:relative;">
-                        <div class="avatar-frame portrait-frame-base" style="position:relative; width:60px; height:60px;">
+                        <div class="avatar-frame portrait-frame-base" style="position:relative; display:inline-block; overflow:visible; width:60px; height:60px;">
+                            <span class="division-rank-badge" data-rank-fighter-id="" hidden></span>
                             <div class="avatar-box" style="width:60px; height:60px; background:#e2e8f0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #cbd5e1; color:#64748b; overflow:hidden; cursor:pointer;">👤</div>
                             <div class="win-badge" style="display:none;">✓</div>
                         </div>
                         <div class="win-method-label" style="display:none; font-size:0.65rem; font-weight:800; color:#16a34a; text-transform:uppercase; text-align:center; line-height:1; max-width:80px;">KO/TKO</div>
                     </div>
                     <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:4px;">
-                        <div class="dropdown-search-container" style="width:100%;">
-                            <input type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 2..." onfocus="triggerSearchFill('${uId}', 'slot2')" onkeyup="triggerSearchFill('${uId}', 'slot2')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600; text-align:right;">
-                            <div class="search-results-floating-panel" style="display:none;"></div>
+                        <div class="fighter-name-rank-row" style="display:flex; align-items:center; gap:5px; width:100%;">
+                            <div class="dropdown-search-container" style="flex:1; min-width:0;">
+                                <input type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="fighter-search-input" data-fighter-id="" placeholder="Type Fighter 2..." onfocus="triggerSearchFill('${uId}', 'slot2')" onkeyup="triggerSearchFill('${uId}', 'slot2')" style="width:100%; padding:6px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.85rem; outline:none; font-weight:600; text-align:right;">
+                                <div class="search-results-floating-panel" style="display:none;"></div>
+                            </div>
                         </div>
-                        <div id="${uId}-slot2-record" class="fighter-record" style="font-size:0.75rem; color:#475569; margin-top:4px; min-height:18px; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
+                        <div id="${uId}-slot2-record" class="fighter-record" style="font-size:0.75rem; color:#475569; margin-top:4px; min-height:18px; width:100%;"></div>
                     </div>
                 </div>
 
@@ -1784,12 +2603,25 @@ function renderCardRows(box, num, tierId, isMain) {
                     <div style="width:20%; display:flex; flex-direction:column; align-items:center; justify-content:center;">
                         <span style="font-size:0.65rem; color:#64748b; font-weight:bold; font-style:italic;">DEFEATED BY</span>
                         <span id="${uId}-showcase-method" style="font-size:0.85rem; color:#38bdf8; font-weight:800; letter-spacing:0.05em; margin-top:1px;"></span>
+                        <span id="${uId}-showcase-fight-time" class="fight-time-badge" style="display:none;"></span>
+                        <span id="${uId}-upset-alert" class="upset-alert-badge" hidden></span>
+                        <span id="${uId}-fast-track-alert" class="fast-track-alert-badge" hidden></span>
+                        <span id="${uId}-boss-slain-alert" class="boss-slain-alert" hidden></span>
                     </div>
                     <div id="${uId}-showcase-loser" style="width:40%; text-align:right; color:#ef4444; text-decoration:line-through; font-size:0.95rem; font-weight:700; opacity:0.6;"></div>
                 </div>
+                <div class="performance-bonus-controls">
+                    <label for="${uId}-performance-bonus">🏅 Award Bonus</label>
+                    <select id="${uId}-performance-bonus" class="performance-bonus-select" onchange="setMatchBonus('${uId}', this.value)">
+                        <option value="">None</option>
+                        <option value="FOTN">🏆 Fight of the Night (FOTN)</option>
+                        <option value="POTN">💥 Performance of the Night (POTN)</option>
+                    </select>
+                    <span id="${uId}-performance-bonus-badge" class="performance-bonus-badge" hidden></span>
+                </div>
             </div>
             <div class="controls-area" style="display:flex; align-items:center; justify-content:space-between; width:100%; margin-top:4px; border-top:1px solid #f1f5f9; padding-top:8px;">
-                <div style="width:70%; display:flex; gap:8px; align-items:center;">
+                <div style="width:70%; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
                     <select id="${uId}-winner-select" style="padding:4px 8px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.7rem; font-weight:bold; color:#334155; width:140px;">
                         <option value="">Winner...</option>
                     </select>
@@ -1801,17 +2633,26 @@ function renderCardRows(box, num, tierId, isMain) {
                     </select>
                         <button id="${uId}-log-btn" onclick="logMatchResult('${uId}')" style="background:#ef4444; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Log Result</button>
                         <button id="${uId}-unlog-btn" onclick="unlogMatchResult('${uId}')" style="display:none; background:#d946ef; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Unlog Result</button>
+                    <div class="match-timer-widget" role="group" aria-label="Fight timer">
+                        <span id="${uId}-timer-display" class="match-timer-display">00:00</span>
+                        <button type="button" class="match-timer-button" onclick="startMatchTimer('${uId}')">▶ Start</button>
+                        <button type="button" class="match-timer-button" onclick="stopMatchTimer('${uId}')">⏸ Stop</button>
+                        <button type="button" class="match-timer-button match-timer-button--reset" onclick="resetMatchTimer('${uId}')">↺ Reset</button>
+                    </div>
                 </div>
                                 <div style="width:30%; display:flex; justify-content:flex-end; gap:8px; font-size:0.7rem; font-weight:bold; color:#475569; align-items:center;">
+                    <span id="${uId}-title-gate-warning" class="title-gate-warning" hidden></span>
                     <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="${uId}-title-check" onchange="toggleTitleFight('${uId}', this)"> 🏆 TITLE / BELT MATCH</label>
                     <div style="display:flex; align-items:center; gap:6px;">
                         <select id="${uId}-title-name-input" style="display:none; padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.65rem; font-weight:bold; width:180px; outline:none; background:white; color:#1e293b;"></select>
+                        <div id="${uId}-title-defense-milestone" class="title-defense-milestone" hidden aria-live="polite"></div>
                     </div>
-                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" onchange="toggleRematchCounter('${uId}', this)"> 🔄 REMATCH <input type="number" min="1" value="1" id="${uId}-rematch-count" style="display:none; width:32px; font-size:0.65rem; margin-left:2px;"></label>
+                    <label class="rematch-control"><input type="checkbox" data-rematch-indicator disabled aria-label="Automatic rematch indicator"><span class="rematch-label rematch-label--muted" id="${uId}-rematch-label">REMATCH</span><input type="hidden" min="1" value="1" id="${uId}-rematch-count"></label>
                 </div>
 
             </div>`;
         box.appendChild(matchRow);
+        updateTaleOfTheTapeButton(uId);
         restoreSessionRematchWarningForRow(uId);
         clearMatchWinnerBadges(uId);
         
@@ -1824,6 +2665,7 @@ function renderCardRows(box, num, tierId, isMain) {
                 unlogBtn.disabled = false;
             }
         }
+        updateTaleOfTheTapeButton(uId);
     }
 }
 
@@ -1957,6 +2799,8 @@ function swapActiveShowMatches(firstId, secondId) {
 }
 
 function rerenderActiveFightCard() {
+    clearMatchTimerIntervals();
+    matchTimerStates.clear();
     const tierIds = ['mainEventContainer', 'coMainContainer', 'mainCardContainer', 'prelimsContainer', 'earlyPrelimsContainer'];
     const rowsByTier = new Map(tierIds.map(id => [id, []]));
     document.querySelectorAll('.match-row').forEach(row => {
@@ -1974,6 +2818,7 @@ function rerenderActiveFightCard() {
     });
     populateMatchSwapSelectors();
     restoreCurrentCardDraft();
+    document.querySelectorAll('.match-row').forEach(row => updateRivalryIndicator(row.id));
     refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits after swapping matches.', error));
     applyCompletedShowVisuals();
     updateFinalizeButtonState();
@@ -2133,38 +2978,587 @@ function populateDropdownGenders(matchRowId, genderVariant) {
     }
 }
 
-function getFightHistoryBetween(f1, f2) {
-    if (!f1 || !f2 || f1.id === f2.id) return [];
-    const history1 = (f1.compiled_history_deck || f1.history_deck || f1.history || []).filter(entry => entry.opponent === f2.name);
-    if (history1.length) {
-        return history1.map(entry => ({
-            winner: entry.outcome === 'win' ? f1.name : f2.name,
-            loser: entry.outcome === 'loss' ? f1.name : f2.name,
-            method: entry.method,
-            showName: entry.showName,
-            rematchNumber: (typeof entry.rematchNumber === 'number') ? entry.rematchNumber : 0
-        }));
+function getArchivedFightHistoryBetween(f1, f2) {
+    const fighter1Key = normalizeLookupKey(f1?.name);
+    const fighter2Key = normalizeLookupKey(f2?.name);
+    if (!fighter1Key || !fighter2Key || fighter1Key === fighter2Key) return [];
+
+    let eventHistory;
+    try {
+        eventHistory = JSON.parse(localStorage.getItem('wwe_event_history') || '[]');
+        if (!Array.isArray(eventHistory)) throw new Error('Archived event history is not a list.');
+    } catch (error) {
+        console.error('Unable to read archived fights for rematch detection.', error);
+        return [];
     }
-    const history2 = (f2.compiled_history_deck || f2.history_deck || f2.history || []).filter(entry => entry.opponent === f1.name);
-    return history2.map(entry => ({
-        winner: entry.outcome === 'win' ? f2.name : f1.name,
-        loser: entry.outcome === 'loss' ? f2.name : f1.name,
-        method: entry.method,
-        showName: entry.showName,
-        rematchNumber: (typeof entry.rematchNumber === 'number') ? entry.rematchNumber : 0
+
+    const matches = [];
+    eventHistory.forEach((event, eventIndex) => {
+        if (!Array.isArray(event?.matches)) return;
+        event.matches.forEach(match => {
+            if (!match || typeof match !== 'object') return;
+            const winner = String(match.winner || match.winnerName || '').trim();
+            const loser = String(match.loser || match.loserName || '').trim();
+            if (!winner || !loser) return;
+            const winnerKey = normalizeLookupKey(winner);
+            const loserKey = normalizeLookupKey(loser);
+            if (!((winnerKey === fighter1Key && loserKey === fighter2Key) ||
+                (winnerKey === fighter2Key && loserKey === fighter1Key))) return;
+            matches.push({
+                winner,
+                loser,
+                method: match.method || match.methodName || '',
+                fightTime: match.fightTime || '',
+                showName: event.showTitle || event.name || `Fight Card ${eventIndex + 1}`,
+                rematchNumber: Number(match.rematchNumber) || 0,
+                rematchNumberIsMeeting: match.rematchNumberIsMeeting === true
+            });
+        });
+    });
+    return matches;
+}
+
+function getFighterHistoryBetween(fighter, opponent) {
+    const opponentKey = normalizeLookupKey(opponent?.name);
+    if (!opponentKey) return [];
+    const historySources = [fighter?.compiled_history_deck, fighter?.history_deck, fighter?.history];
+    const history = historySources.find(source => Array.isArray(source) && source.length) ||
+        historySources.find(Array.isArray) || [];
+    return history.filter(entry =>
+        entry && normalizeLookupKey(entry.opponent) === opponentKey
+    ).map(entry => ({
+        winner: String(entry.outcome || '').toLowerCase() === 'win' ? fighter.name : opponent.name,
+        loser: String(entry.outcome || '').toLowerCase() === 'loss' ? fighter.name : opponent.name,
+        method: entry.method || '',
+        fightTime: entry.fightTime || '',
+        showName: entry.showName || '',
+        rematchNumber: Number(entry.rematchNumber) || 0,
+        rematchNumberIsMeeting: entry.rematchNumberIsMeeting === true
     }));
 }
 
-function getNextRematchNumberForPair(f1, f2) {
-    if (!f1 || !f2 || f1.id === f2.id) return 0;
-    const historyEntries = getFightHistoryBetween(f1, f2);
-    if (!historyEntries.length) return 0;
-    return Math.max(1, historyEntries.length);
+function getFightHistoryBetween(f1, f2) {
+    if (!f1 || !f2 || f1.id === f2.id) return [];
+    const fighter1Key = normalizeLookupKey(f1.name);
+    const fighter2Key = normalizeLookupKey(f2.name);
+    if (!fighter1Key || !fighter2Key || fighter1Key === fighter2Key) return [];
+    const historySources = [
+        getArchivedFightHistoryBetween(f1, f2),
+        getFighterHistoryBetween(f1, f2),
+        getFighterHistoryBetween(f2, f1)
+    ];
+    return historySources.reduce((best, source) => source.length > best.length ? source : best, []);
+}
+
+function getTaleOfTheTapeFighter(matchRowId, slotType) {
+    const input = document.querySelector(`#${matchRowId}-${slotType} .fighter-search-input`);
+    if (!input) return null;
+    const fighterId = input.getAttribute('data-fighter-id') || '';
+    const fighterNameKey = normalizeLookupKey(input.value);
+    const roster = Array.isArray(fighters) ? fighters : [];
+    return (fighterId && roster.find(fighter => String(fighter.id) === fighterId)) ||
+        (fighterNameKey && roster.find(fighter => normalizeLookupKey(fighter.name) === fighterNameKey)) ||
+        null;
+}
+
+function updateTaleOfTheTapeButton(matchRowId) {
+    const button = document.querySelector(`#${matchRowId} .tale-of-the-tape-trigger`);
+    if (!button) return;
+    const enabled = !!(getTaleOfTheTapeFighter(matchRowId, 'slot1') ||
+        getTaleOfTheTapeFighter(matchRowId, 'slot2'));
+    button.disabled = !enabled;
+    button.setAttribute('aria-disabled', String(!enabled));
+}
+
+function getTaleOfTheTapeTitleStatus(fighter) {
+    const status = getTitleEligibilityStatus(fighter);
+    const priority = status.status === 'eligible' ? 3 :
+        status.status === 'contender' ? 2 : 1;
+    return {
+        label: status.status === 'eligible' ? '🟢 TITLE ELIGIBLE' :
+            status.status === 'rebuilding' || status.status === 'locked' ? '🟡 REBUILDING' :
+                '⚪ CONTENDER',
+        priority
+    };
+}
+
+function getTaleOfTheTapeStreak(fighter) {
+    const wins = Math.max(0, Math.floor(Number(fighter?.win_streak) || 0));
+    const losses = Math.max(0, Math.floor(Number(fighter?.lose_streak) || 0));
+    const peak = getCardsCareerPeakWinStreak(fighter);
+    return {
+        label: wins ? `🔥 ${wins}W • Peak ${peak}W` :
+            losses ? `❄️ ${losses}L • Peak ${peak}W` : `No active streak • Peak ${peak}W`,
+        score: wins || -losses
+    };
+}
+
+function getTaleOfTheTapeStyle(fighter) {
+    const finishes = [
+        { label: '💀 KO ARTIST', count: Math.max(0, Number(fighter?.win_ko ?? fighter?.ko_wins) || 0) },
+        { label: '🔒 SUB ARTIST', count: Math.max(0, Number(fighter?.win_submission ?? fighter?.sub_wins) || 0) },
+        { label: '🤼 PIN ARTIST', count: Math.max(0, Number(fighter?.win_pinfall ?? fighter?.pin_wins) || 0) }
+    ];
+    const maxCount = Math.max(...finishes.map(item => item.count));
+    if (!maxCount) return { label: '—', score: 0 };
+    const leaders = finishes.filter(item => item.count === maxCount);
+    return {
+        label: leaders[0].label,
+        score: maxCount
+    };
+}
+
+function getTaleOfTheTapeAllianceSummary(fighter) {
+    const nameKey = normalizeLookupKey(fighter?.name);
+    const fighterId = String(fighter?.id || '');
+    if (!nameKey && !fighterId) return 'None';
+    const groups = [];
+    const partners = [];
+    getUniverseAlliances().forEach(alliance => {
+        const members = alliance.members.map(member => {
+            if (member && typeof member === 'object') {
+                return { id: String(member.id || ''), name: String(member.name || '') };
+            }
+            return { id: '', name: String(member || '') };
+        });
+        const includesFighter = members.some(member =>
+            (fighterId && member.id && member.id === fighterId) ||
+            (nameKey && normalizeLookupKey(member.name) === nameKey)
+        );
+        if (!includesFighter) return;
+        const type = String(alliance.type || '').toLowerCase();
+        const isRomantic = type.includes('romantic') || type.includes('couple');
+        const groupName = String(alliance.name || '').trim();
+        if (groupName) {
+            const typeLabel = isRomantic ? 'ROMANTIC' :
+                type.includes('family') || type.includes('bloodline') ? 'FAMILY' :
+                    type.includes('friend') || type.includes('faction') ? 'FRIENDS' : 'ALLIANCE';
+            groups.push(`${groupName} (${typeLabel})`);
+        }
+        if (isRomantic) {
+            members.forEach(member => {
+                const isCurrentFighter = (fighterId && member.id && member.id === fighterId) ||
+                    (nameKey && normalizeLookupKey(member.name) === nameKey);
+                if (!isCurrentFighter && member.name.trim()) {
+                    partners.push(groupName
+                        ? `${member.name.trim()} (${groupName})`
+                        : member.name.trim());
+                }
+            });
+        }
+    });
+    const uniquePartners = Array.from(new Set(partners));
+    const uniqueGroups = Array.from(new Set(groups));
+    const details = [];
+    if (uniquePartners.length) details.push(`♥ Partner(s): ${uniquePartners.join(', ')}`);
+    if (uniqueGroups.length) details.push(`Groups: ${uniqueGroups.join(', ')}`);
+    return details.join(' • ') || 'None';
+}
+
+function getTaleOfTheTapeTimedWinAverage(fighter) {
+    const fighterId = String(fighter?.id || '');
+    const fighterNameKey = normalizeLookupKey(fighter?.name);
+    let eventHistory;
+    try {
+        eventHistory = JSON.parse(localStorage.getItem('wwe_event_history') || '[]');
+        if (!Array.isArray(eventHistory)) throw new Error('Archived event history is not a list.');
+    } catch (error) {
+        console.error('Unable to read archived fights for Tale of the Tape.', error);
+        return null;
+    }
+
+    let totalSeconds = 0;
+    let timedWins = 0;
+    eventHistory.forEach(event => {
+        if (!Array.isArray(event?.matches)) return;
+        event.matches.forEach(match => {
+            if (!match || typeof match !== 'object') return;
+            const winnerId = String(match.winnerId || match.winner_id || '');
+            const winnerNameKey = normalizeLookupKey(match.winner || match.winnerName);
+            const isWin = (fighterId && winnerId && winnerId === fighterId) ||
+                (fighterNameKey && winnerNameKey === fighterNameKey);
+            if (!isWin) return;
+            const timeMs = parseMatchFightTime(match.fightTime);
+            if (!timeMs) return;
+            totalSeconds += timeMs / 1000;
+            timedWins++;
+        });
+    });
+    return timedWins ? totalSeconds / timedWins : null;
+}
+
+function getTaleOfTheTapeRankLookup() {
+    if (typeof window.getDivisionRankLookup !== 'function') return null;
+    try {
+        const rankings = typeof window.getDivisionRankings === 'function'
+            ? window.getDivisionRankings()
+            : [];
+        return window.getDivisionRankLookup(rankings);
+    } catch (error) {
+        console.error('Unable to load division ranks for Tale of the Tape.', error);
+        return null;
+    }
+}
+
+function getTaleOfTheTapeRank(fighter, rankLookup) {
+    if (!fighter || !rankLookup) return 'NR';
+    const entry = (fighter.id && rankLookup.get(String(fighter.id))) ||
+        (fighter.name && rankLookup.get(`name:${String(fighter.name).trim().toLowerCase()}`));
+    return entry?.rank || 'NR';
+}
+
+function getTaleOfTheTapeStats(fighter) {
+    const wins = Math.max(0, Number(fighter?.wins) || 0);
+    const losses = Math.max(0, Number(fighter?.losses) || 0);
+    const fights = wins + losses;
+    const ko = Math.max(0, Number(fighter?.win_ko ?? fighter?.ko_wins) || 0);
+    const submission = Math.max(0, Number(fighter?.win_submission ?? fighter?.sub_wins) || 0);
+    const pin = Math.max(0, Number(fighter?.win_pinfall ?? fighter?.pin_wins) || 0);
+    const bonuses = Math.max(0, Number(fighter?.fotn_bonuses) || 0) +
+        Math.max(0, Number(fighter?.potn_bonuses) || 0);
+    return {
+        wins,
+        losses,
+        winRate: fights ? wins / fights * 100 : 0,
+        streak: getTaleOfTheTapeStreak(fighter),
+        title: getTaleOfTheTapeTitleStatus(fighter),
+        style: getTaleOfTheTapeStyle(fighter),
+        finishTotal: pin + ko + submission,
+        finishBreakdown: `${pin} PIN • ${ko} KO • ${submission} SUB`,
+        averageFightTime: getTaleOfTheTapeTimedWinAverage(fighter),
+        giantKills: Math.max(0, Number(fighter?.giant_kills) || 0),
+        bossSlays: Math.max(0, Number(fighter?.boss_slays) || 0),
+        bonuses,
+        achievements: `⚔️ ${Math.max(0, Number(fighter?.giant_kills) || 0)} Giant Kills • 🗡️ ${Math.max(0, Number(fighter?.boss_slays) || 0)} Boss Slays • 🏅 ${bonuses} Bonuses`,
+        alliances: getTaleOfTheTapeAllianceSummary(fighter)
+    };
+}
+
+function getTaleOfTheTapeFightTimeLabel(value) {
+    const timeMs = parseMatchFightTime(value);
+    return timeMs ? formatMatchTimerDisplay(timeMs) : 'N/A';
+}
+
+function getTaleOfTheTapeMethodLabel(method) {
+    return String(method || 'Method N/A')
+        .replace(/win_pinfall/gi, 'PINFALL')
+        .replace(/win_ko/gi, 'KO/TKO')
+        .replace(/win_submission/gi, 'SUBMISSION');
+}
+
+function appendTaleOfTheTapeStatRow(tbody, label, leftValue, rightValue, advantage = 0) {
+    const row = document.createElement('tr');
+    row.className = 'tale-of-the-tape-stats__row';
+    const left = document.createElement('td');
+    const category = document.createElement('th');
+    const right = document.createElement('td');
+    left.className = 'tale-of-the-tape-stats__value';
+    right.className = 'tale-of-the-tape-stats__value';
+    category.className = 'tale-of-the-tape-stats__category';
+    left.textContent = leftValue;
+    category.textContent = label;
+    right.textContent = rightValue;
+    if (advantage > 0) left.classList.add('tale-of-the-tape-stats__value--advantage');
+    if (advantage < 0) right.classList.add('tale-of-the-tape-stats__value--advantage');
+    row.append(left, category, right);
+    tbody.appendChild(row);
+}
+
+function populateTaleOfTheTapeFighter(side, fighter, rankLookup) {
+    const suffix = side === 'slot1' ? '1' : '2';
+    const portrait = document.getElementById(`taleOfTheTapePortrait${suffix}`);
+    const initials = document.getElementById(`taleOfTheTapeInitials${suffix}`);
+    const name = document.getElementById(`taleOfTheTapeName${suffix}`);
+    const rank = document.getElementById(`taleOfTheTapeRank${suffix}`);
+    const details = document.getElementById(`taleOfTheTapeDetails${suffix}`);
+    const fighterName = String(fighter?.name || '').trim();
+    name.textContent = fighterName || 'No fighter selected';
+    rank.textContent = getTaleOfTheTapeRank(fighter, rankLookup);
+    initials.textContent = fighterName
+        ? fighterName.split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase()
+        : '?';
+    const portraitPath = fighter?.photo || fighter?.image || fighter?.profile_pic || '';
+    portrait.hidden = !portraitPath;
+    initials.hidden = !!portraitPath;
+    portrait.alt = fighterName ? `${fighterName} portrait` : '';
+    portrait.onerror = () => {
+        portrait.hidden = true;
+        initials.hidden = false;
+    };
+    portrait.src = portraitPath;
+    details.textContent = fighter
+        ? `${String(fighter.gender || 'Unknown').replace(/^./, char => char.toUpperCase())} • ${fighter.division || fighter.weight_class || 'Division not set'}`
+        : '';
+}
+
+function populateTaleOfTheTapeMeetings(fighter1, fighter2) {
+    const meetingsList = document.getElementById('taleOfTheTapeMeetings');
+    const seriesScore = document.getElementById('taleOfTheTapeSeriesScore');
+    if (!meetingsList || !seriesScore) return;
+    meetingsList.replaceChildren();
+    const history = fighter1 && fighter2 ? getFightHistoryBetween(fighter1, fighter2) : [];
+    const fighter1Key = normalizeLookupKey(fighter1?.name);
+    const fighter2Key = normalizeLookupKey(fighter2?.name);
+    let fighter1Wins = 0;
+    let fighter2Wins = 0;
+    history.forEach(match => {
+        const winnerKey = normalizeLookupKey(match.winner);
+        if (winnerKey === fighter1Key) fighter1Wins++;
+        else if (winnerKey === fighter2Key) fighter2Wins++;
+    });
+    seriesScore.textContent = !fighter1 || !fighter2
+        ? 'Select both fighters'
+        : !history.length
+        ? 'First Ever Meeting'
+        : fighter1Wins === fighter2Wins
+            ? `Tied ${fighter1Wins}–${fighter2Wins}`
+            : `${fighter1Wins > fighter2Wins ? fighter1.name : fighter2.name} leads ${Math.max(fighter1Wins, fighter2Wins)}–${Math.min(fighter1Wins, fighter2Wins)}`;
+
+    history.slice().reverse().forEach(match => {
+        const item = document.createElement('li');
+        const showName = document.createElement('strong');
+        const result = document.createElement('span');
+        const method = document.createElement('span');
+        const time = document.createElement('span');
+        showName.textContent = match.showName || 'Archived Fight';
+        result.textContent = `Winner: ${match.winner || 'Unknown'}`;
+        method.textContent = getTaleOfTheTapeMethodLabel(match.method);
+        time.textContent = getTaleOfTheTapeFightTimeLabel(match.fightTime);
+        item.append(showName, result, method, time);
+        meetingsList.appendChild(item);
+    });
+}
+
+window.openTaleOfTheTape = function(matchRowId) {
+    const backdrop = document.getElementById('taleOfTheTapeBackdrop');
+    const tbody = document.getElementById('taleOfTheTapeStats');
+    const matchRow = document.getElementById(matchRowId);
+    if (!backdrop || !tbody || !matchRow) return;
+    const fighter1 = getTaleOfTheTapeFighter(matchRowId, 'slot1');
+    const fighter2 = getTaleOfTheTapeFighter(matchRowId, 'slot2');
+    if (!fighter1 && !fighter2) return;
+    taleOfTheTapeTrigger = document.activeElement;
+
+    const matchLabel = document.getElementById('taleOfTheTapeMatchLabel');
+    if (matchLabel) matchLabel.textContent = (matchRow.dataset.matchLabel || 'MATCH').toUpperCase();
+    const context = document.getElementById('taleOfTheTapeContext');
+    if (context) {
+        context.replaceChildren();
+        const rivalry = fighter1 && fighter2 ? getRivalryStatus(fighter1, fighter2) : null;
+        const hasBoss = [fighter1, fighter2].some(fighter => fighter?.is_boss === true);
+        if (rivalry?.label || hasBoss) {
+            context.hidden = false;
+            if (rivalry?.label) {
+                const rivalryBanner = document.createElement('span');
+                rivalryBanner.className = `tale-of-the-tape-context__banner ${rivalry.className || ''}`;
+                rivalryBanner.textContent = rivalry.label;
+                context.appendChild(rivalryBanner);
+            }
+            if (hasBoss) {
+                const bossBanner = document.createElement('span');
+                bossBanner.className = 'tale-of-the-tape-context__banner tale-of-the-tape-context__banner--boss';
+                bossBanner.textContent = '☠️ BOSS FIGHT • BOUNTY ACTIVE';
+                context.appendChild(bossBanner);
+            }
+        } else {
+            context.hidden = true;
+        }
+    }
+
+    const rankLookup = getTaleOfTheTapeRankLookup();
+    populateTaleOfTheTapeFighter('slot1', fighter1, rankLookup);
+    populateTaleOfTheTapeFighter('slot2', fighter2, rankLookup);
+    const emptyStats = {
+        wins: null, losses: null, winRate: null,
+        streak: { label: '—', score: null },
+        title: { label: '—', priority: null },
+        style: { label: '—', score: null },
+        finishTotal: null, finishBreakdown: '—',
+        averageFightTime: null,
+        giantKills: null, bossSlays: null, bonuses: null,
+        achievements: '—', alliances: '—'
+    };
+    const left = fighter1 ? getTaleOfTheTapeStats(fighter1) : emptyStats;
+    const right = fighter2 ? getTaleOfTheTapeStats(fighter2) : emptyStats;
+    tbody.replaceChildren();
+    const bothFightersSelected = !!(fighter1 && fighter2);
+    const leftRecord = left.wins === null ? '—' : `${left.wins} - ${left.losses}`;
+    const rightRecord = right.wins === null ? '—' : `${right.wins} - ${right.losses}`;
+    const compare = (a, b) => !bothFightersSelected ? 0 : a > b ? 1 : a < b ? -1 : 0;
+    appendTaleOfTheTapeStatRow(tbody, 'OVERALL RECORD', leftRecord, rightRecord, compare(left.winRate, right.winRate));
+    appendTaleOfTheTapeStatRow(tbody, 'WIN RATE', left.winRate === null ? '—' : `${left.winRate.toFixed(1)}%`, right.winRate === null ? '—' : `${right.winRate.toFixed(1)}%`, compare(left.winRate, right.winRate));
+    appendTaleOfTheTapeStatRow(tbody, 'ACTIVE STREAK', left.streak.label, right.streak.label, compare(left.streak.score, right.streak.score));
+    appendTaleOfTheTapeStatRow(tbody, 'TITLE STATUS', left.title.label, right.title.label, compare(left.title.priority, right.title.priority));
+    appendTaleOfTheTapeStatRow(tbody, 'PRIMARY STYLE', left.style.label, right.style.label, compare(left.style.score, right.style.score));
+    appendTaleOfTheTapeStatRow(tbody, 'FINISH BREAKDOWN', left.finishBreakdown, right.finishBreakdown, compare(left.finishTotal, right.finishTotal));
+    const leftTime = left.averageFightTime;
+    const rightTime = right.averageFightTime;
+    const timeAdvantage = !bothFightersSelected || leftTime === null || rightTime === null
+        ? 0
+        : leftTime < rightTime ? 1 : leftTime > rightTime ? -1 : 0;
+    appendTaleOfTheTapeStatRow(
+        tbody,
+        'AVERAGE FIGHT TIME',
+        leftTime === null ? 'N/A' : formatMatchTimerDisplay(leftTime * 1000),
+        rightTime === null ? 'N/A' : formatMatchTimerDisplay(rightTime * 1000),
+        timeAdvantage
+    );
+    appendTaleOfTheTapeStatRow(tbody, 'SPECIAL ACHIEVEMENTS', left.achievements, right.achievements, compare(left.giantKills + left.bossSlays + left.bonuses, right.giantKills + right.bossSlays + right.bonuses));
+    appendTaleOfTheTapeStatRow(tbody, 'ALLIANCES / PARTNER(S)', left.alliances, right.alliances);
+    populateTaleOfTheTapeMeetings(fighter1, fighter2);
+
+    backdrop.hidden = false;
+    document.getElementById('taleOfTheTapeClose')?.focus();
+};
+
+function closeTaleOfTheTape() {
+    const backdrop = document.getElementById('taleOfTheTapeBackdrop');
+    if (!backdrop || backdrop.hidden) return;
+    backdrop.hidden = true;
+    if (taleOfTheTapeTrigger?.isConnected) taleOfTheTapeTrigger.focus({ preventScroll: true });
+}
+
+let taleOfTheTapeTrigger = null;
+document.getElementById('taleOfTheTapeClose')?.addEventListener('click', closeTaleOfTheTape);
+document.getElementById('taleOfTheTapeBackdrop')?.addEventListener('click', event => {
+    if (event.target === event.currentTarget) closeTaleOfTheTape();
+});
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !document.getElementById('taleOfTheTapeBackdrop')?.hidden) {
+        closeTaleOfTheTape();
+    }
+});
+
+function getPastFightsCount(f1, f2) {
+    return getFightHistoryBetween(f1, f2).length;
+}
+
+function getRivalryStatus(fighter1, fighter2) {
+    const fighter1Key = normalizeLookupKey(fighter1?.name);
+    const fighter2Key = normalizeLookupKey(fighter2?.name);
+    const status = {
+        f1Wins: 0,
+        f2Wins: 0,
+        totalPastFights: 0,
+        rivalryTag: '',
+        rivalryKind: '',
+        label: '',
+        className: ''
+    };
+    if (!fighter1Key || !fighter2Key || fighter1Key === fighter2Key) return status;
+
+    getFightHistoryBetween(fighter1, fighter2).forEach(match => {
+        const winnerKey = normalizeLookupKey(match.winner);
+        if (winnerKey === fighter1Key) status.f1Wins++;
+        else if (winnerKey === fighter2Key) status.f2Wins++;
+    });
+    status.totalPastFights = status.f1Wins + status.f2Wins;
+
+    if (status.totalPastFights < 2) return status;
+    if (status.totalPastFights === 2 && status.f1Wins === 1 && status.f2Wins === 1) {
+        status.rivalryTag = 'trilogy';
+        status.rivalryKind = 'rubber-match';
+        status.label = `🔥 TRILOGY • RUBBER MATCH (${status.f1Wins}–${status.f2Wins})`;
+        status.className = 'rivalry-match-badge--rubber';
+    } else if (status.totalPastFights === 2) {
+        status.rivalryTag = 'trilogy';
+        status.rivalryKind = 'series-on-the-line';
+        status.label = `⚔️ TRILOGY • SERIES ON THE LINE (${status.f1Wins}–${status.f2Wins})`;
+        status.className = 'rivalry-match-badge--series';
+    } else {
+        status.rivalryTag = 'rivalry';
+        status.rivalryKind = 'historic-rivalry';
+        status.label = `👑 HISTORIC RIVALRY • FIGHT #${status.totalPastFights + 1} (${status.f1Wins}–${status.f2Wins})`;
+        status.className = 'rivalry-match-badge--historic';
+    }
+    return status;
+}
+
+window.getRivalryStatus = getRivalryStatus;
+
+function updateRivalryIndicator(matchRowId) {
+    const matchRow = document.getElementById(matchRowId);
+    const statusRow = document.getElementById(`${matchRowId}-rivalry-status-row`);
+    const badge = document.getElementById(`${matchRowId}-rivalry-status`);
+    if (!matchRow || !statusRow || !badge) return;
+
+    const savedMatch = completedMatches[matchRowId];
+    let status;
+    if (savedMatch) {
+        status = {
+            rivalryTag: savedMatch.rivalryTag || '',
+            rivalryKind: savedMatch.rivalryKind || '',
+            label: savedMatch.rivalryLabel || '',
+            className: savedMatch.rivalryKind === 'rubber-match'
+                ? 'rivalry-match-badge--rubber'
+                : savedMatch.rivalryKind === 'series-on-the-line'
+                    ? 'rivalry-match-badge--series'
+                    : savedMatch.rivalryKind === 'historic-rivalry'
+                        ? 'rivalry-match-badge--historic'
+                        : ''
+        };
+    } else {
+        const getSelectedFighter = slotType => {
+            const input = document.getElementById(`${matchRowId}-${slotType}`)?.querySelector('.fighter-search-input');
+            if (!input || !input.value.trim()) return null;
+            const fighterId = input.getAttribute('data-fighter-id');
+            if (fighterId) {
+                const fighter = fighters.find(candidate => String(candidate.id) === fighterId);
+                if (fighter) return fighter;
+            }
+            const fighterKey = normalizeLookupKey(input.value);
+            return fighters.find(fighter => normalizeLookupKey(fighter.name) === fighterKey) || null;
+        };
+        status = getRivalryStatus(getSelectedFighter('slot1'), getSelectedFighter('slot2'));
+    }
+
+    const hasRivalry = status.rivalryTag && status.label && status.className;
+    statusRow.hidden = !hasRivalry;
+    matchRow.classList.toggle('match-row--rivalry', Boolean(hasRivalry));
+    badge.className = `rivalry-match-badge ${hasRivalry ? status.className : ''}`.trim();
+    badge.textContent = hasRivalry ? status.label : '';
+}
+
+function updateRematchIndicator(matchRowId, pastFightsCount, meetingNumber) {
+    const matchRow = document.getElementById(matchRowId);
+    const rematchCheckbox = matchRow?.querySelector('input[data-rematch-indicator]');
+    const rematchCount = document.getElementById(`${matchRowId}-rematch-count`);
+    const rematchLabel = document.getElementById(`${matchRowId}-rematch-label`);
+    const isRematch = pastFightsCount > 0;
+    const currentMeetingNumber = isRematch
+        ? Math.max(pastFightsCount + 1, Number(meetingNumber) || 0)
+        : 0;
+
+    if (rematchCheckbox) {
+        rematchCheckbox.disabled = true;
+        rematchCheckbox.checked = isRematch;
+    }
+    if (rematchCount) {
+        rematchCount.value = isRematch ? String(currentMeetingNumber) : '1';
+        rematchCount.style.display = 'none';
+    }
+    if (rematchLabel) {
+        rematchLabel.classList.remove('rematch-label--active', 'rematch-label--trilogy');
+        rematchLabel.classList.add('rematch-label--muted');
+        if (!isRematch) {
+            rematchLabel.textContent = 'REMATCH';
+        } else if (pastFightsCount === 2) {
+            rematchLabel.textContent = `🔥 REMATCH #${pastFightsCount}`;
+            rematchLabel.classList.replace('rematch-label--muted', 'rematch-label--trilogy');
+        } else {
+            rematchLabel.textContent = `REMATCH #${pastFightsCount}`;
+            rematchLabel.classList.replace('rematch-label--muted', 'rematch-label--active');
+        }
+    }
+    updateRivalryIndicator(matchRowId);
+    return currentMeetingNumber;
 }
 
 function clearCardFighterSlot(matchRowId, slotType) {
     const slot = document.getElementById(`${matchRowId}-${slotType}`);
     if (!slot) return;
+    const rowElement = slot.closest('.match-row');
+    if (rowElement) delete rowElement.dataset.smartBookedTitle;
     clearMatchRowWarningsForInput(matchRowId);
     resetMatchValidationState(matchRowId);
     const input = slot.querySelector('.fighter-search-input');
@@ -2188,6 +3582,7 @@ function clearCardFighterSlot(matchRowId, slotType) {
     if (av) av.classList.remove('ufc-winner-border');
     if (label) label.style.display = 'none';
     if (recordDisplay) recordDisplay.textContent = '';
+    updateFighterRecordDisplay(matchRowId, slotType, null);
     
     const matchRow = document.getElementById(matchRowId);
     const slot1El = document.getElementById(`${matchRowId}-slot1`);
@@ -2280,6 +3675,7 @@ function resetMatchValidationState(matchRowId) {
 }
 
 function recheckMatchValidation(matchRowId, changedSlot = 'both') {
+    updateRivalryIndicator(matchRowId);
     const rematchValid = checkExistingFightRematch(matchRowId, changedSlot);
     const duplicateValid = checkDuplicateOnCard(matchRowId, changedSlot);
     return rematchValid && duplicateValid;
@@ -2309,6 +3705,33 @@ function clearMatchRowTitleGlow(matchRow) {
     matchRow.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
 }
 
+function updateTitleGateWarning(matchRowId, fighter1, fighter2) {
+    const warning = document.getElementById(`${matchRowId}-title-gate-warning`);
+    const titleCheckbox = document.getElementById(`${matchRowId}-title-check`);
+    if (!warning || !titleCheckbox?.checked) {
+        if (warning) {
+            warning.hidden = true;
+            warning.textContent = '';
+        }
+        return;
+    }
+    const lockedFighters = [fighter1, fighter2].filter(fighter =>
+        fighter && !getTitleEligibilityStatus(fighter).eligible
+    );
+    if (!lockedFighters.length) {
+        warning.hidden = true;
+        warning.textContent = '';
+        return;
+    }
+    const details = lockedFighters.map(fighter => {
+        const status = getTitleEligibilityStatus(fighter);
+        const wins = status.remaining;
+        return `${fighter.name} needs ${wins} more win${wins === 1 ? '' : 's'}`;
+    });
+    warning.textContent = `⚠️ Locked: ${details.join('; ')} for title eligibility`;
+    warning.hidden = false;
+}
+
 function refreshTitleFightState(matchRowId) {
     const matchRow = document.getElementById(matchRowId);
     if (!matchRow) return;
@@ -2322,7 +3745,7 @@ function refreshTitleFightState(matchRowId) {
     const fighter2 = getFighterByIdOrName(fighter2Identifier);
     const hasCompleteFighters = !!slot1Input?.value.trim() && !!slot2Input?.value.trim();
     const hasValidFighterSelection = fighter1 && fighter2 && fighter1.id !== fighter2.id;
-    const validTitleFight = hasValidFighterSelection && (fighter1.wins || 0) >= 5 && (fighter2.wins || 0) >= 5;
+    const validTitleFight = matchRow.dataset.smartBookedTitle === 'true' || hasValidFighterSelection;
 
     if (!hasCompleteFighters || !hasValidFighterSelection) {
         if (titleCheckbox) {
@@ -2354,20 +3777,15 @@ function refreshTitleFightState(matchRowId) {
     } else {
         clearMatchRowTitleGlow(matchRow);
     }
+    updateTitleGateWarning(matchRowId, fighter1, fighter2);
+    updateProspectProtectionBadge(matchRowId);
+    updateTitleDefenseMilestone(matchRowId);
 }
 
 function resetMatchRowRematchState(matchRowId) {
     if (isRematchWarningActive(matchRowId)) return;
     const matchRow = document.getElementById(matchRowId);
-    const rematchCheckbox = matchRow ? matchRow.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]') : null;
-    const rematchCount = document.getElementById(`${matchRowId}-rematch-count`);
-    if (rematchCheckbox) {
-        rematchCheckbox.checked = false;
-    }
-    if (rematchCount) {
-        rematchCount.style.display = 'none';
-        rematchCount.value = '1';
-    }
+    updateRematchIndicator(matchRowId, 0);
     if (matchRow) {
         delete matchRow.dataset.rematchAccepted;
         delete matchRow.dataset.rematchF1;
@@ -2381,10 +3799,16 @@ function resetMatchRowRematchState(matchRowId) {
 window.setMatchRowRematchAccepted = function(matchRowId, fighter1Id, fighter2Id, count) {
     const matchRow = document.getElementById(matchRowId);
     if (!matchRow) return;
+    const fighter1 = fighters.find(fighter => fighter.id === fighter1Id);
+    const fighter2 = fighters.find(fighter => fighter.id === fighter2Id);
+    const meetingNumber = fighter1 && fighter2
+        ? getPastFightsCount(fighter1, fighter2) + 1
+        : Math.max(2, Number(count) || 0);
     matchRow.dataset.rematchAccepted = 'true';
     matchRow.dataset.rematchF1 = fighter1Id || '';
     matchRow.dataset.rematchF2 = fighter2Id || '';
-    matchRow.dataset.rematchCount = String(count || 1);
+    matchRow.dataset.rematchCount = String(meetingNumber);
+    updateRematchIndicator(matchRowId, meetingNumber - 1, meetingNumber);
 };
 
 window.getMatchRowAcceptedRematch = function(matchRowId) {
@@ -2404,8 +3828,26 @@ function areMatchRowRematchPairsEqual(f1Id, f2Id, acceptedF1Id, acceptedF2Id) {
 }
 
 function updateFighterRecordDisplay(matchRowId, slotType, fighter) {
+    updateTaleOfTheTapeButton(matchRowId);
     const recordEl = document.getElementById(`${matchRowId}-${slotType}-record`);
     if (!recordEl) return;
+    updateBossFightDisplay(matchRowId);
+    updateProspectProtectionBadge(matchRowId);
+
+    const slot = document.getElementById(`${matchRowId}-${slotType}`);
+    const portraitFrame = slot?.querySelector('.avatar-frame');
+    applyStreakPortraitClass(portraitFrame, fighter);
+
+    const rankBadge = slot?.querySelector('.division-rank-badge');
+    if (rankBadge && typeof window.updateDivisionRankBadgeElement === 'function') {
+        const divisionRankings = typeof window.getDivisionRankings === 'function'
+            ? window.getDivisionRankings()
+            : [];
+        const rankLookup = typeof window.getDivisionRankLookup === 'function'
+            ? window.getDivisionRankLookup(divisionRankings)
+            : null;
+        window.updateDivisionRankBadgeElement(rankBadge, fighter, rankLookup);
+    }
 
     if (!fighter || typeof fighter.wins === 'undefined' || typeof fighter.losses === 'undefined') {
         recordEl.textContent = '';
@@ -2429,7 +3871,39 @@ function updateFighterRecordDisplay(matchRowId, slotType, fighter) {
     const losses = hasHistoryResults
         ? historyEntries.filter(entry => (entry?.outcome || '').toLowerCase() === 'loss').length
         : Number(recordSource.losses || 0);
-    recordEl.textContent = `${wins}W / ${losses}L`;
+    recordEl.innerHTML = `<span class="fighter-record__record">${wins}W / ${losses}L</span>`;
+    applyStreakPortraitClass(portraitFrame, recordSource);
+    const streakBadgeHtml = typeof window.getWinStreakBadgeHtml === 'function'
+        ? window.getWinStreakBadgeHtml(recordSource)
+        : '';
+    const coldStreakBadgeHtml = typeof window.getLoseStreakBadgeHtml === 'function'
+        ? window.getLoseStreakBadgeHtml(recordSource)
+        : '';
+    const fightingStyleBadgeHtml = typeof window.getFighterStyleBadge === 'function'
+        ? window.getFighterStyleBadge(recordSource)
+        : '';
+    const titleEligibility = getTitleEligibilityStatus(recordSource);
+    const titleEligibilityBadgeHtml = `<span class="title-eligibility-badge title-eligibility-badge--${titleEligibility.status}">${titleEligibility.label}</span>`;
+    const recordBadges = [streakBadgeHtml, coldStreakBadgeHtml, fightingStyleBadgeHtml, titleEligibilityBadgeHtml].filter(Boolean).join('');
+    if (recordBadges) recordEl.insertAdjacentHTML('beforeend', recordBadges);
+}
+
+function updateBossFightDisplay(matchRowId) {
+    const row = document.getElementById(matchRowId);
+    if (!row) return;
+    const isBossInMatch = ['slot1', 'slot2'].some(slotType => {
+        const input = row.querySelector(`#${matchRowId}-${slotType} .fighter-search-input`);
+        if (!input) return false;
+        const fighterId = input.getAttribute('data-fighter-id');
+        const fighterName = input.value.trim().toLowerCase();
+        const fighterList = Array.isArray(fighters) ? fighters : [];
+        const fighter = (fighterId && fighterList.find(item => String(item.id) === fighterId)) ||
+            (fighterName && fighterList.find(item => String(item.name || '').trim().toLowerCase() === fighterName));
+        return fighter?.is_boss === true;
+    });
+    row.classList.toggle('has-boss-fight', isBossInMatch);
+    const banner = document.getElementById(`${matchRowId}-boss-fight-banner`);
+    if (banner) banner.hidden = !isBossInMatch;
 }
 
 function refreshFighterRecordDisplaysForId(fighterId) {
@@ -2462,45 +3936,54 @@ function checkExistingFightRematch(matchRowId, changedSlot) {
 
     const slot1 = document.getElementById(`${matchRowId}-slot1`)?.querySelector('.fighter-search-input');
     const slot2 = document.getElementById(`${matchRowId}-slot2`)?.querySelector('.fighter-search-input');
-    if (!slot1 || !slot2 || !slot1.value || !slot2.value) return true;
+    if (!slot1 || !slot2 || !slot1.value.trim() || !slot2.value.trim()) {
+        resetMatchRowRematchState(matchRowId);
+        return true;
+    }
 
-    const fighter1 = fighters.find(f => f.id === slot1.getAttribute('data-fighter-id') || f.name === slot1.value);
-    const fighter2 = fighters.find(f => f.id === slot2.getAttribute('data-fighter-id') || f.name === slot2.value);
-    if (!fighter1 || !fighter2 || fighter1.id === fighter2.id) return true;
+    const resolveFighter = input => {
+        const fighterId = input.getAttribute('data-fighter-id');
+        const fighterKey = normalizeLookupKey(input.value);
+        return fighters.find(fighter => fighter.id === fighterId) ||
+            fighters.find(fighter => normalizeLookupKey(fighter.name) === fighterKey);
+    };
+    const fighter1 = resolveFighter(slot1);
+    const fighter2 = resolveFighter(slot2);
+    if (!fighter1 || !fighter2 || fighter1.id === fighter2.id) {
+        resetMatchRowRematchState(matchRowId);
+        return true;
+    }
 
     const accepted = getMatchRowAcceptedRematch(matchRowId);
     if (accepted && areMatchRowRematchPairsEqual(fighter1.id, fighter2.id, accepted.fighter1Id, accepted.fighter2Id)) {
+        const pastFightsCount = getPastFightsCount(fighter1, fighter2);
+        if (!pastFightsCount) {
+            resetMatchRowRematchState(matchRowId);
+            return true;
+        }
+        setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, pastFightsCount + 1);
         return true;
     }
 
     const historyEntries = getFightHistoryBetween(fighter1, fighter2);
-    if (!historyEntries.length) {
+    const pastFightsCount = historyEntries.length;
+    if (!pastFightsCount) {
+        resetMatchRowRematchState(matchRowId);
         hideRematchWarning(matchRowId);
         return true;
     }
 
-    const priorCount = getNextRematchNumberForPair(fighter1, fighter2);
+    const fightNumber = pastFightsCount + 1;
     const historySummary = {
-        priorCount,
+        priorCount: pastFightsCount,
         lastWinner: historyEntries[historyEntries.length - 1]?.winner || fighter1.name,
         showName: historyEntries[historyEntries.length - 1]?.showName || 'Previous show',
         methodLabel: historyEntries[historyEntries.length - 1]?.method || 'Previous result',
-        fightNumber: priorCount + 1
+        fightNumber
     };
 
     const matchRow = document.getElementById(matchRowId);
-    const rematchCheckbox = matchRow ? matchRow.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]') : null;
-    const rematchCount = document.getElementById(`${matchRowId}-rematch-count`);
-
-    if (rematchCheckbox) {
-        rematchCheckbox.checked = true;
-    }
-    if (rematchCount) {
-        rematchCount.value = priorCount;
-        rematchCount.style.display = 'inline-block';
-    }
-
-    setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, priorCount);
+    updateRematchIndicator(matchRowId, pastFightsCount, fightNumber);
     setWarningMatchState(matchRowId, 'rematch', {
         fighter1: fighter1.name,
         fighter2: fighter2.name
@@ -2578,16 +4061,12 @@ function showRematchWarning(matchRowId, fighter1, fighter2, history, changedSlot
         allowBtn.onclick = function() {
             clearRematchWarningStorage(matchRowId);
             const matchRow = document.getElementById(matchRowId);
-            const rematchCheckbox = matchRow ? matchRow.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]') : null;
-            const rematchCount = document.getElementById(`${matchRowId}-rematch-count`);
-            if (rematchCheckbox) {
-                rematchCheckbox.checked = true;
+            const pastFightsCount = getPastFightsCount(fighter1, fighter2);
+            if (pastFightsCount > 0) {
+                setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, pastFightsCount + 1);
+            } else {
+                resetMatchRowRematchState(matchRowId);
             }
-            if (rematchCount) {
-                rematchCount.value = history.priorCount;
-                rematchCount.style.display = 'inline-block';
-            }
-            setMatchRowRematchAccepted(matchRowId, fighter1.id, fighter2.id, history.priorCount);
             saveCurrentCardDraft();
             if (matchRow) delete matchRow.dataset.rematchPending;
             delete activeRematchWarnings[matchRowId];
@@ -2615,13 +4094,22 @@ function restoreActiveRematchWarnings() {
         }
 
         const historyEntries = getFightHistoryBetween(fighter1, fighter2);
-        if (!warning.history && !historyEntries.length) return;
-        const historySummary = warning.history || {
-            priorCount: getNextRematchNumberForPair(fighter1, fighter2),
+        const pastFightsCount = historyEntries.length;
+        if (!pastFightsCount) {
+            clearRematchWarningStorage(matchRowId);
+            clearWarningMatchState(matchRowId, 'rematch');
+            resetMatchRowRematchState(matchRowId);
+            hideRematchWarning(matchRowId);
+            return;
+        }
+        updateRematchIndicator(matchRowId, pastFightsCount, pastFightsCount + 1);
+        const historySummary = {
+            ...(warning.history || {}),
+            priorCount: pastFightsCount,
             lastWinner: historyEntries[historyEntries.length - 1]?.winner || fighter1.name,
             showName: historyEntries[historyEntries.length - 1]?.showName || 'Previous show',
             methodLabel: historyEntries[historyEntries.length - 1]?.method || 'Previous result',
-            fightNumber: getNextRematchNumberForPair(fighter1, fighter2) + 1
+            fightNumber: pastFightsCount + 1
         };
         showRematchWarning(matchRowId, fighter1, fighter2, {
             priorCount: historySummary.priorCount,
@@ -2790,19 +4278,16 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
         container.innerHTML = '';
     };
     if (replaceBtn) replaceBtn.onclick = function() {
-        // try to find replacement in same weight class/gender for the newName
+        // Find an open-weight replacement within the relevant gender division.
         const changedSlotEl = document.getElementById(`${matchRowId}-${changedSlot}`);
         const changedInput = changedSlotEl ? changedSlotEl.querySelector('.fighter-search-input') : null;
-        const existingSlot = document.querySelectorAll('.fighter-search-input');
-        // determine target gender and division from the existing similar fighter if available
+        // Determine the target gender from the existing similar fighter when possible.
         const similar = findSimilarNameOnCard(newName, changedInput);
-        let targetDivision = null;
         let targetGender = null;
         if (similar) {
             const simId = similar.input.getAttribute('data-fighter-id');
             const simF = fighters.find(f => f.id === simId) || fighters.find(f => f.name === similar.name);
             if (simF) {
-                targetDivision = simF.division || simF.weightClass || simF.division;
                 targetGender = simF.gender || 'male';
             }
         }
@@ -2814,14 +4299,13 @@ function showDuplicateWarning(matchRowId, changedSlot, existingName, newName, pe
             if (f.retired === true) return false;
             if (bookedIds.includes(f.id)) return false;
             if (targetGender && (f.gender || 'male') !== targetGender) return false;
-            if (targetDivision && (f.division || f.weightClass || '').toLowerCase() !== (targetDivision || '').toLowerCase()) return false;
             // avoid those with similar names
             const n = normalizeFighterName(f.name);
             if (n === normalizeFighterName(newName)) return false;
             return true;
         });
         if (!candidates.length) {
-            customAlert('No replacement fighter found in the same weight class. Try allowing or canceling.', 'Replace Fighter');
+            customAlert('No unbooked replacement fighter found in the same gender division. Try allowing or canceling.', 'Replace Fighter');
             return;
         }
         const pick = candidates[Math.floor(Math.random() * candidates.length)];
@@ -2962,14 +4446,6 @@ function clearDuplicateApproval(matchRowId) {
     sessionStorage.removeItem(`${approvalKey}_fighters`);
 }
 
-window.toggleRematchCounter = function(id, cb) {
-    const el = document.getElementById(`${id}-rematch-count`);
-    if (el) {
-        el.style.display = cb.checked ? "inline-block" : "none";
-    }
-    saveCurrentCardDraft();
-};
-
 window.toggleTitleFight = function(matchRowId, checkbox) {
     const titleInput = document.getElementById(`${matchRowId}-title-name-input`);
     const slot1Input = document.getElementById(`${matchRowId}-slot1`)?.querySelector('.fighter-search-input');
@@ -2978,6 +4454,7 @@ window.toggleTitleFight = function(matchRowId, checkbox) {
     const fighter2 = slot2Input ? fighters.find(f => f.id === slot2Input.getAttribute('data-fighter-id') || f.name === slot2Input.value) : null;
 
     const matchRow = document.getElementById(matchRowId);
+    if (matchRow) delete matchRow.dataset.smartBookedTitle;
     const slot1 = document.getElementById(`${matchRowId}-slot1`);
     const slot2 = document.getElementById(`${matchRowId}-slot2`);
     const clearTitleGlow = () => {
@@ -3002,19 +4479,14 @@ window.toggleTitleFight = function(matchRowId, checkbox) {
     if (!checkbox.checked) {
         if (titleInput) { titleInput.style.display = 'none'; titleInput.value = ''; }
         clearTitleGlow();
+        updateTitleGateWarning(matchRowId, fighter1, fighter2);
+        updateTitleDefenseMilestone(matchRowId);
         saveCurrentCardDraft();
         return;
     }
 
     if (!fighter1 || !fighter2) {
         customAlert('Select both competitors before enabling a Title fight.', 'Title Fight');
-        checkbox.checked = false;
-        if (titleInput) { titleInput.style.display = 'none'; titleInput.value = ''; }
-        return;
-    }
-
-    if ((fighter1.wins || 0) < 5 || (fighter2.wins || 0) < 5) {
-        customAlert('Title fights require both competitors to have 5 wins or more. Please book a qualifying matchup.', 'Title Fight');
         checkbox.checked = false;
         if (titleInput) { titleInput.style.display = 'none'; titleInput.value = ''; }
         return;
@@ -3027,6 +4499,8 @@ window.toggleTitleFight = function(matchRowId, checkbox) {
         titleInput.focus();
     }
     applyTitleGlow();
+    updateTitleGateWarning(matchRowId, fighter1, fighter2);
+    updateTitleDefenseMilestone(matchRowId);
     saveCurrentCardDraft();
     // Note: Manual finalize button removed — titles will be applied automatically when logging results.
 };
@@ -3038,6 +4512,87 @@ window.updateTitleFinalizeState = function(matchRowId) {
 window.finalizeTitleFight = function(matchRowId) {
     // Manual finalize removed — title finalization now occurs when logging match results.
 };
+
+function updateTitleDefenseMilestone(matchRowId) {
+    const status = document.getElementById(`${matchRowId}-title-defense-milestone`);
+    const titleCheck = document.getElementById(`${matchRowId}-title-check`);
+    const titleInput = document.getElementById(`${matchRowId}-title-name-input`);
+    if (!status || !titleCheck?.checked || !titleInput?.value) {
+        if (status) {
+            status.hidden = true;
+            status.replaceChildren();
+        }
+        return;
+    }
+
+    let titles;
+    try {
+        titles = JSON.parse(localStorage.getItem('wwe_titles') || '[]');
+    } catch (error) {
+        console.error('Unable to read championship defense milestones.', error);
+        status.hidden = true;
+        return;
+    }
+    if (!Array.isArray(titles)) {
+        console.error('The saved championship list is not valid.');
+        status.hidden = true;
+        return;
+    }
+
+    const title = titles.find(entry => String(entry?.id || '') === String(titleInput.value));
+    if (!title) {
+        status.hidden = true;
+        status.replaceChildren();
+        return;
+    }
+    const championId = String(title.championId || title.champion?.id || '');
+    const championName = String(
+        title.champion?.name ||
+        (typeof title.champion === 'string' ? title.champion : '') ||
+        title.championName ||
+        ''
+    );
+    const champion = fighters.find(fighter =>
+        (championId && String(fighter.id) === championId) ||
+        (championName && String(fighter.name || '').trim().toLowerCase() === championName.trim().toLowerCase())
+    );
+    const defenses = Math.max(0, Math.floor(Number(title.defenses ?? title.currentReignDefenses) || 0));
+    const milestone = typeof window.getDefenseMilestone === 'function'
+        ? window.getDefenseMilestone(defenses)
+        : { tier: 0, label: `Defenses: ${defenses}`, className: '' };
+    const result = completedMatches[matchRowId];
+    const defenseNumber = result?.titleRetained === true && Number(result.titleDefenseNumber) > 0
+        ? Number(result.titleDefenseNumber)
+        : defenses + 1;
+
+    status.replaceChildren();
+    const championLine = document.createElement('span');
+    championLine.className = 'title-defense-milestone__champion';
+    championLine.textContent = `👑 ${champion?.name || championName || 'Vacant'} • Defense #${defenseNumber}`;
+    status.appendChild(championLine);
+
+    if (milestone.tier > 0) {
+        const badge = document.createElement('span');
+        badge.className = `defense-milestone-badge ${milestone.className}`;
+        badge.textContent = milestone.label;
+        status.appendChild(badge);
+    } else {
+        const counter = document.createElement('span');
+        counter.className = 'title-defense-milestone__counter';
+        counter.textContent = `Defenses: ${defenses}`;
+        status.appendChild(counter);
+    }
+
+    if (result?.titleMilestoneUnlocked === true) {
+        const unlocked = document.createElement('span');
+        unlocked.className = 'title-milestone-unlocked';
+        unlocked.textContent = '🎉 MILESTONE UNLOCKED!';
+        status.appendChild(unlocked);
+    }
+    status.hidden = false;
+}
+
+window.updateTitleDefenseMilestone = updateTitleDefenseMilestone;
 
 window.populateTitleDropdown = function(matchRowId) {
     const select = document.getElementById(`${matchRowId}-title-name-input`);
@@ -3071,7 +4626,14 @@ window.populateTitleDropdown = function(matchRowId) {
         }
         select.appendChild(opt);
     });
+    updateTitleDefenseMilestone(matchRowId);
 };
+
+document.addEventListener('change', event => {
+    const select = event.target.closest('select[id$="-title-name-input"]');
+    if (!select) return;
+    updateTitleDefenseMilestone(select.id.slice(0, -'-title-name-input'.length));
+});
 
 window.uploadFighterPhotoFromCard = function(fighterId) {
     const input = document.createElement('input');
@@ -3440,6 +5002,7 @@ function pickCompetitiveMatchup(fighterPool, reservedPairs) {
             const fighter1 = fighterPool[i];
             const fighter2 = fighterPool[j];
             if (!fighter1?.id || !fighter2?.id || fighter1.id === fighter2.id) continue;
+            if (!isFightNightMatchupAllowed(fighter1, fighter2)) continue;
 
             const name1 = normalizeLookupKey(fighter1.name);
             const name2 = normalizeLookupKey(fighter2.name);
@@ -3489,6 +5052,10 @@ function pickCompetitiveMatchup(fighterPool, reservedPairs) {
         candidate.balanceTier === bestTier && candidate.score <= bestScore + 0.08
     );
     return bestCandidates[Math.floor(Math.random() * bestCandidates.length)].pair;
+}
+
+function normalizeSmartBookGender(value) {
+    return /^(f|female|w|woman|women)/i.test(String(value || '').trim()) ? 'female' : 'male';
 }
 
 function removeRetiredFightersFromActiveCard() {
@@ -3596,26 +5163,11 @@ window.randomizeEntireShow = function() {
                 (f.gender || 'male').toLowerCase() === selectedGender &&
                 !bookedFighterIds.includes(f.id)
             );
-            const fightersByDivision = {};
-            availableFighters.forEach(f => {
-                const div = (f.division || 'Heavyweight').toLowerCase();
-                fightersByDivision[div] = fightersByDivision[div] || [];
-                fightersByDivision[div].push(f);
-            });
-
-            const matchupChoices = Object.entries(fightersByDivision)
-                .map(([division, divisionFighters]) => ({
-                    division,
-                    pair: pickCompetitiveMatchup(divisionFighters, reservedPairs)
-                }))
-                .filter(choice => choice.pair);
-            if (!matchupChoices.length) {
+            const chosenPair = pickCompetitiveMatchup(availableFighters, reservedPairs);
+            if (!chosenPair) {
                 failCount++;
                 return;
             }
-
-            const { pair: chosenPair } =
-                matchupChoices[Math.floor(Math.random() * matchupChoices.length)];
             const [fighter1, fighter2] = chosenPair;
             
             // Set the gender for this match based on the chosen fighters
@@ -3674,6 +5226,486 @@ window.randomizeEntireShow = function() {
     }, 'Randomize All');
 };
 
+window.smartBookFightCard = function() {
+    if (!activeShowId || !futureShows.find(show => show.id === activeShowId)) {
+        ensureActiveShowSelected();
+    }
+    if (!activeShowId) return customAlert('Select or create a show before smart booking a card.', 'Smart Book Card');
+    if (isShowCompleted(activeShowId) || window.hasActiveShowResults()) {
+        return customAlert('This show has already begun or been finalized. Reset the show or switch cards before smart booking.', 'Smart Book Disabled');
+    }
+
+    const getRows = containerId => {
+        const container = document.getElementById(containerId);
+        if (!container) return [];
+        return Array.from(container.querySelectorAll('.match-row')).sort((a, b) => {
+            const numberA = Number(a.id.match(/-m(\d+)$/)?.[1]) || 0;
+            const numberB = Number(b.id.match(/-m(\d+)$/)?.[1]) || 0;
+            return numberA - numberB;
+        });
+    };
+    const tierRows = {
+        mainEvent: getRows('mainEventContainer'),
+        coMain: getRows('coMainContainer'),
+        mainCard: getRows('mainCardContainer'),
+        prelims: getRows('prelimsContainer'),
+        earlyPrelims: getRows('earlyPrelimsContainer')
+    };
+    const allRows = Object.values(tierRows).flat();
+    if (!allRows.length) return customAlert('No match rows are available to book.', 'Smart Book Card');
+
+    const hasExistingBookings = allRows.some(row =>
+        ['slot1', 'slot2'].some(slotType =>
+            row.querySelector(`.fighter-slot[id$="-${slotType}"] .fighter-search-input`)?.value.trim()
+        )
+    );
+    const startBooking = () => {
+        refreshFightersFromStorage(true);
+        const activeFighters = [];
+        const fightersById = new Map();
+        const fightersByName = new Map();
+        const seenFighterKeys = new Set();
+        fighters.forEach(fighter => {
+            if (!fighter || fighter.retired === true || !fighter.name) return;
+            const nameKey = normalizeLookupKey(fighter.name);
+            if (!nameKey || seenFighterKeys.has(nameKey)) return;
+            seenFighterKeys.add(nameKey);
+            activeFighters.push(fighter);
+            if (fighter.id) fightersById.set(String(fighter.id), fighter);
+            fightersByName.set(nameKey, fighter);
+        });
+        if (activeFighters.length < 2) {
+            return customAlert('At least two active fighters are required to build a card.', 'Smart Book Card');
+        }
+        if (typeof window.getDivisionRankings !== 'function') {
+            return customAlert('Division rankings are not available. Load the rankings script before smart booking.', 'Smart Book Card');
+        }
+
+        const divisionRankings = window.getDivisionRankings();
+        const rankLookup = typeof window.getDivisionRankLookup === 'function'
+            ? window.getDivisionRankLookup(divisionRankings)
+            : new Map();
+        const rankByName = new Map();
+        (Array.isArray(divisionRankings) ? divisionRankings : []).forEach(group => {
+            (group.rankings || []).forEach(entry => {
+                const key = normalizeLookupKey(entry.fighter?.name);
+                if (key) rankByName.set(key, entry);
+            });
+        });
+        const getRankEntry = fighter => {
+            const key = normalizeLookupKey(fighter?.name);
+            return rankByName.get(key) ||
+                (fighter?.id && rankLookup.get(String(fighter.id))) ||
+                (fighter?.name && rankLookup.get(`name:${String(fighter.name).trim().toLowerCase()}`)) ||
+                null;
+        };
+        const getRankNumber = fighter => {
+            const entry = getRankEntry(fighter);
+            if (!entry || entry.rank === 'C') return null;
+            if (Number.isInteger(entry.rankNumber)) return entry.rankNumber;
+            const match = String(entry.rank || '').match(/^#(\d+)$/);
+            return match ? Number(match[1]) : null;
+        };
+        const getStreak = fighter => {
+            if (typeof window.getCurrentWinStreak === 'function') {
+                return window.getCurrentWinStreak(fighter);
+            }
+            const wins = Math.max(0, Number(fighter?.wins) || 0);
+            const losses = Math.max(0, Number(fighter?.losses) || 0);
+            return losses === 0 ? wins : Math.max(0, Number(fighter?.win_streak) || 0);
+        };
+        const isTitleEligible = fighter => getTitleEligibilityStatus(fighter).eligible;
+        const getRecord = fighter => ({
+            wins: Math.max(0, Number(fighter?.wins) || 0),
+            losses: Math.max(0, Number(fighter?.losses) || 0),
+            draws: Math.max(0, Number(fighter?.draws) || 0)
+        });
+        const getLosingStreak = fighter => {
+            const historyCandidates = [
+                fighter.compiled_history_deck,
+                fighter.history_deck,
+                fighter.history
+            ];
+            const history = historyCandidates.find(entries => Array.isArray(entries) && entries.length > 0) ||
+                historyCandidates.find(entries => Array.isArray(entries)) ||
+                [];
+            const outcomes = Array.isArray(history)
+                ? history.map(entry => String(entry?.outcome || '').toLowerCase())
+                    .filter(outcome => ['win', 'loss', 'draw'].includes(outcome))
+                : [];
+            if (outcomes.length) {
+                let streak = 0;
+                for (let index = outcomes.length - 1; index >= 0; index--) {
+                    const outcome = outcomes[index];
+                    if (outcome !== 'loss') break;
+                    streak++;
+                }
+                return streak;
+            }
+            const record = getRecord(fighter);
+            return record.losses > record.wins ? record.losses - record.wins : 0;
+        };
+        const getFighterScore = fighter => {
+            const record = getRecord(fighter);
+            const koWins = Math.max(0, Number(fighter.win_ko ?? fighter.ko_wins) || 0);
+            const subWins = Math.max(0, Number(fighter.win_submission ?? fighter.sub_wins) || 0);
+            return (getStreak(fighter) * 15) + (record.wins * 5) - (record.losses * 4) + ((koWins + subWins) * 1.5);
+        };
+        const getGroupKey = gender => normalizeSmartBookGender(gender);
+        const getFighterGroupKey = fighter => getGroupKey(fighter.gender);
+        const activeGroups = new Map();
+        activeFighters.forEach(fighter => {
+            const key = getFighterGroupKey(fighter);
+            if (!activeGroups.has(key)) {
+                activeGroups.set(key, {
+                    gender: normalizeSmartBookGender(fighter.gender),
+                    division: 'Open Weight',
+                    fighters: []
+                });
+            }
+            activeGroups.get(key).fighters.push(fighter);
+        });
+
+        let titles = [];
+        try {
+            const parsedTitles = JSON.parse(localStorage.getItem('wwe_titles') || '[]');
+            if (!Array.isArray(parsedTitles)) throw new Error('Championship data is not an array.');
+            titles = parsedTitles.filter(title => title && title.id && title.name);
+        } catch (error) {
+            console.error('Unable to read championship belts for smart booking.', error);
+            return customAlert('Championship data could not be read. No matches were changed.', 'Smart Book Card');
+        }
+
+        const currentChampionForTitle = title => {
+            const identity = title.championId || title.champion;
+            if (!identity) return { hasHolder: false, fighter: null };
+            const id = typeof identity === 'object' ? String(identity.id || '') : '';
+            const name = typeof identity === 'object' ? identity.name : identity;
+            const normalizedName = normalizeLookupKey(name);
+            if ((!id && !normalizedName) || /^(vacant|null)$/i.test(String(name || '').trim())) {
+                return { hasHolder: false, fighter: null };
+            }
+            return {
+                hasHolder: true,
+                fighter: (id && fightersById.get(id)) || fightersByName.get(normalizedName) || null
+            };
+        };
+        const latestOpponentKey = fighter => {
+            const history = fighter?.compiled_history_deck || fighter?.history_deck || fighter?.history || [];
+            if (!Array.isArray(history)) return '';
+            for (let index = history.length - 1; index >= 0; index--) {
+                const opponent = normalizeLookupKey(history[index]?.opponent);
+                if (opponent) return opponent;
+            }
+            return '';
+        };
+        const isImmediateRematch = (fighterA, fighterB) => {
+            const keyA = normalizeLookupKey(fighterA.name);
+            const keyB = normalizeLookupKey(fighterB.name);
+            return latestOpponentKey(fighterA) === keyB || latestOpponentKey(fighterB) === keyA;
+        };
+        const bookedKeys = new Set();
+        const plannedBookings = new Map();
+        const assignPair = (row, pair, title = null) => {
+            if (!row || !pair || pair.length !== 2) return false;
+            if (pair.some(fighter => !fighter || fighter.retired === true) ||
+                getFighterGroupKey(pair[0]) !== getFighterGroupKey(pair[1])) return false;
+            if (!isFightNightMatchupAllowed(pair[0], pair[1])) return false;
+            const keys = pair.map(fighter => normalizeLookupKey(fighter.name));
+            if (!keys[0] || !keys[1] || keys[0] === keys[1] ||
+                bookedKeys.has(keys[0]) || bookedKeys.has(keys[1])) return false;
+            bookedKeys.add(keys[0]);
+            bookedKeys.add(keys[1]);
+            plannedBookings.set(row.id, { row, pair, title });
+            return true;
+        };
+        const findBestPair = (predicate, scorePair, options = {}) => {
+            const groups = new Map();
+            activeFighters.forEach(fighter => {
+                const key = normalizeLookupKey(fighter.name);
+                if (bookedKeys.has(key) ||
+                    (!options.allowTitleEligible && showTier === 'fight_night' && isTitleEligible(fighter)) ||
+                    !predicate(fighter)) return;
+                const groupKey = getFighterGroupKey(fighter);
+                if (!groups.has(groupKey)) groups.set(groupKey, []);
+                groups.get(groupKey).push(fighter);
+            });
+            let best = null;
+            groups.forEach(group => {
+                group.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+                for (let first = 0; first < group.length; first++) {
+                    for (let second = first + 1; second < group.length; second++) {
+                        const pair = [group[first], group[second]];
+                        if (!isFightNightMatchupAllowed(pair[0], pair[1])) continue;
+                        const score = scorePair(pair[0], pair[1]);
+                        const tieKey = `${normalizeLookupKey(pair[0].name)}|${normalizeLookupKey(pair[1].name)}`;
+                        if (!best || score < best.score || (score === best.score && tieKey < best.tieKey)) {
+                            best = { pair, score, tieKey };
+                        }
+                    }
+                }
+            });
+            return best ? best.pair : null;
+        };
+        const rankScoreForPair = (fighterA, fighterB) => {
+            const rankA = getRankNumber(fighterA) || 16;
+            const rankB = getRankNumber(fighterB) || 16;
+            return rankA + rankB + (Math.abs(rankA - rankB) * 0.5) -
+                ((getStreak(fighterA) + getStreak(fighterB)) * 0.2);
+        };
+        const fallbackScoreForPair = (fighterA, fighterB) => {
+            const recordA = getRecord(fighterA);
+            const recordB = getRecord(fighterB);
+            const fightsA = recordA.wins + recordA.losses + recordA.draws;
+            const fightsB = recordB.wins + recordB.losses + recordB.draws;
+            const rateA = fightsA ? (recordA.wins + recordA.draws * 0.5) / fightsA : 0;
+            const rateB = fightsB ? (recordB.wins + recordB.draws * 0.5) / fightsB : 0;
+            return rankScoreForPair(fighterA, fighterB) +
+                (Math.abs(rateA - rateB) * 8) +
+                (Math.abs(fightsA - fightsB) * 0.15);
+        };
+        const bookWithFallback = (row, idealPredicate, idealScore) => {
+            if (!row || plannedBookings.has(row.id)) return false;
+            let pair = findBestPair(idealPredicate, idealScore);
+            if (pair && assignPair(row, pair)) return true;
+
+            pair = findBestPair(() => true, fallbackScoreForPair);
+            if (pair && assignPair(row, pair)) return true;
+
+            pair = findBestPair(() => true, fallbackScoreForPair, { allowTitleEligible: true });
+            return pair ? assignPair(row, pair) : false;
+        };
+        const getVacantTitlePair = (gender, allowRelaxedCandidates = false) => {
+            const group = activeGroups.get(getGroupKey(gender));
+            if (!group) return null;
+            return findBestPair(fighter => {
+                const rank = getRankEntry(fighter);
+                return getFighterGroupKey(fighter) === getGroupKey(gender) &&
+                    (!rank || rank.rank !== 'C') &&
+                    (allowRelaxedCandidates || isTitleEligible(fighter));
+            }, (a, b) => rankScoreForPair(a, b) -
+                ((getFighterScore(a) + getFighterScore(b)) * 0.01));
+        };
+        const findTitleMatch = (title, allowRelaxedCandidates = false) => {
+            const holderInfo = currentChampionForTitle(title);
+            if (holderInfo.hasHolder && !holderInfo.fighter) return null;
+            const champion = holderInfo.fighter;
+            const gender = normalizeSmartBookGender(title.gender || champion?.gender);
+            if (champion && normalizeSmartBookGender(champion.gender) !== gender) return null;
+            if (champion && getFighterGroupKey(champion) !== getGroupKey(gender)) return null;
+
+            if (champion) {
+                if (!allowRelaxedCandidates && !isTitleEligible(champion)) return null;
+                const candidates = (activeGroups.get(getGroupKey(gender))?.fighters || [])
+                    .filter(fighter => {
+                        const rank = getRankEntry(fighter);
+                        const rankNumber = getRankNumber(fighter);
+                        return normalizeLookupKey(fighter.name) !== normalizeLookupKey(champion.name) &&
+                            !bookedKeys.has(normalizeLookupKey(fighter.name)) &&
+                            !getSharedAllianceForFighters(champion, fighter) &&
+                            (!rank || rank.rank !== 'C') &&
+                            (allowRelaxedCandidates ||
+                                (isTitleEligible(fighter) && rank && rankNumber !== null && rankNumber <= 15));
+                    })
+                    .sort((a, b) => {
+                        const rankA = getRankNumber(a) || 16;
+                        const rankB = getRankNumber(b) || 16;
+                        return rankA - rankB || getFighterScore(b) - getFighterScore(a);
+                    });
+                const nonRematchTopFive = candidates.filter(fighter =>
+                    getRankNumber(fighter) <= 5 && !isImmediateRematch(champion, fighter)
+                );
+                const challenger = nonRematchTopFive[0] || candidates[0];
+                return challenger ? { pair: [champion, challenger] } : null;
+            }
+
+            const pair = getVacantTitlePair(gender, allowRelaxedCandidates);
+            return pair ? { pair } : null;
+        };
+        const currentShow = futureShows.find(show => show.id === activeShowId);
+        const showTier = getShowTier(currentShow);
+        const mainEventRow = tierRows.mainEvent[0];
+        const coMainRow = tierRows.coMain[0];
+        if (showTier === 'ppv' && titles.length) {
+            const titleRows = [mainEventRow, coMainRow].filter(Boolean)
+                .slice(0, titles.length >= 2 ? 2 : 1);
+            const titleCandidates = titles.map(title => ({
+                title,
+                holder: currentChampionForTitle(title)
+            })).sort((a, b) =>
+                Number(b.holder.hasHolder) - Number(a.holder.hasHolder) ||
+                String(a.title.name).localeCompare(String(b.title.name))
+            );
+            for (const candidate of titleCandidates) {
+                if (plannedBookings.size >= titleRows.length) break;
+                const titleMatch = findTitleMatch(candidate.title);
+                if (!titleMatch) continue;
+                assignPair(titleRows[plannedBookings.size], titleMatch.pair, candidate.title);
+            }
+            for (const candidate of titleCandidates) {
+                if (plannedBookings.size >= titleRows.length) break;
+                const titleMatch = findTitleMatch(candidate.title, true);
+                if (!titleMatch) continue;
+                const row = titleRows.find(titleRow => !plannedBookings.has(titleRow.id));
+                if (row) assignPair(row, titleMatch.pair, candidate.title);
+            }
+        }
+
+        const mainEventEligible = showTier === 'fight_night'
+            ? fighter => {
+                const rank = getRankNumber(fighter);
+                return rank !== null && rank <= 5 && getStreak(fighter) > 0;
+            }
+            : fighter => {
+                const rank = getRankNumber(fighter);
+                return (rank !== null && rank <= 15) || getStreak(fighter) >= 2;
+            };
+        bookWithFallback(mainEventRow, mainEventEligible, rankScoreForPair);
+
+        const mainCardEligible = fighter => {
+            const rank = getRankNumber(fighter);
+            return (rank !== null && rank <= 15) || getStreak(fighter) >= 2;
+        };
+        tierRows.coMain.forEach(row => bookWithFallback(row, mainCardEligible, rankScoreForPair));
+        tierRows.mainCard.forEach(row => bookWithFallback(row, mainCardEligible, rankScoreForPair));
+
+        tierRows.prelims.forEach(row => {
+            bookWithFallback(row, fighter => {
+                const record = getRecord(fighter);
+                return record.wins + record.losses + record.draws > 0 && record.wins >= record.losses;
+            }, (a, b) => {
+                const recordA = getRecord(a);
+                const recordB = getRecord(b);
+                const rateA = recordA.wins / Math.max(1, recordA.wins + recordA.losses + recordA.draws);
+                const rateB = recordB.wins / Math.max(1, recordB.wins + recordB.losses + recordB.draws);
+                const fightsA = recordA.wins + recordA.losses + recordA.draws;
+                const fightsB = recordB.wins + recordB.losses + recordB.draws;
+                return (Math.abs(rateA - rateB) * 10) +
+                    (Math.abs(fightsA - fightsB) * 0.15) +
+                    (Math.abs(recordA.wins - recordB.wins) * 0.1);
+            });
+        });
+
+        tierRows.earlyPrelims.forEach(row => {
+            let pair = findBestPair(fighter => {
+                const record = getRecord(fighter);
+                return record.wins === 0 && record.losses === 0 && record.draws === 0;
+            }, () => 0);
+            if (!pair) {
+                pair = findBestPair(fighter => getLosingStreak(fighter) > 0,
+                    (a, b) => Math.abs(getLosingStreak(a) - getLosingStreak(b)) -
+                        ((getLosingStreak(a) + getLosingStreak(b)) * 0.1));
+            }
+            if (pair && assignPair(row, pair)) return;
+            pair = findBestPair(() => true, fallbackScoreForPair);
+            if (pair && assignPair(row, pair)) return;
+            pair = findBestPair(() => true, fallbackScoreForPair, { allowTitleEligible: true });
+            if (pair) assignPair(row, pair);
+        });
+
+        if (!plannedBookings.size) {
+            return customAlert('No eligible same-gender open-weight matchups were found. Your current card was left unchanged.', 'Smart Book Card');
+        }
+
+        const allCurrentRows = Object.values(tierRows).flat();
+        allCurrentRows.forEach(row => {
+            clearCardFighterSlot(row.id, 'slot1');
+            clearCardFighterSlot(row.id, 'slot2');
+        });
+
+        plannedBookings.forEach(({ row, pair, title }) => {
+            row.dataset.validationBatch = 'true';
+            delete row.dataset.smartBookedTitle;
+            resetMatchValidationState(row.id);
+            setMatchRowSelectedGender(row.id, normalizeSmartBookGender(pair[0].gender));
+            ['slot1', 'slot2'].forEach((slotType, index) => {
+                const fighter = pair[index];
+                const slot = document.getElementById(`${row.id}-${slotType}`);
+                const input = slot?.querySelector('.fighter-search-input');
+                const avatar = slot?.querySelector('.avatar-box');
+                if (!slot || !input || !avatar) return;
+                input.value = fighter.name;
+                input.setAttribute('data-fighter-id', fighter.id || '');
+                const photo = getEffectivePhotoFor(fighter);
+                avatar.innerHTML = photo
+                    ? `<img src="${photo}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;">`
+                    : fighter.name.charAt(0);
+                avatar.style.cssText = "width:36px; height:36px; background:#bae6fd; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid #0284c7; color:#0369a1; overflow:hidden; cursor:pointer;";
+                avatar.onclick = function(event) {
+                    event.stopPropagation();
+                    if (fighter.id) uploadFighterPhotoFromCard(fighter.id);
+                };
+                applyStreakPortraitClass(slot.querySelector('.avatar-frame'), fighter);
+                notifyFighterInputChanged(input);
+                updateFighterRecordDisplay(row.id, slotType, fighter);
+            });
+            delete row.dataset.validationBatch;
+
+            const titleCheckbox = document.getElementById(`${row.id}-title-check`);
+            const titleInput = document.getElementById(`${row.id}-title-name-input`);
+            if (title && titleCheckbox && titleInput) {
+                row.dataset.smartBookedTitle = 'true';
+                titleCheckbox.checked = true;
+                titleCheckbox.disabled = false;
+                titleInput.style.display = 'inline-block';
+                populateTitleDropdown(row.id);
+                let selectedOption = Array.from(titleInput.options).find(option =>
+                    option.value === String(title.id)
+                );
+                if (!selectedOption) {
+                    selectedOption = document.createElement('option');
+                    selectedOption.value = String(title.id);
+                    selectedOption.textContent = title.name;
+                    selectedOption.setAttribute('data-name', title.name);
+                    titleInput.appendChild(selectedOption);
+                }
+                selectedOption.disabled = false;
+                titleInput.value = String(title.id);
+                applyMatchRowTitleGlow(row);
+                updateTitleDefenseMilestone(row.id);
+            } else {
+                delete row.dataset.smartBookedTitle;
+                if (titleCheckbox) titleCheckbox.checked = false;
+                if (titleInput) {
+                    titleInput.style.display = 'none';
+                    titleInput.value = '';
+                }
+                refreshTitleFightState(row.id);
+            }
+            updateWinnerDropdown(row.id);
+            recheckMatchValidation(row.id, 'both');
+        });
+
+        saveCurrentCardDraft();
+        if (typeof window.refreshDivisionRankings === 'function') {
+            window.refreshDivisionRankings();
+        }
+        refreshFightCardPortraits().catch(error =>
+            console.warn('Unable to refresh portraits after smart booking.', error)
+        );
+        updateFinalizedShowDropdownStyles();
+        updateFinalizeButtonState();
+        updateRandomizerState();
+        updateFighterScheduleLocator();
+
+        const titleCount = Array.from(plannedBookings.values()).filter(booking => booking.title).length;
+        customAlert(
+            `🧠 Smart booked ${plannedBookings.size} of ${allRows.length} matchups${titleCount ? `, including ${titleCount} title fight${titleCount === 1 ? '' : 's'}` : ''}.`,
+            'Smart Book Card'
+        );
+    };
+
+    if (hasExistingBookings) {
+        customConfirm(
+            'Smart Book Card will replace the current matchups on this show. Continue?',
+            confirmed => { if (confirmed) startBooking(); },
+            'Smart Book Card'
+        );
+    } else {
+        startBooking();
+    }
+};
+
 window.randomizeMatchup = function(matchId, options = {}) {
     const row = document.getElementById(matchId);
     if (isShowCompleted(activeShowId) || (!options.automatic && window.hasActiveShowResults()) ||
@@ -3720,24 +5752,10 @@ window.randomizeMatchup = function(matchId, options = {}) {
             !bookedFighterIds.includes(f.id)
         );
 
-        const fightersByDivision = {};
-        availableFighters.forEach(f => {
-            const div = (f.division || 'Heavyweight').toLowerCase();
-            fightersByDivision[div] = fightersByDivision[div] || [];
-            fightersByDivision[div].push(f);
-        });
-
-        const matchupChoices = Object.entries(fightersByDivision)
-            .map(([division, divisionFighters]) => ({
-                division,
-                pair: pickCompetitiveMatchup(divisionFighters, reservedPairs)
-            }))
-            .filter(choice => choice.pair);
-        if (!matchupChoices.length) {
-            return customAlert(`No fresh matchup is available for the ${selectedGender} gender filter. Check the division, booking, and rematch restrictions.`, 'Randomize Matchup');
+        const chosenPair = pickCompetitiveMatchup(availableFighters, reservedPairs);
+        if (!chosenPair) {
+            return customAlert(`No fresh open-weight matchup is available for the ${selectedGender} division. Check booking and rematch restrictions.`, 'Randomize Matchup');
         }
-        const { division: selectedDivision, pair: chosenPair } =
-            matchupChoices[Math.floor(Math.random() * matchupChoices.length)];
 
         const [fighter1, fighter2] = chosenPair;
         resetMatchValidationState(matchId);
@@ -3793,9 +5811,8 @@ window.randomizeMatchup = function(matchId, options = {}) {
         updateFighterScheduleLocator();
         
         // Show confirmation
-        const divisionDisplay = selectedDivision.charAt(0).toUpperCase() + selectedDivision.slice(1);
         if (!options.automatic) {
-            customAlert(`🎲 Randomized!\n\n${fighter1.name} vs ${fighter2.name}\n(${divisionDisplay})`, 'Match Randomized');
+            customAlert(`🎲 Randomized!\n\n${fighter1.name} vs ${fighter2.name}\n(Open Weight · ${selectedGender === 'female' ? "Women's" : "Men's"} Division)`, 'Match Randomized');
         }
         return true;
     };
@@ -3838,19 +5855,13 @@ window.suggestOpponent = function(id) {
     fighters.forEach(c => {
         if (c.id === f1.id) return; // never suggest the same fighter
         if (c.retired === true) return;
+        if (normalizeSmartBookGender(c.gender) !== normalizeSmartBookGender(f1.gender)) return;
+        if (!isFightNightMatchupAllowed(f1, c)) return;
 
         // Check if fighter is already booked in another match (unless they're the current opponent)
         const isBookedElsewhere = bookedFighterIds.includes(c.id);
         if (isBookedElsewhere && !(currentOpponentId && c.id === currentOpponentId)) {
             return; // skip already-booked fighters
-        }
-
-        // always allow current opponent (if set) regardless of benching checks, but still require same division
-        if (currentOpponentId && c.id === currentOpponentId) {
-            // include current opponent as high-priority candidate
-        } else {
-            // enforce same gender and division
-            if (c.gender !== f1.gender || (c.division || '').toLowerCase() !== (f1.division || '').toLowerCase()) return;
         }
 
         let t2 = c.wins + c.losses;
@@ -3976,6 +5987,467 @@ window.bookSuggested = function(fId) {
     }
     window.closeSuggestionModal();
 };
+function getFighterDivisionRank(fighter, rankings = window.getDivisionRankings()) {
+    for (const group of rankings) {
+        const entry = group.rankings.find(item =>
+            (fighter.id && String(item.fighter.id) === String(fighter.id)) ||
+            normalizeLookupKey(item.fighter.name) === normalizeLookupKey(fighter.name)
+        );
+        if (entry) return entry.rank;
+    }
+    return '';
+}
+
+function getMatchUpsetStatus(winner, loser, rankings = window.getDivisionRankings()) {
+    const winnerRank = getFighterDivisionRank(winner, rankings);
+    const loserRank = getFighterDivisionRank(loser, rankings);
+    const winnerRankNumber = Number(String(winnerRank).match(/^#(\d+)$/)?.[1]) || 0;
+    const loserRankNumber = Number(String(loserRank).match(/^#(\d+)$/)?.[1]) || 0;
+    const reasons = [];
+
+    if (loserRank === 'C' &&
+        (!winnerRank || (winnerRankNumber >= 8 && winnerRankNumber <= 15))) {
+        reasons.push('Defeated Champion (C)');
+    }
+    if (loserRankNumber >= 1 && loserRankNumber <= 3 &&
+        (!winnerRank || (winnerRankNumber >= 11 && winnerRankNumber <= 15))) {
+        reasons.push(`Defeated #${loserRankNumber} Contender`);
+    }
+
+    const opponentStreak = typeof window.getCurrentWinStreak === 'function'
+        ? window.getCurrentWinStreak(loser)
+        : Math.max(0, Number(loser.win_streak) || 0);
+    if (opponentStreak >= 10) reasons.push(`Snapped ${opponentStreak}W Streak`);
+
+    return {
+        upsetAlert: reasons.length > 0,
+        upsetReason: reasons.join('; ')
+    };
+}
+
+function normalizePerformanceBonusType(value) {
+    const bonusType = String(value || '').trim().toUpperCase();
+    return bonusType === 'FOTN' || bonusType === 'POTN' ? bonusType : '';
+}
+
+function adjustPerformanceBonusCounter(fighter, bonusType, delta) {
+    if (!fighter) return;
+    if (bonusType === 'FOTN') {
+        fighter.fotn_bonuses = Math.max(0, Math.floor(Number(fighter.fotn_bonuses) || 0) + delta);
+    } else if (bonusType === 'POTN') {
+        fighter.potn_bonuses = Math.max(0, Math.floor(Number(fighter.potn_bonuses) || 0) + delta);
+    }
+    fighter.career_bonuses =
+        Math.max(0, Math.floor(Number(fighter.fotn_bonuses) || 0)) +
+        Math.max(0, Math.floor(Number(fighter.potn_bonuses) || 0));
+}
+
+function setMatchBonusDisplay(matchRowId, state) {
+    const bonusType = normalizePerformanceBonusType(state?.bonusType);
+    const select = document.getElementById(`${matchRowId}-performance-bonus`);
+    const badge = document.getElementById(`${matchRowId}-performance-bonus-badge`);
+    if (select) {
+        select.value = bonusType;
+        select.disabled = false;
+        select.style.pointerEvents = 'auto';
+    }
+    if (!badge) return;
+    badge.hidden = !bonusType;
+    badge.className = `performance-bonus-badge${bonusType ? ` performance-bonus-badge--${bonusType.toLowerCase()}` : ''}`;
+    badge.textContent = bonusType === 'FOTN'
+        ? '🏆 FIGHT OF THE NIGHT'
+        : bonusType === 'POTN'
+            ? '💥 PERFORMANCE OF THE NIGHT'
+            : '';
+}
+
+function updateFighterHistoryBonusType(fighter, outcome, opponentName, state, bonusType, showNameAliases = []) {
+    const historyKeys = ['compiled_history_deck', 'history_deck', 'history'];
+    const normalize = value => normalizeLookupKey(value);
+    const showNames = new Set([state.showName, ...showNameAliases].map(normalize));
+    historyKeys.forEach(key => {
+        if (!Array.isArray(fighter[key])) return;
+        fighter[key].forEach(entry => {
+            if (!entry || typeof entry !== 'object') return;
+            if (String(entry.outcome || '').toLowerCase() !== outcome ||
+                normalize(entry.opponent) !== normalize(opponentName) ||
+                !showNames.has(normalize(entry.showName)) ||
+                normalize(entry.method) !== normalize(state.methodName) ||
+                (Number(entry.rematchNumber) || 0) !== (Number(state.rematchNumber) || 0)) return;
+            if (bonusType) entry.bonusType = bonusType;
+            else delete entry.bonusType;
+        });
+    });
+}
+
+window.setMatchBonus = function(matchRowId, value) {
+    const requestedType = String(value || '').trim().toUpperCase();
+    if (requestedType && requestedType !== 'FOTN' && requestedType !== 'POTN') {
+        return customAlert('Choose a valid performance bonus.', 'Award Bonus');
+    }
+    const bonusType = normalizePerformanceBonusType(requestedType);
+    const currentState = completedMatches[matchRowId];
+    if (!currentState || !currentState.winnerName || !currentState.loserName) {
+        return customAlert('Log a match result before awarding a performance bonus.', 'Award Bonus');
+    }
+    const previousType = normalizePerformanceBonusType(currentState.bonusType);
+    if (previousType === bonusType) {
+        setMatchBonusDisplay(matchRowId, currentState);
+        return;
+    }
+
+    const matchesStorageKey = getActiveShowMatchesStorageKey();
+    if (!matchesStorageKey) {
+        return customAlert('Select a show before awarding a performance bonus.', 'Award Bonus');
+    }
+
+    try {
+        const updatedFighters = fighters.map(fighter => ({
+            ...fighter,
+            fotn_bonuses: Math.max(0, Math.floor(Number(fighter.fotn_bonuses) || 0)),
+            potn_bonuses: Math.max(0, Math.floor(Number(fighter.potn_bonuses) || 0)),
+            compiled_history_deck: Array.isArray(fighter.compiled_history_deck)
+                ? fighter.compiled_history_deck.map(entry => ({ ...entry }))
+                : fighter.compiled_history_deck,
+            history_deck: Array.isArray(fighter.history_deck)
+                ? fighter.history_deck.map(entry => ({ ...entry }))
+                : fighter.history_deck,
+            history: Array.isArray(fighter.history)
+                ? fighter.history.map(entry => ({ ...entry }))
+                : fighter.history
+        }));
+        updatedFighters.forEach(fighter => {
+            fighter.career_bonuses = fighter.fotn_bonuses + fighter.potn_bonuses;
+        });
+        const findFighter = (fighterId, fighterName) => updatedFighters.find(fighter =>
+            (fighterId && String(fighter.id) === String(fighterId)) ||
+            normalizeLookupKey(fighter.name) === normalizeLookupKey(fighterName)
+        );
+        const winner = findFighter(currentState.winnerId, currentState.winnerName);
+        const loser = findFighter(currentState.loserId, currentState.loserName);
+        if (!winner || !loser) throw new Error('Could not resolve both fighters for this match.');
+        const eventHistory = JSON.parse(localStorage.getItem('wwe_event_history') || '[]');
+        if (!Array.isArray(eventHistory)) throw new Error('Archived event history has an unexpected format.');
+        const archivedEvent = eventHistory.find(event =>
+            event.showId === activeShowId &&
+            Array.isArray(event.matches) &&
+            event.matches.some(match => match.matchId === matchRowId)
+        );
+        const archivedShowName = archivedEvent && (archivedEvent.showTitle || archivedEvent.name);
+
+        const applyBonus = (type, delta) => {
+            if (type === 'FOTN') {
+                adjustPerformanceBonusCounter(winner, type, delta);
+                adjustPerformanceBonusCounter(loser, type, delta);
+            } else if (type === 'POTN') {
+                adjustPerformanceBonusCounter(winner, type, delta);
+            }
+        };
+        applyBonus(previousType, -1);
+        applyBonus(bonusType, 1);
+        updateFighterHistoryBonusType(winner, 'win', loser.name, currentState, bonusType, [archivedShowName]);
+        updateFighterHistoryBonusType(loser, 'loss', winner.name, currentState, bonusType, [archivedShowName]);
+
+        const savedMatches = JSON.parse(localStorage.getItem(matchesStorageKey) || '{}');
+        if (!savedMatches || typeof savedMatches !== 'object' || Array.isArray(savedMatches)) {
+            throw new Error('Saved match data has an unexpected format.');
+        }
+        const updatedState = { ...currentState };
+        if (bonusType) updatedState.bonusType = bonusType;
+        else delete updatedState.bonusType;
+        savedMatches[matchRowId] = updatedState;
+
+        let archivedMatchFound = false;
+        const updatedEvents = eventHistory.map(event => {
+            if (event.showId !== activeShowId || !Array.isArray(event.matches)) return event;
+            let eventChanged = false;
+            const matches = event.matches.map(match => {
+                if (match.matchId !== matchRowId) return match;
+                archivedMatchFound = true;
+                eventChanged = true;
+                const updatedMatch = { ...match };
+                if (bonusType) updatedMatch.bonusType = bonusType;
+                else delete updatedMatch.bonusType;
+                return updatedMatch;
+            });
+            return eventChanged ? { ...event, matches } : event;
+        });
+        if (isShowCompleted(activeShowId) && !archivedMatchFound) {
+            throw new Error('The archived match could not be found, so its bonus was not changed.');
+        }
+
+        const updates = new Map([
+            ['wwe_fighters', JSON.stringify(updatedFighters)],
+            [matchesStorageKey, JSON.stringify(savedMatches)]
+        ]);
+        if (archivedMatchFound) updates.set('wwe_event_history', JSON.stringify(updatedEvents));
+        const previousValues = new Map();
+        updates.forEach((_, key) => previousValues.set(key, localStorage.getItem(key)));
+        const writtenKeys = [];
+        try {
+            updates.forEach((storedValue, key) => {
+                localStorage.setItem(key, storedValue);
+                writtenKeys.push(key);
+            });
+        } catch (error) {
+            writtenKeys.reverse().forEach(key => {
+                const previousValue = previousValues.get(key);
+                try {
+                    if (previousValue === null) localStorage.removeItem(key);
+                    else localStorage.setItem(key, previousValue);
+                } catch (rollbackError) {
+                    console.error(`Unable to restore ${key} after a failed bonus update.`, rollbackError);
+                }
+            });
+            throw error;
+        }
+
+        fighters = updatedFighters;
+        window.fighters = fighters;
+        completedMatches[matchRowId] = updatedState;
+        setMatchBonusDisplay(matchRowId, updatedState);
+        window.dispatchEvent(new CustomEvent('wwe_fighters:changed', {
+            detail: { source: 'cards.js-bonus', count: updatedFighters.length }
+        }));
+    } catch (error) {
+        console.error('Unable to save the performance bonus.', error);
+        setMatchBonusDisplay(matchRowId, currentState);
+        customAlert(`${error.message || 'The bonus could not be saved.'} No changes were kept.`, 'Award Bonus');
+    }
+};
+
+function readTournamentArchiveForCard() {
+    let raw;
+    try {
+        raw = localStorage.getItem('universeTournaments');
+    } catch (error) {
+        console.error('Unable to access the tournament archive from Fight Cards.', error);
+        return null;
+    }
+    if (raw === null) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) throw new Error('Tournament archive data must be an array.');
+        return parsed;
+    } catch (error) {
+        console.error('Unable to read the tournament archive from Fight Cards.', error);
+        return null;
+    }
+}
+
+function getTournamentMatchForCard(archive, tournamentId, tournamentMatchId) {
+    const tournament = archive.find(entry => String(entry?.id || '') === String(tournamentId || ''));
+    if (!tournament || !Array.isArray(tournament.rounds)) return null;
+    for (let roundIndex = 0; roundIndex < tournament.rounds.length; roundIndex++) {
+        const matches = tournament.rounds[roundIndex]?.matches || [];
+        const matchIndex = matches.findIndex(match => String(match?.id || '') === String(tournamentMatchId || ''));
+        if (matchIndex >= 0) {
+            return { tournament, roundIndex, matchIndex, match: matches[matchIndex] };
+        }
+    }
+    return null;
+}
+
+function awardTournamentBeltFromCard(tournament, winner) {
+    if (!tournament.prizeTitleId) return true;
+    let titles;
+    try {
+        titles = JSON.parse(localStorage.getItem('wwe_titles') || '[]');
+        if (!Array.isArray(titles)) throw new Error('Championship data must be an array.');
+    } catch (error) {
+        console.error('Unable to read the tournament championship prize.', error);
+        return false;
+    }
+    const title = titles.find(entry =>
+        String(entry?.id || '') === String(tournament.prizeTitleId) &&
+        entry.retired !== true &&
+        entry.active !== false
+    );
+    if (!title) {
+        console.warn(`Tournament prize ${tournament.prizeTitleName || tournament.prizeTitleId} is no longer active.`);
+        return true;
+    }
+    const currentChampionId = String(title.championId || title.champion?.id || '');
+    if (currentChampionId !== String(winner.id || '')) {
+        tournament.prizeUndoSnapshot = {
+            championId: title.championId,
+            championName: title.championName,
+            champion: title.champion,
+            defenses: title.defenses,
+            currentReignDefenses: title.currentReignDefenses,
+            history: Array.isArray(title.history) ? JSON.parse(JSON.stringify(title.history)) : []
+        };
+        if (currentChampionId && Array.isArray(title.history) && title.history.length) {
+            const priorReign = title.history[title.history.length - 1];
+            if (String(priorReign?.fighterId || priorReign?.championId || '') === currentChampionId) {
+                priorReign.defenses = Math.max(
+                    0,
+                    Number(title.defenses ?? title.currentReignDefenses) || 0,
+                    Number(priorReign.reignDefenses ?? priorReign.defenses) || 0
+                );
+                priorReign.reignDefenses = priorReign.defenses;
+            }
+        }
+        if (!Array.isArray(title.history)) title.history = [];
+        title.history.push({
+            fighterId: String(winner.id || ''),
+            wrestlerName: String(winner.name || ''),
+            showTitle: `Tournament: ${tournament.name}`,
+            winMethod: 'Grand Prix Victory',
+            defenses: 0,
+            reignDefenses: 0
+        });
+        title.championId = String(winner.id || '');
+        title.championName = String(winner.name || '');
+        if (title.champion && typeof title.champion === 'object') {
+            title.champion = { ...title.champion, id: String(winner.id || ''), name: String(winner.name || '') };
+        } else if (typeof title.champion === 'string') {
+            title.champion = String(winner.name || '');
+        }
+        title.defenses = 0;
+        title.currentReignDefenses = 0;
+    }
+    try {
+        localStorage.setItem('wwe_titles', JSON.stringify(titles));
+    } catch (error) {
+        console.error('Unable to award tournament championship prize from Fight Cards.', error);
+        return false;
+    }
+    window.dispatchEvent(new CustomEvent('wwe_titles:changed'));
+    return true;
+}
+
+function updateTournamentFromFightCard(matchState, undo = false) {
+    const tournamentId = String(matchState?.tournamentId || '');
+    const tournamentMatchId = String(matchState?.tournamentMatchId || '');
+    if (!tournamentId || !tournamentMatchId) return;
+    const archive = readTournamentArchiveForCard();
+    if (!archive) return;
+    const location = getTournamentMatchForCard(archive, tournamentId, tournamentMatchId);
+    if (!location) {
+        console.warn(`Tournament match ${tournamentMatchId} could not be found while updating Fight Card results.`);
+        return;
+    }
+    const { tournament, roundIndex, matchIndex, match } = location;
+    const loggedFighters = [matchState.slot1Id, matchState.slot2Id].map(String).sort();
+    const bracketFighters = (match.fighters || []).map(fighter => String(fighter?.fighterId || '')).sort();
+    const loggedNames = [matchState.slot1Name, matchState.slot2Name]
+        .map(name => String(name || '').trim().toLowerCase()).sort();
+    const bracketNames = (match.fighters || [])
+        .map(fighter => String(fighter?.name || '').trim().toLowerCase()).sort();
+    const samePair = loggedFighters.every(Boolean) && bracketFighters.every(Boolean)
+        ? loggedFighters[0] === bracketFighters[0] && loggedFighters[1] === bracketFighters[1]
+        : loggedNames[0] === bracketNames[0] && loggedNames[1] === bracketNames[1];
+
+    if (!undo) {
+        if (tournament.status !== 'active' || !samePair) {
+            console.warn(`Fight Card result did not match active tournament matchup ${tournamentMatchId}; bracket was not advanced.`);
+            return;
+        }
+        if (match.winnerId) {
+            if (String(match.winnerId) !== String(matchState.winnerId || '') ||
+                match.winnerSource !== 'fight-card') {
+                console.warn(`Tournament matchup ${tournamentMatchId} already has a winner; Fight Card result was not applied.`);
+            }
+            return;
+        }
+        const winner = (match.fighters || []).find(fighter =>
+            String(fighter?.fighterId || '') === String(matchState.winnerId || '') ||
+            String(fighter?.name || '').trim().toLowerCase() === String(matchState.winnerName || '').trim().toLowerCase()
+        );
+        if (!winner) {
+            console.warn(`Fight Card winner is not part of tournament matchup ${tournamentMatchId}.`);
+            return;
+        }
+        match.winnerId = String(winner.fighterId || matchState.winnerId || '');
+        match.winnerName = String(winner.name || matchState.winnerName || '');
+        match.winnerSource = 'fight-card';
+        match.booked = {
+            ...(match.booked || {}),
+            showName: String(matchState.showName || match.booked?.showName || ''),
+            cardMatchId: String(matchState.cardMatchId || match.booked?.cardMatchId || ''),
+            status: 'completed'
+        };
+        const nextRound = tournament.rounds[roundIndex + 1];
+        if (nextRound) {
+            const nextMatch = nextRound.matches[Math.floor(matchIndex / 2)];
+            const nextSlot = matchIndex % 2;
+            nextMatch.fighters[nextSlot] = { ...winner };
+            nextMatch.sourceMatchIds[nextSlot] = match.id;
+        } else {
+            tournament.status = 'completed';
+            tournament.completedAt = new Date().toISOString();
+            tournament.championId = match.winnerId;
+            tournament.championName = match.winnerName;
+            tournament.completionSource = 'fight-card';
+            tournament.completionMatchId = match.id;
+            const winnerFighter = fighters.find(fighter =>
+                String(fighter.id || '') === String(match.winnerId) ||
+                String(fighter.name || '').trim().toLowerCase() === String(match.winnerName || '').trim().toLowerCase()
+            );
+            if (winnerFighter) awardTournamentBeltFromCard(tournament, winnerFighter);
+        }
+    } else {
+        if (match.winnerSource !== 'fight-card' ||
+            String(match.winnerId || '') !== String(matchState.winnerId || '')) return;
+        match.winnerId = '';
+        match.winnerName = '';
+        match.winnerSource = '';
+        if (match.booked) match.booked.status = 'booked';
+        const nextRound = tournament.rounds[roundIndex + 1];
+        if (nextRound) {
+            const nextMatch = nextRound.matches[Math.floor(matchIndex / 2)];
+            const nextSlot = matchIndex % 2;
+            if (String(nextMatch.sourceMatchIds?.[nextSlot] || '') === String(match.id)) {
+                nextMatch.fighters[nextSlot] = null;
+                nextMatch.sourceMatchIds[nextSlot] = '';
+                if (nextMatch.winnerId) {
+                    nextMatch.winnerId = '';
+                    nextMatch.winnerName = '';
+                    nextMatch.winnerSource = '';
+                }
+            }
+        } else if (tournament.completionSource === 'fight-card' &&
+            String(tournament.completionMatchId || '') === String(match.id)) {
+            const undoState = tournament.prizeUndoSnapshot;
+            if (undoState && tournament.prizeTitleId) {
+                try {
+                    const titles = JSON.parse(localStorage.getItem('wwe_titles') || '[]');
+                    const title = Array.isArray(titles) && titles.find(entry =>
+                        String(entry?.id || '') === String(tournament.prizeTitleId) &&
+                        String(entry.championId || entry.champion?.id || '') === String(tournament.championId || '')
+                    );
+                    if (title) {
+                        ['championId', 'championName', 'champion', 'defenses', 'currentReignDefenses'].forEach(key => {
+                            if (Object.prototype.hasOwnProperty.call(undoState, key)) title[key] = undoState[key];
+                            else delete title[key];
+                        });
+                        title.history = undoState.history || [];
+                        localStorage.setItem('wwe_titles', JSON.stringify(titles));
+                        window.dispatchEvent(new CustomEvent('wwe_titles:changed'));
+                    }
+                } catch (error) {
+                    console.error('Unable to undo tournament championship prize.', error);
+                }
+            }
+            tournament.status = 'active';
+            tournament.completedAt = '';
+            tournament.championId = '';
+            tournament.championName = '';
+            tournament.completionSource = '';
+            tournament.completionMatchId = '';
+            delete tournament.prizeUndoSnapshot;
+        }
+    }
+
+    try {
+        localStorage.setItem('universeTournaments', JSON.stringify(archive));
+        window.dispatchEvent(new CustomEvent('universe:tournaments-updated'));
+    } catch (error) {
+        console.error('Unable to update tournament bracket from Fight Card result.', error);
+    }
+}
+
 window.logMatchResult = function(id) {
     if (!activeShowId || !futureShows.find(s => s.id === activeShowId)) {
         ensureActiveShowSelected();
@@ -4017,46 +6489,155 @@ window.logMatchResult = function(id) {
     
     if (!w || !l) return customAlert('Please choose a valid winner before logging the result.', 'Log Match Result');
     if (typeof w[methodSelect.value] === 'undefined') return customAlert('The selected win method is invalid.', 'Log Match Result');
+    const loggedAt = new Date().toISOString();
+    const bossSlain = l.is_boss === true && w.is_boss !== true;
 
+    if (typeof window.getDivisionRankings !== 'function') {
+        return customAlert('Division rankings are unavailable, so the upset status could not be checked. Please reload the page and try again.', 'Log Match Result');
+    }
+    const rankings = window.getDivisionRankings();
+    const upsetStatus = getMatchUpsetStatus(w, l, rankings);
+    const opponentRank = String(getFighterDivisionRank(l, rankings) || '');
+    const opponentRankNumber = Number(opponentRank.match(/^#(\d+)$/)?.[1]) || 0;
+    const defeatedRankedOpponent = opponentRank === 'C' ||
+        (opponentRankNumber >= 1 && opponentRankNumber <= 15);
+    const fightTime = window.stopMatchTimer(id);
+    const fightTimeMs = parseMatchFightTime(fightTime);
+    const titleRules = getCardsTitleRules();
+    const titleWinMinimum = titleRules.initialTitleWins;
+    const titleCheck = document.getElementById(`${id}-title-check`);
+    const titleInput = document.getElementById(`${id}-title-name-input`);
+    const isTitleMatch = !!titleCheck?.checked;
+    let currentReignDefenses = 0;
+    if (isTitleMatch && titleInput?.value) {
+        try {
+            currentReignDefenses = getDominantTitleLossDefenseCount(l, titleInput.value);
+        } catch (error) {
+            console.error('Unable to verify title reign defenses before logging the match.', error);
+            return customAlert('The current title reign could not be verified. No result was logged.', 'Title Gate');
+        }
+    }
+    const dominantExChampionException = isTitleMatch && currentReignDefenses >= 3;
+    const winnerWinStreakBefore = Math.max(0, Math.floor(Number(w.win_streak) || 0));
+    const winnerLoseStreakBefore = Math.max(0, Math.floor(Number(w.lose_streak) || 0));
+    const loserWinStreakBefore = Math.max(0, Math.floor(Number(l.win_streak) || 0));
+    const loserLoseStreakBefore = Math.max(0, Math.floor(Number(l.lose_streak) || 0));
+    const winnerRebuildWinsRequiredBefore = Math.max(0, Math.floor(Number(w.rebuild_wins_required) || 0));
+    const loserRebuildWinsRequiredBefore = Math.max(0, Math.floor(Number(l.rebuild_wins_required) || 0));
+    const winnerDominantExChampionRebuildBefore = w.dominant_ex_champ_rebuild === true;
+    const loserDominantExChampionRebuildBefore = l.dominant_ex_champ_rebuild === true;
+    const winnerRebuildLossCountBefore = getCardsRebuildLossCount(w, winnerRebuildWinsRequiredBefore);
+    const loserRebuildLossCountBefore = getCardsRebuildLossCount(l, loserRebuildWinsRequiredBefore);
+    const winnerTitleComebackCompletedBefore = w.title_comeback_completed === true;
+    const loserTitleComebackCompletedBefore = l.title_comeback_completed === true;
     w.wins++;
     w.win_streak = Number(w.win_streak || 0) + 1;
+    w.peak_win_streak = getCardsCareerPeakWinStreak(w);
+    w.lose_streak = 0;
+    applyTitleGateWin(w, titleRules);
     w[methodSelect.value]++; 
     l.losses++;
     l.win_streak = 0;
+    l.lose_streak = loserLoseStreakBefore + 1;
+    applyTitleGateLoss(l, titleRules, dominantExChampionException);
+    w.fast_tracked = false;
+    l.fast_tracked = false;
+    const winnerActiveStreak = typeof window.getCurrentWinStreak === 'function'
+        ? window.getCurrentWinStreak(w)
+        : Math.max(0, Number(w.win_streak) || 0);
+    const fastTrackAlert = defeatedRankedOpponent &&
+        fightTimeMs > 0 &&
+        fightTimeMs < 3 * 60 * 1000 &&
+        !(Number(w.wins) >= titleWinMinimum && winnerActiveStreak > 0);
+    if (fastTrackAlert) w.fast_tracked = true;
 
     const methodName = methodSelect.options[methodSelect.selectedIndex].text;
     const currentShow = futureShows.find(s => s.id === activeShowId);
     const showName = currentShow?.name || document.getElementById('eventNameInput')?.value.trim() || 'Show';
-    const rematchCheckbox = row?.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]');
-    const rematchCountInput = document.getElementById(`${id}-rematch-count`);
-    const isRematch = !!rematchCheckbox?.checked;
+    const pastFightsCount = getPastFightsCount(w, l);
+    const rivalryStatus = getRivalryStatus(f1, f2);
+    const isRematch = pastFightsCount > 0;
+    const rematchNumber = isRematch ? pastFightsCount + 1 : 0;
+    updateRematchIndicator(id, pastFightsCount, rematchNumber);
 
     if (!w.compiled_history_deck) w.compiled_history_deck = [];
     if (!l.compiled_history_deck) l.compiled_history_deck = [];
-    const rematchNumber = isRematch
-        ? Math.max(1, Number.parseInt(rematchCountInput?.value || '1', 10) || 1)
-        : getNextRematchNumberForPair(w, l);
 
     const winnerHistoryEntry = {
         outcome: 'win',
         opponent: l.name,
         method: methodName,
         showName,
+        loggedAt,
         isRematch,
-        rematchNumber: rematchNumber
+        rivalryTag: rivalryStatus.rivalryTag,
+        upsetAlert: upsetStatus.upsetAlert,
+        upsetReason: upsetStatus.upsetReason,
+        fastTrackAlert,
+        bossSlain,
+        bossSlainName: bossSlain ? l.name : '',
+        shortNotice: row?.dataset.shortNotice === 'true',
+        shortNoticeFighter: row?.dataset.shortNoticeFighter || '',
+        bonusType: '',
+        rematchNumber: rematchNumber,
+        rematchNumberIsMeeting: true,
+        winStreak: Number(w.win_streak) || 0,
+        winStreakBefore: winnerWinStreakBefore,
+        rebuildWinsRequired: Math.max(0, Math.floor(Number(w.rebuild_wins_required) || 0)),
+        rebuildWinsRequiredBefore: winnerRebuildWinsRequiredBefore,
+        rebuildLossCount: Math.max(0, Math.floor(Number(w.rebuild_loss_count) || 0)),
+        rebuildLossCountBefore: winnerRebuildLossCountBefore,
+        dominantExChampionException: false,
+        dominantExChampionRebuild: w.dominant_ex_champ_rebuild === true,
+        dominantExChampionRebuildBefore: winnerDominantExChampionRebuildBefore,
+        titleComebackCompleted: w.title_comeback_completed === true,
+        titleComebackCompletedBefore: winnerTitleComebackCompletedBefore,
+        loseStreak: 0,
+        loseStreakBefore: winnerLoseStreakBefore,
+        fightTime
     };
     const loserHistoryEntry = {
         outcome: 'loss',
         opponent: w.name,
         method: methodName,
         showName,
+        loggedAt,
         isRematch,
-        rematchNumber: rematchNumber
+        rivalryTag: rivalryStatus.rivalryTag,
+        upsetAlert: upsetStatus.upsetAlert,
+        upsetReason: upsetStatus.upsetReason,
+        bossSlain,
+        bossSlainName: bossSlain ? l.name : '',
+        shortNotice: row?.dataset.shortNotice === 'true',
+        shortNoticeFighter: row?.dataset.shortNoticeFighter || '',
+        bonusType: '',
+        rematchNumber: rematchNumber,
+        rematchNumberIsMeeting: true,
+        winStreak: 0,
+        winStreakBefore: loserWinStreakBefore,
+        rebuildWinsRequired: Math.max(0, Math.floor(Number(l.rebuild_wins_required) || 0)),
+        rebuildWinsRequiredBefore: loserRebuildWinsRequiredBefore,
+        rebuildLossCount: Math.max(0, Math.floor(Number(l.rebuild_loss_count) || 0)),
+        rebuildLossCountBefore: loserRebuildLossCountBefore,
+        dominantExChampionException,
+        dominantExChampionRebuild: l.dominant_ex_champ_rebuild === true,
+        dominantExChampionRebuildBefore: loserDominantExChampionRebuildBefore,
+        titleComebackCompleted: l.title_comeback_completed === true,
+        titleComebackCompletedBefore: loserTitleComebackCompletedBefore,
+        loseStreak: Number(l.lose_streak) || 0,
+        loseStreakBefore: loserLoseStreakBefore,
+        fightTime
     };
 
     const winnerAlreadyLogged = w.compiled_history_deck.some(entry => entry.outcome === 'win' && entry.opponent === l.name && entry.showName === showName && entry.method === methodName && entry.rematchNumber === rematchNumber);
     const loserAlreadyLogged = l.compiled_history_deck.some(entry => entry.outcome === 'loss' && entry.opponent === w.name && entry.showName === showName && entry.method === methodName && entry.rematchNumber === rematchNumber);
 
+    if (upsetStatus.upsetAlert && !winnerAlreadyLogged) {
+        w.giant_kills = Math.max(0, Math.floor(Number(w.giant_kills) || 0)) + 1;
+    }
+    if (bossSlain && !winnerAlreadyLogged) {
+        w.boss_slays = Math.max(0, Math.floor(Number(w.boss_slays) || 0)) + 1;
+    }
     if (!winnerAlreadyLogged) w.compiled_history_deck.push(winnerHistoryEntry);
     if (!loserAlreadyLogged) l.compiled_history_deck.push(loserHistoryEntry);
 
@@ -4064,9 +6645,6 @@ window.logMatchResult = function(id) {
     updateFighterRecordDisplay(id, 'slot1', f1);
     updateFighterRecordDisplay(id, 'slot2', f2);
     
-    const titleCheck = document.getElementById(`${id}-title-check`);
-    const titleInput = document.getElementById(`${id}-title-name-input`);
-    const isTitleMatch = !!titleCheck?.checked;
     if (isTitleMatch) {
         w.total_title_fights = Number(w.total_title_fights ?? w.title_fights) || 0;
         l.total_title_fights = Number(l.total_title_fights ?? l.title_fights) || 0;
@@ -4078,6 +6656,8 @@ window.logMatchResult = function(id) {
     }
     const rowGender = document.getElementById(`${id}-slot1`)?.getAttribute('data-gender') || document.getElementById(`${id}-slot2`)?.getAttribute('data-gender') || 'male';
     let matchSaveState = {
+        winnerId: w.id,
+        loserId: l.id,
         winnerName: w.name,
         loserName: l.name,
         winnerGender: w.gender,
@@ -4089,13 +6669,50 @@ window.logMatchResult = function(id) {
         methodId: methodSelect.value,
         methodName: methodSelect.options[methodSelect.selectedIndex].text,
         showName: showName,
+        loggedAt,
         isTitle: isTitleMatch,
         titleId: '',
         titleName: '',
         titleRetained: false,
         totalTitleFightAppearanceCounted: isTitleMatch,
         isRematch,
-        rematchNumber: rematchNumber
+        rivalryTag: rivalryStatus.rivalryTag,
+        rivalryKind: rivalryStatus.rivalryKind,
+        rivalryLabel: rivalryStatus.label,
+        upsetAlert: upsetStatus.upsetAlert,
+        upsetReason: upsetStatus.upsetReason,
+        fastTrackAlert,
+        bossSlain,
+        bossSlainName: bossSlain ? l.name : '',
+        shortNotice: row?.dataset.shortNotice === 'true',
+        shortNoticeFighter: row?.dataset.shortNoticeFighter || '',
+        tournamentId: row?.dataset.tournamentId || '',
+        tournamentMatchId: row?.dataset.tournamentMatchId || '',
+        cardMatchId: id,
+        winnerWinStreakBefore,
+        winnerLoseStreakBefore,
+        loserWinStreakBefore,
+        loserLoseStreakBefore,
+        winnerRebuildWinsRequiredBefore,
+        loserRebuildWinsRequiredBefore,
+        winnerDominantExChampionRebuildBefore,
+        loserDominantExChampionRebuildBefore,
+        winnerRebuildLossCountBefore,
+        loserRebuildLossCountBefore,
+        winnerRebuildWinsRequired: Math.max(0, Math.floor(Number(w.rebuild_wins_required) || 0)),
+        loserRebuildWinsRequired: Math.max(0, Math.floor(Number(l.rebuild_wins_required) || 0)),
+        winnerDominantExChampionRebuild: w.dominant_ex_champ_rebuild === true,
+        loserDominantExChampionRebuild: l.dominant_ex_champ_rebuild === true,
+        dominantExChampionException,
+        winnerRebuildLossCount: Math.max(0, Math.floor(Number(w.rebuild_loss_count) || 0)),
+        loserRebuildLossCount: Math.max(0, Math.floor(Number(l.rebuild_loss_count) || 0)),
+        winnerTitleComebackCompletedBefore,
+        loserTitleComebackCompletedBefore,
+        winnerTitleComebackCompleted: w.title_comeback_completed === true,
+        loserTitleComebackCompleted: l.title_comeback_completed === true,
+        rematchNumber: rematchNumber,
+        rematchNumberIsMeeting: true,
+        fightTime
     };
     // If this was a title match and a title was selected, store title id/name and immediately apply transfer
     if (titleCheck && titleCheck.checked && titleInput && titleInput.value) {
@@ -4116,12 +6733,19 @@ window.logMatchResult = function(id) {
                     gender: w.gender || 'male',
                     championId: '',
                     history: [],
-                    defenses: 0
+                    defenses: 0,
+                    currentReignDefenses: 0
                 };
                 championshipsRegistry.push(targetBelt);
             }
 
-            const previousChampionId = targetBelt.championId;
+            const previousChampionId = String(
+                targetBelt.championId ||
+                (targetBelt.champion && typeof targetBelt.champion === 'object'
+                    ? targetBelt.champion.id || targetBelt.champion.name
+                    : targetBelt.champion) ||
+                ''
+            );
             const previousReign = Array.isArray(targetBelt.history)
                 ? [...targetBelt.history].reverse().find(entry => entry && entry.wrestlerName)
                 : null;
@@ -4131,32 +6755,70 @@ window.logMatchResult = function(id) {
                 String(fighter.name || '').trim().toLowerCase() === String(priorHolderName || '').trim().toLowerCase()
             );
             const previousChampionName = previousChampion ? previousChampion.name : priorHolderName;
+            const isRetained = previousChampionId === w.id ||
+                String(previousChampionName || '').trim().toLowerCase() === String(w.name || '').trim().toLowerCase();
+            matchSaveState.previousTitleChampionId = previousChampion?.id || previousChampionId;
+            matchSaveState.previousTitleDefenses = Math.max(
+                0,
+                Number(targetBelt.defenses ?? targetBelt.currentReignDefenses) || 0
+            );
+            const winMethodText = methodSelect.value.replace('win_pinfall','PINFALL').replace('win_ko','KO/TKO').replace('win_submission','SUBMISSION');
             // Score title fight/defense stats for this specific belt
             try {
-                if (previousChampionId === w.id ||
-                    String(w.name || '').trim().toLowerCase() === String(previousChampionName || '').trim().toLowerCase()) {
+                if (isRetained) {
                     // winner was already champion -> increment defenses for this belt
-                    targetBelt.defenses = (targetBelt.defenses || 0) + 1;
+                    targetBelt.defenses = Math.max(0, Number(targetBelt.defenses ?? targetBelt.currentReignDefenses) || 0) + 1;
+                    targetBelt.currentReignDefenses = targetBelt.defenses;
                     w.defenses = (Number(w.defenses) || 0) + 1;
                     w.lifetime_defenses = (Number(w.lifetime_defenses) || 0) + 1;
                     matchSaveState.titleRetained = true;
                     matchSaveState.lifetimeDefenseCounted = true;
+                    matchSaveState.titleDefenseNumber = targetBelt.defenses;
+                    const milestone = window.getDefenseMilestone?.(targetBelt.defenses);
+                    matchSaveState.titleMilestoneUnlocked = [3, 5, 10].includes(targetBelt.defenses);
+                    matchSaveState.titleMilestoneLabel = matchSaveState.titleMilestoneUnlocked
+                        ? milestone?.label || ''
+                        : '';
+                    window.recordTitleReignDefenses?.(targetBelt, w, targetBelt.defenses, {
+                        showTitle: showName,
+                        winMethod: winMethodText
+                    });
                 } else {
                     // new champion or contested match -> reset defenses for this belt
+                    const priorDefenseCount = Math.max(
+                        0,
+                        Number(targetBelt.defenses ?? targetBelt.currentReignDefenses) || 0
+                    );
+                    if (previousChampionId && typeof window.recordTitleReignDefenses === 'function') {
+                        window.recordTitleReignDefenses(
+                            targetBelt,
+                            previousChampion || { id: '', name: String(previousChampionName || '') },
+                            priorDefenseCount
+                        );
+                    }
                     targetBelt.defenses = 0;
+                    targetBelt.currentReignDefenses = 0;
+                    matchSaveState.titleRetained = false;
                 }
             } catch (err) {
                 console.error('Error updating roster title stats', err);
             }
-            const winMethodText = methodSelect.value.replace('win_pinfall','PINFALL').replace('win_ko','KO/TKO').replace('win_submission','SUBMISSION');
-            if (previousChampionId !== w.id &&
-                String(w.name || '').trim().toLowerCase() !== String(previousChampionName || '').trim().toLowerCase()) {
+            if (!isRetained) {
                 // push new reign
                 targetBelt.history = targetBelt.history || [];
-                targetBelt.history.push({ wrestlerName: w.name, showTitle: showName, winMethod: winMethodText });
+                targetBelt.history.push({
+                    fighterId: w.id,
+                    wrestlerName: w.name,
+                    showTitle: showName,
+                    winMethod: winMethodText,
+                    defenses: 0,
+                    reignDefenses: 0
+                });
             }
             targetBelt.championId = w.id;
+            targetBelt.currentReignDefenses = Number(targetBelt.defenses) || 0;
             localStorage.setItem('wwe_titles', JSON.stringify(championshipsRegistry));
+            window.dispatchEvent(new CustomEvent('wwe_titles:changed'));
             // Update fighters storage with any modified defense counts
             saveFighters(fighters);
         } catch (e) {
@@ -4168,6 +6830,7 @@ window.logMatchResult = function(id) {
     if (storageKey) {
         localStorage.setItem(storageKey, JSON.stringify(completedMatches));
     }
+    updateTournamentFromFightCard(matchSaveState);
 
     clearMatchWinnerBadges(id);
     const winningSlot = winSelect.value === '1' ? 'slot1' : 'slot2';
@@ -4208,6 +6871,9 @@ window.logMatchResult = function(id) {
     sessionStorage.removeItem(`match_${id}_variant_approved`);
     delete activeRematchWarnings[id];
     if (row) delete row.dataset.rematchPending;
+    if (typeof window.savePoundForPoundHistory === 'function') {
+        window.savePoundForPoundHistory();
+    }
     refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card view after logging a result.', error));
 };
 
@@ -4219,13 +6885,107 @@ function restoreWinStreakAfterUnlog(fighter) {
         return;
     }
 
-    const history = fighter.compiled_history_deck || fighter.history_deck || fighter.history || [];
+    const historyCandidates = [
+        fighter.compiled_history_deck,
+        fighter.history_deck,
+        fighter.history
+    ];
+    const history = historyCandidates.find(entries => Array.isArray(entries) && entries.length > 0) ||
+        historyCandidates.find(entries => Array.isArray(entries)) ||
+        [];
     let streak = 0;
     for (let index = history.length - 1; index >= 0; index--) {
         if (String(history[index]?.outcome || '').toLowerCase() !== 'win') break;
         streak++;
     }
     fighter.win_streak = streak;
+}
+
+function restoreTitleGateAfterUnlog(fighter, fallbackState) {
+    if (!fighter) return;
+    const historyCandidates = [
+        fighter.compiled_history_deck,
+        fighter.history_deck,
+        fighter.history
+    ];
+    const history = historyCandidates.find(entries => Array.isArray(entries) && entries.length > 0) ||
+        historyCandidates.find(entries => Array.isArray(entries)) ||
+        [];
+    let required = 0;
+    let lossCount = 0;
+    let streak = 0;
+    let comebackCompleted = false;
+    let dominantExChampionRebuild = false;
+    const rules = getCardsTitleRules();
+    history.forEach(entry => {
+        const outcome = String(entry?.outcome || '').toLowerCase();
+        if (outcome === 'loss') {
+            lossCount++;
+            dominantExChampionRebuild = entry.dominantExChampionException === true;
+            required = dominantExChampionRebuild
+                ? 1
+                : getCardsRebuildWinsRequired(lossCount, rules);
+            streak = 0;
+            comebackCompleted = false;
+        } else if (outcome === 'win') {
+            streak++;
+            if (required > 0 && streak >= required) {
+                required = 0;
+                lossCount = 0;
+                comebackCompleted = true;
+                dominantExChampionRebuild = false;
+            } else if (required === 0 && streak >= rules.initialTitleWins) {
+                comebackCompleted = false;
+            }
+        }
+    });
+    if (!history.some(entry => ['win', 'loss'].includes(String(entry?.outcome || '').toLowerCase())) && fallbackState) {
+        required = Math.max(0, Math.floor(Number(fallbackState.rebuildWinsRequired) || 0));
+        lossCount = getCardsRebuildLossCount(fallbackState, required);
+        comebackCompleted = fallbackState.titleComebackCompleted === true;
+        dominantExChampionRebuild = fallbackState.dominantExChampionRebuild === true;
+    }
+    fighter.rebuild_wins_required = required;
+    fighter.rebuild_loss_count = lossCount;
+    fighter.title_comeback_completed = comebackCompleted;
+    fighter.dominant_ex_champ_rebuild = dominantExChampionRebuild;
+}
+
+function restoreLoseStreakAfterUnlog(fighter, fallbackStreak) {
+    if (!fighter) return;
+    if (fallbackStreak !== undefined && fallbackStreak !== null && fallbackStreak !== '') {
+        fighter.lose_streak = Math.max(0, Math.floor(Number(fallbackStreak) || 0));
+        return;
+    }
+    const historyCandidates = [
+        fighter.compiled_history_deck,
+        fighter.history_deck,
+        fighter.history
+    ];
+    const history = historyCandidates.find(entries => Array.isArray(entries) && entries.length > 0) ||
+        historyCandidates.find(entries => Array.isArray(entries)) ||
+        [];
+    if (!Array.isArray(history) || !history.some(entry =>
+        ['win', 'loss'].includes(String(entry?.outcome || '').toLowerCase())
+    )) {
+        fighter.lose_streak = Math.max(0, Math.floor(Number(fallbackStreak) || 0));
+        return;
+    }
+
+    let streak = 0;
+    for (let index = history.length - 1; index >= 0; index--) {
+        if (String(history[index]?.outcome || '').toLowerCase() !== 'loss') break;
+        streak++;
+    }
+    fighter.lose_streak = streak;
+}
+
+function restoreFastTrackedStatusFromHistory(fighter) {
+    if (!fighter) return;
+    const history = fighter.compiled_history_deck || fighter.history_deck || fighter.history || [];
+    const latestEntry = Array.isArray(history) ? history[history.length - 1] : null;
+    fighter.fast_tracked = latestEntry?.fastTrackAlert === true &&
+        String(latestEntry.outcome || '').toLowerCase() === 'win';
 }
 
 window.unlogMatchResult = function(id) {
@@ -4243,22 +7003,34 @@ window.unlogMatchResult = function(id) {
     );
     const winner = findSavedFighter(savedMatch.winnerId, savedMatch.winnerName);
     const loser = findSavedFighter(savedMatch.loserId, savedMatch.loserName);
+    const bonusType = normalizePerformanceBonusType(savedMatch.bonusType);
 
     if (winner) {
         winner.wins = Math.max(0, Number(winner.wins || 0) - 1);
+        if (savedMatch.bossSlain === true) {
+            winner.boss_slays = Math.max(0, Math.floor(Number(winner.boss_slays) || 0) - 1);
+        }
+        if (savedMatch.upsetAlert === true) {
+            winner.giant_kills = Math.max(0, Math.floor(Number(winner.giant_kills) || 0) - 1);
+        }
         if (savedMatch.methodId && typeof winner[savedMatch.methodId] !== 'undefined') {
             winner[savedMatch.methodId] = Math.max(0, Number(winner[savedMatch.methodId] || 0) - 1);
         }
+        if (bonusType === 'POTN') adjustPerformanceBonusCounter(winner, bonusType, -1);
         if (winner.compiled_history_deck) {
             winner.compiled_history_deck = winner.compiled_history_deck.filter(entry => {
                 return !(entry.outcome === 'win' && entry.opponent === savedMatch.loserName && entry.showName === savedMatch.showName && entry.method === savedMatch.methodName && entry.rematchNumber === savedMatch.rematchNumber);
             });
-            winner.win_streak = 0;
-            for (let index = winner.compiled_history_deck.length - 1; index >= 0; index--) {
-                if (winner.compiled_history_deck[index].outcome !== 'win') break;
-                winner.win_streak++;
-            }
+            restoreWinStreakAfterUnlog(winner);
+            restoreTitleGateAfterUnlog(winner, {
+                rebuildWinsRequired: savedMatch.winnerRebuildWinsRequiredBefore,
+                rebuild_loss_count: savedMatch.winnerRebuildLossCountBefore,
+                titleComebackCompleted: savedMatch.winnerTitleComebackCompletedBefore,
+                dominantExChampionRebuild: savedMatch.winnerDominantExChampionRebuildBefore
+            });
         }
+        restoreLoseStreakAfterUnlog(winner, savedMatch.winnerLoseStreakBefore);
+        restoreFastTrackedStatusFromHistory(winner);
         if (savedMatch.lifetimeDefenseCounted === true && winner) {
             winner.lifetime_defenses = Math.max(0, Number(winner.lifetime_defenses || 0) - 1);
             savedMatch.lifetimeDefenseCounted = false;
@@ -4266,12 +7038,21 @@ window.unlogMatchResult = function(id) {
     }
     if (loser) {
         loser.losses = Math.max(0, Number(loser.losses || 0) - 1);
+        if (bonusType === 'FOTN') adjustPerformanceBonusCounter(loser, bonusType, -1);
         if (loser.compiled_history_deck) {
             loser.compiled_history_deck = loser.compiled_history_deck.filter(entry => {
                 return !(entry.outcome === 'loss' && entry.opponent === savedMatch.winnerName && entry.showName === savedMatch.showName && entry.method === savedMatch.methodName && entry.rematchNumber === savedMatch.rematchNumber);
             });
         }
         restoreWinStreakAfterUnlog(loser);
+        restoreTitleGateAfterUnlog(loser, {
+            rebuildWinsRequired: savedMatch.loserRebuildWinsRequiredBefore,
+            rebuild_loss_count: savedMatch.loserRebuildLossCountBefore,
+            titleComebackCompleted: savedMatch.loserTitleComebackCompletedBefore,
+            dominantExChampionRebuild: savedMatch.loserDominantExChampionRebuildBefore
+        });
+        restoreLoseStreakAfterUnlog(loser, savedMatch.loserLoseStreakBefore);
+        restoreFastTrackedStatusFromHistory(loser);
     }
     if (savedMatch.isTitle && savedMatch.totalTitleFightAppearanceCounted === true) {
         if (winner) {
@@ -4284,9 +7065,6 @@ window.unlogMatchResult = function(id) {
         }
     }
 
-    if (winner) refreshFighterRecordDisplaysForId(winner.id);
-    if (loser) refreshFighterRecordDisplaysForId(loser.id);
-
     if (savedMatch.isTitle && savedMatch.titleId) {
         try {
             const championshipsRegistry = JSON.parse(localStorage.getItem('wwe_titles')) || [];
@@ -4296,11 +7074,12 @@ window.unlogMatchResult = function(id) {
                     normalizeFighterName(targetBelt.championId) === normalizeFighterName(winner?.name);
                 if (wasChampion) {
                     targetBelt.defenses = Math.max(0, Number(targetBelt.defenses || 0) - 1);
+                    targetBelt.currentReignDefenses = targetBelt.defenses;
                     if (savedMatch.titleRetained === true && winner) {
                         winner.defenses = Math.max(0, Number(winner.defenses || 0) - 1);
                     }
                 }
-                if (targetBelt.history && targetBelt.history.length) {
+                if (savedMatch.titleRetained !== true && targetBelt.history && targetBelt.history.length) {
                     targetBelt.history = targetBelt.history.filter(entry =>
                         !(normalizeFighterName(entry.wrestlerName) === normalizeFighterName(winner?.name) &&
                             normalizeFighterName(entry.showTitle) === normalizeFighterName(savedMatch.showName) &&
@@ -4310,18 +7089,38 @@ window.unlogMatchResult = function(id) {
                 if (wasChampion) {
                     const priorReign = [...(targetBelt.history || [])].reverse().find(entry => entry && entry.wrestlerName);
                     const priorChampion = priorReign && fighters.find(fighter =>
+                        (priorReign.fighterId && String(fighter.id) === String(priorReign.fighterId)) ||
                         normalizeFighterName(fighter.name) === normalizeFighterName(priorReign.wrestlerName)
                     );
-                    targetBelt.championId = priorChampion ? priorChampion.id : '';
+                    if (savedMatch.titleRetained === true && winner) {
+                        targetBelt.championId = winner.id;
+                        if (typeof window.recordTitleReignDefenses === 'function') {
+                            window.recordTitleReignDefenses(targetBelt, winner, targetBelt.defenses);
+                        }
+                    } else {
+                        targetBelt.championId = savedMatch.previousTitleChampionId ||
+                            (priorChampion ? priorChampion.id : String(priorReign?.fighterId || ''));
+                        targetBelt.defenses = Math.max(0, Number(
+                            savedMatch.previousTitleDefenses ??
+                            priorReign?.reignDefenses ??
+                            priorReign?.defenses
+                        ) || 0);
+                        targetBelt.currentReignDefenses = targetBelt.defenses;
+                    }
                 }
                 localStorage.setItem('wwe_titles', JSON.stringify(championshipsRegistry));
+                window.dispatchEvent(new CustomEvent('wwe_titles:changed'));
             }
         } catch (err) {
             console.error('Error undoing title result', err);
         }
     }
+    if (bonusType === 'FOTN' && winner) adjustPerformanceBonusCounter(winner, bonusType, -1);
 
     saveFighters(fighters);
+    if (winner) refreshFighterRecordDisplaysForId(winner.id);
+    if (loser) refreshFighterRecordDisplaysForId(loser.id);
+    updateTournamentFromFightCard(savedMatch, true);
     delete completedMatches[id];
     const storageKey = getActiveShowMatchesStorageKey();
     if (storageKey) {
@@ -4354,6 +7153,7 @@ window.unlogMatchResult = function(id) {
         const methodSelect = document.getElementById(`${id}-method-select`);
         if (winSelect) winSelect.value = '';
         if (methodSelect) methodSelect.value = '';
+        setMatchBonusDisplay(id, {});
         updateWinnerDropdown(id);
     }
 
@@ -4593,6 +7393,7 @@ window.unfinalizeCurrentCard = function() {
     const remainingEvents = eventHistory.filter(event => !removedEvents.has(event));
     const affectedTitles = new Map();
     const matchHistoryRemovals = new Map();
+    const loseStreakFallbacks = new Map();
 
     archivedEvents.forEach(event => {
         const showName = event.showTitle || event.name || show.name;
@@ -4605,6 +7406,9 @@ window.unfinalizeCurrentCard = function() {
 
             if (winner) {
                 winner.wins = Math.max(0, Number(winner.wins || 0) - 1);
+                if (!loseStreakFallbacks.has(winner)) {
+                    loseStreakFallbacks.set(winner, match.winnerLoseStreakBefore);
+                }
                 const normalizedMethod = normalizeArchivedMethod(match.method || match.methodName || '');
                 const methodId = match.methodId || ({
                     pinfall: 'win_pinfall',
@@ -4628,6 +7432,9 @@ window.unfinalizeCurrentCard = function() {
             }
             if (loser) {
                 loser.losses = Math.max(0, Number(loser.losses || 0) - 1);
+                if (!loseStreakFallbacks.has(loser)) {
+                    loseStreakFallbacks.set(loser, match.loserLoseStreakBefore);
+                }
                 if (match.isTitle) {
                     loser.total_title_fights = Math.max(0, Number(loser.total_title_fights || 0) - 1);
                     loser.title_fights = Math.max(0, Number(loser.title_fights || 0) - 1);
@@ -4683,6 +7490,9 @@ window.unfinalizeCurrentCard = function() {
         });
         fighter.compiled_history_deck = history;
         restoreWinStreakAfterUnlog(fighter);
+        restoreTitleGateAfterUnlog(fighter, null);
+        restoreLoseStreakAfterUnlog(fighter, loseStreakFallbacks.get(fighter));
+        restoreFastTrackedStatusFromHistory(fighter);
     });
 
     affectedTitles.forEach(({ title, fallbackMatch }) => {
@@ -4690,11 +7500,53 @@ window.unfinalizeCurrentCard = function() {
         const state = rebuildArchivedTitleState(title, remainingEvents, remainingHistory, fallbackMatch);
         title.championId = state.championId;
         title.defenses = state.defenses;
+        title.currentReignDefenses = state.defenses;
+        if (typeof window.getArchivedTitleReigns === 'function') {
+            const archivedReigns = window.getArchivedTitleReigns(title, fighters, remainingEvents);
+            const usedReigns = new Set();
+            title.history.forEach(entry => {
+                const entryId = String(entry?.fighterId || entry?.championId || '');
+                const entryName = String(entry?.wrestlerName || entry?.fighterName || '').trim().toLowerCase();
+                const showName = String(entry?.showTitle || '').trim().toLowerCase();
+                const method = normalizeArchivedMethod(entry?.winMethod);
+                let reignIndex = archivedReigns.findIndex((reign, index) =>
+                    !usedReigns.has(index) &&
+                    ((entryId && entryId === String(reign.fighterId || '')) ||
+                        (entryName && entryName === String(reign.wrestlerName || '').trim().toLowerCase())) &&
+                    showName && showName === String(reign.showTitle || '').trim().toLowerCase() &&
+                    (!method || method === normalizeArchivedMethod(reign.winMethod))
+                );
+                if (reignIndex < 0) {
+                    reignIndex = archivedReigns.findIndex((reign, index) =>
+                        !usedReigns.has(index) &&
+                        ((entryId && entryId === String(reign.fighterId || '')) ||
+                            (entryName && entryName === String(reign.wrestlerName || '').trim().toLowerCase()))
+                    );
+                }
+                if (reignIndex >= 0) {
+                    usedReigns.add(reignIndex);
+                    entry.defenses = Math.max(0, Number(archivedReigns[reignIndex].defenses) || 0);
+                    entry.reignDefenses = entry.defenses;
+                }
+            });
+        }
+        const activeReign = [...title.history].reverse().find(entry =>
+            String(entry?.fighterId || '') === state.championId ||
+            (entry?.wrestlerName && fighters.some(fighter =>
+                String(fighter.id) === state.championId &&
+                String(fighter.name || '').trim().toLowerCase() === String(entry.wrestlerName).trim().toLowerCase()
+            ))
+        );
+        if (activeReign) {
+            activeReign.defenses = state.defenses;
+            activeReign.reignDefenses = state.defenses;
+        }
     });
 
     try {
         saveFighters(fighters);
         localStorage.setItem('wwe_titles', JSON.stringify(championshipsRegistry));
+        window.dispatchEvent(new CustomEvent('wwe_titles:changed'));
         localStorage.setItem('wwe_event_history', JSON.stringify(remainingEvents));
         const savedMatches = JSON.parse(localStorage.getItem(`wwe_matches_${showId}`) || '{}');
         archivedEvents.forEach(event => (Array.isArray(event.matches) ? event.matches : []).forEach(match => {
@@ -4715,6 +7567,14 @@ window.unfinalizeCurrentCard = function() {
 
 function restoreLoggedResult(id, state) {
     const row = document.getElementById(id);
+    if (row && state?.tournamentId && state?.tournamentMatchId) {
+        row.dataset.tournamentId = state.tournamentId;
+        row.dataset.tournamentMatchId = state.tournamentMatchId;
+    }
+    if (row && state?.shortNotice === true) {
+        row.dataset.shortNotice = 'true';
+        row.dataset.shortNoticeFighter = state.shortNoticeFighter || '';
+    }
     const slot1 = document.getElementById(`${id}-slot1`);
     const slot2 = document.getElementById(`${id}-slot2`);
     const slot1Input = slot1?.querySelector('.fighter-search-input');
@@ -4800,6 +7660,24 @@ function restoreLoggedResult(id, state) {
     const methodSelect = document.getElementById(`${id}-method-select`);
     const resultPanel = document.getElementById(`${id}-result-panel`);
     const hasCompleteMatch = hasSlot1Value && hasSlot2Value && state.winnerName && state.loserName;
+    const upsetBadge = document.getElementById(`${id}-upset-alert`);
+    if (upsetBadge) {
+        upsetBadge.hidden = state.upsetAlert !== true;
+        upsetBadge.textContent = state.upsetAlert === true ? '🚨 UPSET ALERT!' : '';
+        upsetBadge.title = state.upsetReason || '';
+    }
+    const fastTrackBadge = document.getElementById(`${id}-fast-track-alert`);
+    if (fastTrackBadge) {
+        fastTrackBadge.hidden = state.fastTrackAlert !== true;
+        fastTrackBadge.textContent = state.fastTrackAlert === true ? '⚡ FAST-TRACKED TO TOP 5' : '';
+    }
+    const bossSlainBadge = document.getElementById(`${id}-boss-slain-alert`);
+    if (bossSlainBadge) {
+        bossSlainBadge.hidden = state.bossSlain !== true;
+        bossSlainBadge.textContent = state.bossSlain === true ? '💀 BOUNTY CLAIMED • BOSS SLAYER!' : '';
+        bossSlainBadge.title = state.bossSlainName ? `Defeated ${state.bossSlainName}` : '';
+    }
+    setMatchBonusDisplay(id, state);
 
     if (winSelect) {
         const ensureWinnerOption = (value, label) => {
@@ -4824,14 +7702,21 @@ function restoreLoggedResult(id, state) {
         methodSelect.value = state.methodId;
     }
 
-    const rematchCheckbox = row?.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]');
-    const rematchCountInput = document.getElementById(`${id}-rematch-count`);
-    if (rematchCheckbox) {
-        rematchCheckbox.checked = state.isRematch === true;
-    }
-    if (rematchCountInput) {
-        rematchCountInput.value = state.rematchNumber > 0 ? state.rematchNumber : 1;
-        rematchCountInput.style.display = state.isRematch === true ? 'inline-block' : 'none';
+    if (state.isRematch === true) {
+        const winner = getFighterByIdOrName(state.winnerName);
+        const loser = getFighterByIdOrName(state.loserName);
+        const savedMeetingNumber = Number(state.rematchNumber) || 0;
+        const legacyMeetingNumber = state.rematchNumberIsMeeting === true
+            ? savedMeetingNumber
+            : savedMeetingNumber + 1;
+        const meetingNumber = Math.max(
+            2,
+            legacyMeetingNumber,
+            winner && loser ? getPastFightsCount(winner, loser) : 0
+        );
+        updateRematchIndicator(id, meetingNumber - 1, meetingNumber);
+    } else {
+        updateRematchIndicator(id, 0);
     }
 
     if (!hasCompleteMatch) {
@@ -4840,9 +7725,15 @@ function restoreLoggedResult(id, state) {
         const winnerShowcase = document.getElementById(`${id}-showcase-winner`);
         const loserShowcase = document.getElementById(`${id}-showcase-loser`);
         const methodShowcase = document.getElementById(`${id}-showcase-method`);
+        const fightTimeShowcase = document.getElementById(`${id}-showcase-fight-time`);
         if (winnerShowcase) winnerShowcase.textContent = '';
         if (loserShowcase) loserShowcase.textContent = '';
         if (methodShowcase) methodShowcase.textContent = '';
+        if (fightTimeShowcase) {
+            fightTimeShowcase.textContent = '';
+            fightTimeShowcase.style.display = 'none';
+        }
+        updateTitleDefenseMilestone(id);
         return;
     }
 
@@ -4862,11 +7753,19 @@ function restoreLoggedResult(id, state) {
     const winnerShowcase = document.getElementById(`${id}-showcase-winner`);
     const loserShowcase = document.getElementById(`${id}-showcase-loser`);
     const methodShowcase = document.getElementById(`${id}-showcase-method`);
+    const fightTimeShowcase = document.getElementById(`${id}-showcase-fight-time`);
+    const savedFightTimeMs = parseMatchFightTime(state.fightTime);
+    const savedFightTime = savedFightTimeMs > 0 ? formatMatchTimerDisplay(savedFightTimeMs) : '';
+    restoreMatchTimerFromSaved(id, savedFightTime);
     if (winnerShowcase && loserShowcase && methodShowcase) {
         winnerShowcase.textContent = state.winnerName;
         winnerShowcase.style.color = state.winnerGender === 'male' ? '#22c55e' : '#f472b6';
         loserShowcase.textContent = state.loserName;
         methodShowcase.textContent = state.methodName;
+        if (fightTimeShowcase) {
+            fightTimeShowcase.textContent = savedFightTime ? `⏱️ ${savedFightTime}` : '';
+            fightTimeShowcase.style.display = savedFightTime ? 'inline-flex' : 'none';
+        }
 
         let winnerSlot = null;
         if (state.slot1Name && state.slot1Name === state.winnerName) winnerSlot = 'slot1';
@@ -4881,6 +7780,8 @@ function restoreLoggedResult(id, state) {
         clearMatchWinnerBadges(id);
         if (winnerSlot) showMatchWinnerBadge(id, winnerSlot, state.methodName);
     }
+    if (resultPanel) resultPanel.style.display = 'flex';
+    updateShortNoticeBadge(id);
 
     const unlogBtn = document.getElementById(`${id}-unlog-btn`);
     if (unlogBtn) {
@@ -4889,6 +7790,7 @@ function restoreLoggedResult(id, state) {
         unlogBtn.style.opacity = '1';
         unlogBtn.style.cursor = 'pointer';
     }
+    updateTitleDefenseMilestone(id);
 }
 
 function clearMatchWinnerBadges(matchId) {
@@ -4930,6 +7832,14 @@ function disableMatchRowControls(matchId) {
             el.style.cursor = 'pointer';
             el.style.pointerEvents = 'auto';
             el.title = 'Announce this match result.';
+            return;
+        }
+        if (el.classList && el.classList.contains('performance-bonus-select')) {
+            el.disabled = false;
+            el.style.opacity = '1';
+            el.style.cursor = 'pointer';
+            el.style.pointerEvents = 'auto';
+            el.title = 'Award or change a performance bonus for this match.';
             return;
         }
         el.disabled = true;
@@ -5014,6 +7924,13 @@ window.finalizeFullEventCard = function() {
         return;
     }
 
+    const finalizedAt = new Date().toISOString();
+    Object.values(activeShowSavedData).forEach(savedState => {
+        if (savedState && savedState.winnerName && savedState.loserName && !savedState.loggedAt) {
+            savedState.loggedAt = finalizedAt;
+        }
+    });
+
     allMatchRows.forEach(row => clearWarningMatchState(row.id));
 
     // Award event archive bonus once per completed show. Legacy hook kept as a no-op when betting is disabled.
@@ -5022,11 +7939,14 @@ window.finalizeFullEventCard = function() {
     }
     customAlert('🏆 Live show finalized! You earned a $1,000 bonus for archiving the event.', 'Event Archived');
 
-    let eventMatchesCompiled = allMatchRows.map(row => {
+    let eventMatchesCompiled = allMatchRows.filter(row => {
+        const savedState = activeShowSavedData[row.id];
+        return savedState?.winnerName && savedState?.loserName && savedState?.methodName;
+    }).map(row => {
         const savedState = activeShowSavedData[row.id];
         const titleCheck = document.getElementById(`${row.id}-title-check`);
         const titleNameInp = document.getElementById(`${row.id}-title-name-input`);
-        const savedIsTitle = typeof savedState.isTitle !== 'undefined' ? savedState.isTitle : (titleCheck ? titleCheck.checked : false);
+        const savedIsTitle = typeof savedState?.isTitle !== 'undefined' ? savedState.isTitle : (titleCheck ? titleCheck.checked : false);
         const savedTitleId = savedState?.titleId || '';
         const savedTitleName = savedState?.titleName || (titleNameInp ? (titleNameInp.options[titleNameInp.selectedIndex]?.getAttribute('data-name') || titleNameInp.value.trim()) : '');
         if (savedIsTitle && savedState.totalTitleFightAppearanceCounted !== true) {
@@ -5051,6 +7971,8 @@ window.finalizeFullEventCard = function() {
             winner: savedState.winnerName,
             loser: savedState.loserName,
             method: savedState.methodName,
+            loggedAt: savedState.loggedAt || finalizedAt,
+            fightTime: savedState.fightTime || '',
             methodId: savedState.methodId || '',
             isTitle: savedIsTitle,
             titleId: savedTitleId,
@@ -5060,6 +7982,41 @@ window.finalizeFullEventCard = function() {
             loserId: savedState.loserId || '',
             isRematch: savedState.isRematch === true,
             rematchNumber: Number(savedState.rematchNumber) || 0,
+            rematchNumberIsMeeting: savedState.rematchNumberIsMeeting === true,
+            rivalryTag: savedState.rivalryTag || '',
+            upsetAlert: savedState.upsetAlert === true,
+            upsetReason: savedState.upsetReason || '',
+            fastTrackAlert: savedState.fastTrackAlert === true,
+            bossSlain: savedState.bossSlain === true,
+            bossSlainName: savedState.bossSlainName || '',
+            shortNotice: savedState.shortNotice === true,
+            shortNoticeFighter: savedState.shortNoticeFighter || '',
+            bonusType: normalizePerformanceBonusType(savedState.bonusType),
+            winnerWinStreak: Math.max(0, Math.floor(Number(savedState.winnerWinStreakBefore) || 0)) + 1,
+            loserWinStreak: 0,
+            winnerWinStreakBefore: Math.max(0, Math.floor(Number(savedState.winnerWinStreakBefore) || 0)),
+            loserWinStreakBefore: Math.max(0, Math.floor(Number(savedState.loserWinStreakBefore) || 0)),
+            winnerLoseStreak: 0,
+            loserLoseStreak: Math.max(0, Math.floor(Number(savedState.loserLoseStreak) || 0)),
+            winnerLoseStreakBefore: Math.max(0, Math.floor(Number(savedState.winnerLoseStreakBefore) || 0)),
+            loserLoseStreakBefore: Math.max(0, Math.floor(Number(savedState.loserLoseStreakBefore) || 0)),
+            winnerRebuildWinsRequired: Math.max(0, Math.floor(Number(savedState.winnerRebuildWinsRequired) || 0)),
+            loserRebuildWinsRequired: Math.max(0, Math.floor(Number(savedState.loserRebuildWinsRequired) || 0)),
+            winnerRebuildWinsRequiredBefore: Math.max(0, Math.floor(Number(savedState.winnerRebuildWinsRequiredBefore) || 0)),
+            loserRebuildWinsRequiredBefore: Math.max(0, Math.floor(Number(savedState.loserRebuildWinsRequiredBefore) || 0)),
+            winnerRebuildLossCount: Math.max(0, Math.floor(Number(savedState.winnerRebuildLossCount) || 0)),
+            loserRebuildLossCount: Math.max(0, Math.floor(Number(savedState.loserRebuildLossCount) || 0)),
+            winnerRebuildLossCountBefore: Math.max(0, Math.floor(Number(savedState.winnerRebuildLossCountBefore) || 0)),
+            loserRebuildLossCountBefore: Math.max(0, Math.floor(Number(savedState.loserRebuildLossCountBefore) || 0)),
+            dominantExChampionException: savedState.dominantExChampionException === true,
+            winnerDominantExChampionRebuild: savedState.winnerDominantExChampionRebuild === true,
+            loserDominantExChampionRebuild: savedState.loserDominantExChampionRebuild === true,
+            winnerDominantExChampionRebuildBefore: savedState.winnerDominantExChampionRebuildBefore === true,
+            loserDominantExChampionRebuildBefore: savedState.loserDominantExChampionRebuildBefore === true,
+            winnerTitleComebackCompleted: savedState.winnerTitleComebackCompleted === true,
+            loserTitleComebackCompleted: savedState.loserTitleComebackCompleted === true,
+            winnerTitleComebackCompletedBefore: savedState.winnerTitleComebackCompletedBefore === true,
+            loserTitleComebackCompletedBefore: savedState.loserTitleComebackCompletedBefore === true,
             totalTitleFightAppearanceCounted: savedState.totalTitleFightAppearanceCounted === true,
             lifetimeDefenseCounted: savedState.lifetimeDefenseCounted === true
         };
@@ -5087,7 +8044,8 @@ window.finalizeFullEventCard = function() {
                 gender: champWinnerObj ? champWinnerObj.gender : 'male',
                 championId: '',
                 history: [],
-                defenses: 0
+                defenses: 0,
+                currentReignDefenses: 0
             };
             championshipsRegistry.push(targetBelt);
         }
@@ -5102,18 +8060,47 @@ window.finalizeFullEventCard = function() {
             const winnerRetainedTitle = previousChampionId === champWinnerObj.id ||
                 String(champWinnerObj.name || '').trim().toLowerCase() === String(previousChampionName || '').trim().toLowerCase();
             const winMethodText = m.method.replace('win_pinfall','PINFALL').replace('win_ko','KO/TKO').replace('win_submission','SUBMISSION');
+            if (!Array.isArray(targetBelt.history)) targetBelt.history = [];
             if (!winnerRetainedTitle) {
+                if (previousChampionId && typeof window.recordTitleReignDefenses === 'function') {
+                    window.recordTitleReignDefenses(
+                        targetBelt,
+                        previousChampion || { id: '', name: String(previousChampionName || '') },
+                        Math.max(0, Number(targetBelt.defenses ?? targetBelt.currentReignDefenses) || 0)
+                    );
+                }
                 targetBelt.history.push({
+                    fighterId: champWinnerObj.id,
                     wrestlerName: champWinnerObj.name,
+                    showTitle: shownShowName,
+                    winMethod: winMethodText,
+                    defenses: 0,
+                    reignDefenses: 0
+                });
+                targetBelt.defenses = 0;
+                targetBelt.currentReignDefenses = 0;
+                m.titleRetained = false;
+            } else {
+                targetBelt.defenses = Math.max(0, Number(targetBelt.defenses ?? targetBelt.currentReignDefenses) || 0) + 1;
+                targetBelt.currentReignDefenses = targetBelt.defenses;
+                champWinnerObj.defenses = (Number(champWinnerObj.defenses) || 0) + 1;
+                m.titleRetained = true;
+                m.titleDefenseNumber = targetBelt.defenses;
+                m.titleMilestoneUnlocked = [3, 5, 10].includes(targetBelt.defenses);
+                m.titleMilestoneLabel = m.titleMilestoneUnlocked
+                    ? window.getDefenseMilestone?.(targetBelt.defenses)?.label || ''
+                    : '';
+                const matchSaveState = activeShowSavedData[m.matchId] || (activeShowSavedData[m.matchId] = {});
+                Object.assign(matchSaveState, {
+                    titleRetained: true,
+                    titleDefenseNumber: targetBelt.defenses,
+                    titleMilestoneUnlocked: m.titleMilestoneUnlocked,
+                    titleMilestoneLabel: m.titleMilestoneLabel
+                });
+                window.recordTitleReignDefenses?.(targetBelt, champWinnerObj, targetBelt.defenses, {
                     showTitle: shownShowName,
                     winMethod: winMethodText
                 });
-                targetBelt.defenses = 0;
-                m.titleRetained = false;
-            } else {
-                targetBelt.defenses = (targetBelt.defenses || 0) + 1;
-                champWinnerObj.defenses = (Number(champWinnerObj.defenses) || 0) + 1;
-                m.titleRetained = true;
                 saveFighters(fighters);
             }
             targetBelt.championId = champWinnerObj.id;
@@ -5140,21 +8127,23 @@ window.finalizeFullEventCard = function() {
 
     if (activeMatchesStorageKey) localStorage.setItem(activeMatchesStorageKey, JSON.stringify(activeShowSavedData));
     localStorage.setItem('wwe_titles', JSON.stringify(championshipsRegistry));
+    window.dispatchEvent(new CustomEvent('wwe_titles:changed'));
 
     let eventHistoryCalendar = JSON.parse(localStorage.getItem("wwe_event_history")) || [];
-    const eventDate = new Date();
+    const eventDate = new Date(finalizedAt);
     eventHistoryCalendar.push({
         id: "event-" + Date.now(),
         name: shownShowName,
         showTitle: shownShowName,
         showId: activeShowId,
         date: eventDate.toLocaleString(),
-        completedAt: eventDate.toISOString(),
+        completedAt: finalizedAt,
+        finalizedAt,
         type: 'fight-card',
         matches: eventMatchesCompiled
     });
     localStorage.setItem("wwe_event_history", JSON.stringify(eventHistoryCalendar));
-    setShowCompleted(activeShowId, true);
+    setShowCompleted(activeShowId, true, finalizedAt);
     updateFinalizedShowDropdownStyles();
     updateFinalizeButtonState();
 
@@ -5169,24 +8158,71 @@ window.finalizeFullEventCard = function() {
         const methodSource = m.methodId || m.method || '';
         const cleanMethodName = methodSource.replace('win_pinfall','PINFALL').replace('win_ko','KO/TKO').replace('win_submission','SUBMISSION');
 
-        const winnerAlreadyLogged = winnerFighter.compiled_history_deck.some(entry => entry.outcome === 'win' && entry.opponent === loserFighter.name && entry.showName === shownShowName && entry.method === cleanMethodName);
-        const loserAlreadyLogged = loserFighter.compiled_history_deck.some(entry => entry.outcome === 'loss' && entry.opponent === winnerFighter.name && entry.showName === shownShowName && entry.method === cleanMethodName);
+        const winnerHistoryEntry = winnerFighter.compiled_history_deck.find(entry => entry.outcome === 'win' && entry.opponent === loserFighter.name && entry.showName === shownShowName && entry.method === cleanMethodName);
+        const loserHistoryEntry = loserFighter.compiled_history_deck.find(entry => entry.outcome === 'loss' && entry.opponent === winnerFighter.name && entry.showName === shownShowName && entry.method === cleanMethodName);
 
-        if (!winnerAlreadyLogged) {
+        if (!winnerHistoryEntry) {
             winnerFighter.compiled_history_deck.push({
                 outcome: 'win',
                 opponent: loserFighter.name,
                 method: cleanMethodName,
-                showName: shownShowName
+                showName: shownShowName,
+                loggedAt: m.loggedAt,
+                fightTime: m.fightTime || '',
+                rivalryTag: m.rivalryTag || '',
+                upsetAlert: m.upsetAlert === true,
+                upsetReason: m.upsetReason || '',
+                fastTrackAlert: m.fastTrackAlert === true,
+                bossSlain: m.bossSlain === true,
+                bossSlainName: m.bossSlainName || '',
+                shortNotice: m.shortNotice === true,
+                shortNoticeFighter: m.shortNoticeFighter || '',
+                bonusType: normalizePerformanceBonusType(m.bonusType),
+                winStreak: Number(m.winnerWinStreak) || 0,
+                winStreakBefore: Math.max(0, Math.floor(Number(m.winnerWinStreakBefore) || 0)),
+                rebuildWinsRequired: Math.max(0, Math.floor(Number(m.winnerRebuildWinsRequired) || 0)),
+                rebuildWinsRequiredBefore: Math.max(0, Math.floor(Number(m.winnerRebuildWinsRequiredBefore) || 0)),
+                rebuildLossCount: Math.max(0, Math.floor(Number(m.winnerRebuildLossCount) || 0)),
+                rebuildLossCountBefore: Math.max(0, Math.floor(Number(m.winnerRebuildLossCountBefore) || 0)),
+                titleComebackCompleted: m.winnerTitleComebackCompleted === true,
+                titleComebackCompletedBefore: m.winnerTitleComebackCompletedBefore === true,
+                loseStreak: Number(m.winnerLoseStreak) || 0,
+                loseStreakBefore: Math.max(0, Math.floor(Number(m.winnerLoseStreakBefore) || 0)),
+                rematchNumber: Number(m.rematchNumber) || 0
             });
+        } else if (!winnerHistoryEntry.loggedAt) {
+            winnerHistoryEntry.loggedAt = m.loggedAt;
         }
-        if (!loserAlreadyLogged) {
+        if (!loserHistoryEntry) {
             loserFighter.compiled_history_deck.push({
                 outcome: 'loss',
                 opponent: winnerFighter.name,
                 method: cleanMethodName,
-                showName: shownShowName
+                showName: shownShowName,
+                loggedAt: m.loggedAt,
+                fightTime: m.fightTime || '',
+                rivalryTag: m.rivalryTag || '',
+                upsetAlert: m.upsetAlert === true,
+                upsetReason: m.upsetReason || '',
+                bossSlain: m.bossSlain === true,
+                bossSlainName: m.bossSlainName || '',
+                shortNotice: m.shortNotice === true,
+                shortNoticeFighter: m.shortNoticeFighter || '',
+                bonusType: normalizePerformanceBonusType(m.bonusType),
+                winStreak: Number(m.loserWinStreak) || 0,
+                winStreakBefore: Math.max(0, Math.floor(Number(m.loserWinStreakBefore) || 0)),
+                rebuildWinsRequired: Math.max(0, Math.floor(Number(m.loserRebuildWinsRequired) || 0)),
+                rebuildWinsRequiredBefore: Math.max(0, Math.floor(Number(m.loserRebuildWinsRequiredBefore) || 0)),
+                rebuildLossCount: Math.max(0, Math.floor(Number(m.loserRebuildLossCount) || 0)),
+                rebuildLossCountBefore: Math.max(0, Math.floor(Number(m.loserRebuildLossCountBefore) || 0)),
+                titleComebackCompleted: m.loserTitleComebackCompleted === true,
+                titleComebackCompletedBefore: m.loserTitleComebackCompletedBefore === true,
+                loseStreak: Number(m.loserLoseStreak) || 0,
+                loseStreakBefore: Math.max(0, Math.floor(Number(m.loserLoseStreakBefore) || 0)),
+                rematchNumber: Number(m.rematchNumber) || 0
             });
+        } else if (!loserHistoryEntry.loggedAt) {
+            loserHistoryEntry.loggedAt = m.loggedAt;
         }
     });
     saveFighters(fighters);
@@ -5227,8 +8263,9 @@ function saveCurrentCardDraft() {
         const acceptedRematch = getMatchRowAcceptedRematch(id);
         const titleCheckbox = document.getElementById(`${id}-title-check`);
         const titleInput = document.getElementById(`${id}-title-name-input`);
-        const rematchCheckbox = row.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]');
+        const rematchCheckbox = row.querySelector('input[data-rematch-indicator]');
         const rematchCountEl = document.getElementById(`${id}-rematch-count`);
+        const timerState = matchTimerStates.get(id);
         
         draftData[id] = {
             f1Name: s1 ? s1.value : '',
@@ -5238,11 +8275,18 @@ function saveCurrentCardDraft() {
             gender: gender,
             titleChecked: titleCheckbox ? titleCheckbox.checked : false,
             titleSelected: titleInput ? titleInput.value : '',
+            smartBookedTitle: row.dataset.smartBookedTitle === 'true',
+            shortNotice: row.dataset.shortNotice === 'true',
+            shortNoticeFighter: row.dataset.shortNoticeFighter || '',
+            tournamentId: row.dataset.tournamentId || '',
+            tournamentMatchId: row.dataset.tournamentMatchId || '',
             rematchChecked: rematchCheckbox ? rematchCheckbox.checked : false,
             rematchCount: rematchCountEl ? Number(rematchCountEl.value) : 1,
             rematchAccepted: acceptedRematch ? true : false,
             rematchF1Id: acceptedRematch ? acceptedRematch.fighter1Id : '',
-            rematchF2Id: acceptedRematch ? acceptedRematch.fighter2Id : ''
+            rematchF2Id: acceptedRematch ? acceptedRematch.fighter2Id : '',
+            fightTimerElapsedMs: timerState ? timerState.elapsedMs : 0,
+            fightTimerStartedAt: timerState ? timerState.startedAt : 0
         };
     });
     localStorage.setItem(getCurrentDraftStorageKey(), JSON.stringify(draftData));
@@ -5259,7 +8303,24 @@ function restoreCurrentCardDraft() {
         if (!row || completedMatches[id]) return;
         
         const d = draftData[id];
+        restoreMatchTimerFromDraft(id, d);
         resetMatchValidationState(id);
+        if (d.smartBookedTitle === true) row.dataset.smartBookedTitle = 'true';
+        else delete row.dataset.smartBookedTitle;
+        if (d.shortNotice === true) {
+            row.dataset.shortNotice = 'true';
+            row.dataset.shortNoticeFighter = d.shortNoticeFighter || '';
+        } else {
+            delete row.dataset.shortNotice;
+            delete row.dataset.shortNoticeFighter;
+        }
+        if (d.tournamentId && d.tournamentMatchId) {
+            row.dataset.tournamentId = String(d.tournamentId);
+            row.dataset.tournamentMatchId = String(d.tournamentMatchId);
+        } else {
+            delete row.dataset.tournamentId;
+            delete row.dataset.tournamentMatchId;
+        }
         const s1 = document.getElementById(`${id}-slot1`);
         const s2 = document.getElementById(`${id}-slot2`);
         
@@ -5311,18 +8372,10 @@ function restoreCurrentCardDraft() {
         }
         
         const hasRematchAccepted = d.rematchAccepted && d.rematchF1Id && d.rematchF2Id;
-        const hasSavedRematchState = typeof completedMatches[id]?.isRematch === 'boolean';
         if (hasRematchAccepted) {
             const currentF1Id = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') || '';
             const currentF2Id = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') || '';
             if (areMatchRowRematchPairsEqual(currentF1Id, currentF2Id, d.rematchF1Id, d.rematchF2Id)) {
-                const rematchCheckbox = document.querySelector(`#${id} input[type="checkbox"][onchange*="toggleRematchCounter"]`);
-                const rematchCount = document.getElementById(`${id}-rematch-count`);
-                if (rematchCheckbox && !hasSavedRematchState) rematchCheckbox.checked = true;
-                if (rematchCount && !hasSavedRematchState) {
-                    rematchCount.value = d.rematchCount || 1;
-                    rematchCount.style.display = 'inline-block';
-                }
                 setMatchRowRematchAccepted(id, d.rematchF1Id, d.rematchF2Id, d.rematchCount || 1);
             }
         }
@@ -5337,10 +8390,6 @@ function restoreCurrentCardDraft() {
 
         const titleCheckbox = document.getElementById(`${id}-title-check`);
         const titleInput = document.getElementById(`${id}-title-name-input`);
-        const rematchCheckbox = row.querySelector('input[type="checkbox"][onchange*="toggleRematchCounter"]');
-        const rematchCount = document.getElementById(`${id}-rematch-count`);
-        const currentF1Id = document.getElementById(`${id}-slot1`)?.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') || '';
-        const currentF2Id = document.getElementById(`${id}-slot2`)?.querySelector('.fighter-search-input')?.getAttribute('data-fighter-id') || '';
 
         if (titleCheckbox) {
             titleCheckbox.checked = !!d.titleChecked;
@@ -5355,17 +8404,7 @@ function restoreCurrentCardDraft() {
                 titleInput.value = '';
             }
         }
-
-        if (rematchCheckbox && !hasSavedRematchState) {
-            rematchCheckbox.checked = !!d.rematchChecked;
-        }
-        if (rematchCount && !hasSavedRematchState) {
-            rematchCount.value = d.rematchCount || 1;
-            rematchCount.style.display = rematchCheckbox && rematchCheckbox.checked ? 'inline-block' : 'none';
-        }
-        if (d.rematchAccepted && d.rematchF1Id && d.rematchF2Id && areMatchRowRematchPairsEqual(currentF1Id, currentF2Id, d.rematchF1Id, d.rematchF2Id)) {
-            setMatchRowRematchAccepted(id, d.rematchF1Id, d.rematchF2Id, d.rematchCount || 1);
-        }
+        updateShortNoticeBadge(id);
 
         if (d.f1Name || d.f2Name) {
             const winSelect = document.getElementById(`${id}-winner-select`);
@@ -5380,6 +8419,7 @@ function restoreCurrentCardDraft() {
             recheckMatchValidation(id, 'both');
         }
         refreshTitleFightState(id);
+        updateTaleOfTheTapeButton(id);
     });
     restoreActiveRematchWarnings();
 }

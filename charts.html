@@ -60,7 +60,177 @@
         .analytics-btn { border: none; border-radius: 10px; padding: 10px 16px; font-weight: 800; cursor: pointer; }
         .analytics-btn.primary { background: #38bdf8; color: #082f49; }
         .analytics-btn.secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
-        @media (max-width: 960px) { .chart-grid { grid-template-columns: 1fr; } }
+        .season-awards-panel {
+            margin-bottom: 24px;
+            padding: 22px;
+            background: #0b1120;
+            border: 1px solid #d97706;
+        }
+        .season-awards-heading {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+        .season-awards-heading h2 {
+            margin: 0 0 6px;
+            color: #fbbf24;
+            font-size: 1.2rem;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+        }
+        .season-awards-heading p {
+            margin: 0;
+            color: #94a3b8;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+        .season-awards-controls {
+            display: grid;
+            gap: 6px;
+            min-width: min(100%, 260px);
+        }
+        .season-awards-controls label {
+            color: #fcd34d;
+            font-size: 0.7rem;
+            font-weight: 850;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .season-awards-select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border: 1px solid #92400e;
+            border-radius: 9px;
+            background: #162032;
+            color: #f8fafc;
+            font: inherit;
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+        .season-awards-status {
+            margin: 0 0 14px;
+            color: #cbd5e1;
+            font-size: 0.78rem;
+            font-weight: 750;
+        }
+        .season-awards-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+        }
+        .season-award-card {
+            display: flex;
+            min-width: 0;
+            min-height: 210px;
+            flex-direction: column;
+            gap: 14px;
+            padding: 16px;
+            border: 1.5px solid #d97706;
+            border-radius: 12px;
+            background: linear-gradient(145deg, #162032 0%, #0b1120 100%);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2), inset 0 1px rgba(251, 191, 36, 0.08);
+        }
+        .season-award-card__header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .season-award-card__title {
+            margin: 0;
+            color: #f8fafc;
+            font-size: 0.9rem;
+            font-weight: 900;
+            line-height: 1.35;
+        }
+        .season-award-badge {
+            flex: 0 0 auto;
+            padding: 5px 8px;
+            border: 1px solid rgba(217, 119, 6, 0.55);
+            border-radius: 999px;
+            background: rgba(217, 119, 6, 0.14);
+            color: #fcd34d;
+            font-size: 0.58rem;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+        }
+        .season-award-badge--live {
+            border-color: rgba(56, 189, 248, 0.5);
+            background: rgba(14, 116, 144, 0.22);
+            color: #7dd3fc;
+        }
+        .season-award-badge--empty {
+            border-color: #475569;
+            background: rgba(71, 85, 105, 0.18);
+            color: #94a3b8;
+        }
+        .season-award-card__body {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+        .season-award-portrait {
+            display: grid;
+            width: 62px;
+            height: 62px;
+            flex: 0 0 62px;
+            place-items: center;
+            overflow: hidden;
+            border: 2px solid #f59e0b;
+            border-radius: 50%;
+            background: #0b1120;
+            color: #fcd34d;
+            font-size: 1.1rem;
+            font-weight: 900;
+            box-shadow: 0 0 14px rgba(217, 119, 6, 0.2);
+        }
+        .season-award-portrait img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .season-award-card__winner {
+            min-width: 0;
+        }
+        .season-award-card__winner strong {
+            display: block;
+            overflow-wrap: anywhere;
+            color: #f8fafc;
+            font-size: 0.95rem;
+            font-weight: 900;
+            line-height: 1.35;
+        }
+        .season-award-card__detail,
+        .season-award-card__stats {
+            margin: 5px 0 0;
+            color: #cbd5e1;
+            font-size: 0.75rem;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+        .season-award-card__stats {
+            margin-top: auto;
+            padding-top: 10px;
+            border-top: 1px solid rgba(148, 163, 184, 0.18);
+            color: #fcd34d;
+            font-weight: 800;
+        }
+        @media (max-width: 960px) {
+            .chart-grid { grid-template-columns: 1fr; }
+            .season-awards-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (max-width: 620px) {
+            .season-awards-panel { padding: 16px; }
+            .season-awards-grid { grid-template-columns: 1fr; }
+        }
     </style>
     <link rel="stylesheet" href="layout.css">
 </head>
@@ -71,11 +241,21 @@
             <a href="index.html" class="nav-btn">Fight Cards</a>
             <a href="fighters.html" class="nav-btn">Master Roster</a>
             <a href="future_fighters.html" class="nav-btn">FUTURE FIGHTERS</a>
+            <a href="trading_cards.html" class="nav-btn">TRADING CARDS</a>
+            <a href="alliances.html" class="nav-btn">ALLIANCES &amp; COUPLES</a>
             <a href="history.html" class="nav-btn">Event History</a>
             <a href="fighter-history.html" class="nav-btn">Fighter History</a>
             <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="tournaments.html" class="nav-btn">TOURNAMENTS</a>
             <a href="charts.html?v=10.16" class="nav-btn active">Roster Analytics</a>
             <a href="match_analyzer.html" class="nav-btn">CHAMPIONSHIP ANALYZER</a>
+        </div>
+        <div class="sidebar-settings">
+            <button type="button" class="settings-toggle" aria-expanded="false" aria-controls="sidebarSettingsMenu">⚙️ SETTINGS ▾</button>
+            <div class="settings-menu" id="sidebarSettingsMenu" hidden>
+                <button type="button" data-settings-action="export">💾 Export Full Backup</button>
+                <button type="button" class="settings-reset" data-settings-action="reset">🔄 Reset Records, Titles &amp; Cards</button>
+            </div>
         </div>
     </nav>
     <main>
@@ -85,6 +265,26 @@
         </section>
 
         <div id="statsGrid" class="stats-grid"></div>
+
+        <section id="seasonAwards" class="chart-panel season-awards-panel" aria-labelledby="seasonAwardsTitle">
+            <div class="season-awards-heading">
+                <div>
+                    <h2 id="seasonAwardsTitle">🏆 SEASON &amp; YEAR-END AWARDS</h2>
+                    <p>Official season trophies are calculated from finalized shows, twenty shows per season.</p>
+                </div>
+                <div class="season-awards-controls">
+                    <label for="seasonAwardsSelector">Awards Season</label>
+                    <div class="season-awards-control-row">
+                        <select id="seasonAwardsSelector" class="season-awards-select"></select>
+                        <button id="seasonAwardsToggle" class="season-awards-toggle" type="button" aria-controls="seasonAwardsContent" aria-expanded="true">▾ Minimize</button>
+                    </div>
+                </div>
+            </div>
+            <div id="seasonAwardsContent" class="season-awards-content">
+                <p id="seasonAwardsStatus" class="season-awards-status" aria-live="polite"></p>
+                <div id="seasonAwardsGrid" class="season-awards-grid" aria-live="polite"></div>
+            </div>
+        </section>
 
         <section class="chart-panel">
             <h2>Top Roster Leaders</h2>
@@ -161,20 +361,6 @@
             }).join('');
         }
 
-        function renderLeaderCards(targetId, title, items) {
-            const target = document.getElementById(targetId);
-            if (!target) return;
-            if (!items || items.length === 0) {
-                target.innerHTML = '<div class="empty-state">No roster data available yet. Add fighters in the Master Roster to see analytics.</div>';
-                return;
-            }
-            target.innerHTML = items.map(item => `
-                <div class="leader-card">
-                    <strong>${item.label}</strong>
-                    <span>${item.detail}</span>
-                </div>`).join('');
-        }
-
         function buildCharts() {
             const fighters = loadRosterFighters();
             const championships = loadChampionships();
@@ -217,11 +403,8 @@
             renderBarChart('genderChart', genderItems.length ? genderItems : [{ label: 'No data', value: 0 }], '#f472b6');
             renderBarChart('beltChart', beltItems.length ? beltItems : [{ label: 'No title holders yet', value: 0 }], '#facc15');
 
-            renderLeaderCards('topLeaders', 'Top Roster Leaders', [
-                ...(sortedByWins.slice(0, 3).map(f => ({ label: f.name, detail: `${Number(f.wins) || 0} wins • ${Number(f.losses) || 0} losses` }))),
-                ...(sortedByWinRate.slice(0, 3).map(f => ({ label: f.name, detail: `${Math.round(((Number(f.wins)||0)/((Number(f.wins)||0)+(Number(f.losses)||0)))*100)}% win rate` }))),
-                ...(sortedByBelts.slice(0, 3).filter(item => item.belts > 0).map(item => ({ label: item.fighter.name, detail: `${item.belts} current belt${item.belts!==1?'s':''}` })))
-            ].slice(0, 6));            renderFighterAnalytics(fighters, championships);        }
+            renderFighterAnalytics(fighters, championships);
+        }
 
         function getFighterHistory(fighter) {
             if (!fighter || typeof fighter !== 'object') return [];
@@ -307,36 +490,77 @@
                 }).join('');
                 const beltCount = championships.filter(b => b.championId === fighter.id).length;
                 const defenses = championships.filter(b => b.championId === fighter.id).reduce((sum, item) => sum + (Number(item.defenses) || 0), 0);
-                const safeName = String(fighter.name || '').replace(/"/g, '&quot;');
+                const escapeMarkup = value => String(value == null ? '' : value).replace(/[&<>"']/g, character => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+                })[character]);
+                const safeName = escapeMarkup(fighter.name || '');
+                const portrait = String(fighter.photo || fighter.image || fighter.profile_pic || '').trim();
+                const portraitInitials = String(fighter.name || '?').trim().split(/\s+/).filter(Boolean)
+                    .slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase() || '?';
                 return `
                     <article class="fighter-card" data-fighter-name="${safeName}">
-                        <div class="fighter-card-heading">
-                            <div>
-                                <h3>${fighter.name}</h3>
-                                <div class="fighter-role">${fighter.division || 'Unknown Division'} • ${String(fighter.gender || 'male').toLowerCase() === 'female' ? 'Female' : 'Male'}</div>
+                        <div class="fighter-analytics-identity">
+                            <div class="fighter-card-heading">
+                                <div class="fighter-analytics-profile">
+                                    <div class="fighter-analytics-portrait">
+                                        ${portrait ? `<img src="${escapeMarkup(portrait)}" alt="${safeName} portrait" loading="lazy">` : ''}
+                                        <span class="fighter-analytics-portrait-fallback"${portrait ? ' hidden style="display:none"' : ''} aria-hidden="true">${escapeMarkup(portraitInitials)}</span>
+                                    </div>
+                                    <div class="fighter-analytics-copy">
+                                        <h3 data-fighter-id="${escapeMarkup(fighter.id || '')}">${safeName}</h3>
+                                        <div class="fighter-role">${escapeMarkup(fighter.division || 'Unknown Division')} • ${String(fighter.gender || 'male').toLowerCase() === 'female' ? 'Female' : 'Male'}</div>
+                                        <span class="fighter-win-rate">${winRate}% WR</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="small-pill">${winRate}% WR</div>
-                        </div>
-                        <div class="fighter-meta-grid">
-                            <div class="fighter-meta-item"><strong>${totalWins}</strong><span>Wins</span></div>
-                            <div class="fighter-meta-item"><strong>${totalLosses}</strong><span>Losses</span></div>
-                            <div class="fighter-meta-item"><strong>${beltCount}</strong><span>Belts</span></div>
-                            <div class="fighter-meta-item"><strong>${defenses}</strong><span>Defenses</span></div>
-                        </div>
-                        <div class="fighter-chart-row">
-                            <div class="fighter-chart-card">
-                                <div class="small-pill">Performance</div>
-                                <canvas id="performance-chart-${fighter.id}" class="fighter-chart-canvas"></canvas>
+                            <div class="fighter-meta-grid">
+                                <div class="fighter-meta-item"><strong>${totalWins}</strong><span>Wins</span></div>
+                                <div class="fighter-meta-item"><strong>${totalLosses}</strong><span>Losses</span></div>
+                                <div class="fighter-meta-item"><strong>${beltCount}</strong><span>Belts</span></div>
+                                <div class="fighter-meta-item"><strong>${defenses}</strong><span>Defenses</span></div>
                             </div>
-                            <div class="fighter-chart-card">
-                                <div class="small-pill">Record</div>
-                                <canvas id="record-chart-${fighter.id}" class="fighter-chart-canvas"></canvas>
-                            </div>
+                            <div class="history-pill-row">${recent || '<span class="history-pill">No recent fights</span>'}</div>
                         </div>
-                        <div class="history-pill-row">${recent || '<span class="history-pill">No recent fights</span>'}</div>
+                        <div class="fighter-chart-card fighter-chart-card--performance">
+                            <div class="small-pill">Performance</div>
+                            <canvas id="performance-chart-${fighter.id}" class="fighter-chart-canvas"></canvas>
+                        </div>
+                        <div class="fighter-chart-card fighter-chart-card--record">
+                            <div class="small-pill">Record</div>
+                            <canvas id="record-chart-${fighter.id}" class="fighter-chart-canvas"></canvas>
+                        </div>
                     </article>`;
             }).join('');
             target.innerHTML = html;
+            target.querySelectorAll('.fighter-analytics-portrait img').forEach(image => {
+                const fallback = image.nextElementSibling;
+                const setFallbackVisible = visible => {
+                    if (!fallback) return;
+                    fallback.hidden = !visible;
+                    fallback.style.display = visible ? 'grid' : 'none';
+                };
+                image.addEventListener('load', () => {
+                    image.hidden = false;
+                    image.style.display = 'block';
+                    setFallbackVisible(false);
+                }, { once: true });
+                image.addEventListener('error', () => {
+                    image.hidden = true;
+                    image.style.display = 'none';
+                    setFallbackVisible(true);
+                }, { once: true });
+                if (image.complete) {
+                    if (image.naturalWidth > 0) {
+                        image.style.display = 'block';
+                        setFallbackVisible(false);
+                    }
+                    else {
+                        image.hidden = true;
+                        image.style.display = 'none';
+                        setFallbackVisible(true);
+                    }
+                }
+            });
             initializeFighterCharts(fighters);
             focusAnalyticsFighter();
         }
@@ -546,5 +770,8 @@
             initRosterAnalyticsFilters();
         });
     </script>
+    <script src="settings.js"></script>
+    <script src="analytics.js"></script>
+    <script src="romantic-partners.js"></script>
 </body>
 </html>

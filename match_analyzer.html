@@ -39,11 +39,21 @@
             <a href="index.html" class="nav-btn">Fight Cards</a>
             <a href="fighters.html" class="nav-btn">Master Roster</a>
             <a href="future_fighters.html" class="nav-btn">FUTURE FIGHTERS</a>
+            <a href="trading_cards.html" class="nav-btn">TRADING CARDS</a>
+            <a href="alliances.html" class="nav-btn">ALLIANCES &amp; COUPLES</a>
             <a href="history.html" class="nav-btn">Event History</a>
             <a href="fighter-history.html" class="nav-btn">Fighter History</a>
             <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="tournaments.html" class="nav-btn">TOURNAMENTS</a>
             <a href="charts.html?v=10.16" class="nav-btn">Roster Analytics</a>
             <a href="match_analyzer.html" class="nav-btn active">CHAMPIONSHIP ANALYZER</a>
+        </div>
+        <div class="sidebar-settings">
+            <button type="button" class="settings-toggle" aria-expanded="false" aria-controls="sidebarSettingsMenu">⚙️ SETTINGS ▾</button>
+            <div class="settings-menu" id="sidebarSettingsMenu" hidden>
+                <button type="button" data-settings-action="export">💾 Export Full Backup</button>
+                <button type="button" class="settings-reset" data-settings-action="reset">🔄 Reset Records, Titles &amp; Cards</button>
+            </div>
         </div>
     </nav>
     <main>
@@ -59,5 +69,7 @@
         </section>
     </main>
     <script src="match_analyzer.js?v=10.20"></script>
+    <script src="settings.js"></script>
+    <script src="romantic-partners.js"></script>
 </body>
 </html>

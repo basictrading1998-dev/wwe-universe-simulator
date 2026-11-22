@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Universe - Alliances &amp; Couples</title>
+    <link rel="stylesheet" href="layout.css">
+</head>
+<body class="alliances-page">
+    <nav class="navbar-sidebar-left">
+        <h1 class="logo">WWE Universe</h1>
+        <div class="nav-links">
+            <a href="index.html" class="nav-btn">Fight Cards</a>
+            <a href="fighters.html" class="nav-btn">Master Roster</a>
+            <a href="future_fighters.html" class="nav-btn">FUTURE FIGHTERS</a>
+            <a href="trading_cards.html" class="nav-btn">TRADING CARDS</a>
+            <a href="alliances.html" class="nav-btn active" aria-current="page">ALLIANCES &amp; COUPLES</a>
+            <a href="history.html" class="nav-btn">Event History</a>
+            <a href="fighter-history.html" class="nav-btn">Fighter History</a>
+            <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="tournaments.html" class="nav-btn">TOURNAMENTS</a>
+            <a href="charts.html?v=10.16" class="nav-btn">Roster Analytics</a>
+            <a href="match_analyzer.html" class="nav-btn">CHAMPIONSHIP ANALYZER</a>
+        </div>
+        <div class="sidebar-settings">
+            <button type="button" class="settings-toggle" aria-expanded="false" aria-controls="sidebarSettingsMenu">⚙️ SETTINGS ▾</button>
+            <div class="settings-menu" id="sidebarSettingsMenu" hidden>
+                <button type="button" data-settings-action="export">💾 Export Full Backup</button>
+                <button type="button" class="settings-reset" data-settings-action="reset">🔄 Reset Records, Titles &amp; Cards</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="alliances-main">
+        <header class="alliances-heading">
+            <span class="alliances-heading__eyebrow">Stable identity • record-aware • roster synced</span>
+            <h2>Alliances &amp; Couples</h2>
+            <p>Create romantic couples, family bloodlines, and friend factions. Group records, title holders, and finishes update live from the Master Roster.</p>
+        </header>
+
+        <section class="alliance-builder" aria-labelledby="allianceBuilderHeading">
+            <div class="alliance-builder__header">
+                <h3 id="allianceBuilderHeading">Create Alliance / Family / Couple</h3>
+                <p>Romantic couples contain exactly two members. Family and friend groups can include any number of roster members.</p>
+            </div>
+            <div class="alliance-field">
+                <label for="allianceRelationshipType">Relationship Type</label>
+                <select id="allianceRelationshipType">
+                    <option value="romantic">❤️ Romantic Couple</option>
+                    <option value="family">🩸 Family / Bloodline</option>
+                    <option value="friends">🤝 Friends / Faction</option>
+                </select>
+            </div>
+            <div class="alliance-field">
+                <label for="allianceName">Group / Couple Name</label>
+                <input id="allianceName" type="text" maxlength="80" placeholder="The Family, The Bloodline, Power Couple">
+            </div>
+            <div class="alliance-builder__members">
+                <label for="allianceMemberSearch">Multi-Fighter Member Picker</label>
+                <div class="alliance-member-picker">
+                    <input id="allianceMemberSearch" type="search" list="allianceFighterOptions" autocomplete="off" placeholder="Search roster by fighter name">
+                    <datalist id="allianceFighterOptions"></datalist>
+                    <button id="addAllianceMember" class="alliance-secondary-button" type="button">+ Add Member</button>
+                </div>
+                <div id="pendingAllianceMembers" class="alliance-pending-members" aria-live="polite"></div>
+            </div>
+            <div class="alliance-builder__actions">
+                <button id="saveAlliance" class="alliance-primary-button" type="button">💾 Save Group / Couple</button>
+                <button id="cancelAllianceEdit" class="alliance-secondary-button" type="button" hidden>Cancel Edit</button>
+            </div>
+            <p id="allianceBuilderFeedback" class="alliance-builder__feedback" role="status" aria-live="polite"></p>
+        </section>
+
+        <section aria-label="Saved alliances">
+            <div class="alliance-library-toolbar">
+                <div class="alliance-filter-pills" role="group" aria-label="Filter alliances">
+                    <button type="button" class="alliance-filter-pill is-active" data-filter="all" aria-pressed="true">All</button>
+                    <button type="button" class="alliance-filter-pill" data-filter="romantic" aria-pressed="false">❤️ Romantic</button>
+                    <button type="button" class="alliance-filter-pill" data-filter="family" aria-pressed="false">🩸 Family</button>
+                    <button type="button" class="alliance-filter-pill" data-filter="friends" aria-pressed="false">🤝 Friends</button>
+                    <button type="button" class="alliance-filter-pill" data-filter="championship" aria-pressed="false">🏆 Championship Groups</button>
+                </div>
+                <input id="allianceSearch" class="alliance-search" type="search" placeholder="Search group or member">
+            </div>
+            <p id="allianceLibraryCount" class="alliance-library-count" aria-live="polite"></p>
+            <div id="allianceGrid" class="alliance-grid"></div>
+        </section>
+    </main>
+
+    <script src="streaks.js"></script>
+    <script src="rankings.js"></script>
+    <script src="settings.js"></script>
+    <script src="alliances.js"></script>
+</body>
+</html>

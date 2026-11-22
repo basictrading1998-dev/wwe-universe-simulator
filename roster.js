@@ -1,4 +1,6 @@
 ﻿let fighters = [];
+let activeRosterQuickFilter = 'all';
+const BOSS_TIER_DRAFT_SESSION_KEY = 'wweRosterBossTierDraft';
 
 const femaleFighterTemplates = [
     { name: 'Abigail', division: 'Cruiser Weight' },
@@ -1116,6 +1118,91 @@ function assignAutoDivision(list) {
     return rosterChanged;
 }
 
+function getRosterCareerPeakWinStreak(fighter) {
+    let historyPeak = 0;
+    [fighter?.compiled_history_deck, fighter?.history_deck, fighter?.history].forEach(history => {
+        if (!Array.isArray(history)) return;
+        history.forEach(entry => {
+            historyPeak = Math.max(
+                historyPeak,
+                Math.floor(Number(entry?.winStreak) || 0),
+                Math.floor(Number(entry?.win_streak) || 0)
+            );
+        });
+    });
+    return Math.max(
+        0,
+        Math.floor(Number(fighter?.peak_win_streak) || 0),
+        Math.floor(Number(fighter?.win_streak) || 0),
+        historyPeak
+    );
+}
+
+function getRosterTitleRules() {
+    const legacyMinimum = localStorage.getItem('titleWinMinimum') === '10' ? 10 : 5;
+    let storedRules = {};
+    const raw = localStorage.getItem('universeTitleRules');
+    if (raw) {
+        try {
+            storedRules = JSON.parse(raw) || {};
+        } catch (error) {
+            console.error('Unable to read title eligibility rules in the roster.', error);
+        }
+    }
+    return {
+        initialTitleWins: Number(storedRules.initialTitleWins) === 10 ? 10
+            : Number(storedRules.initialTitleWins) === 5 ? 5 : legacyMinimum,
+        baseRebuildWins: [3, 4, 5].includes(Number(storedRules.baseRebuildWins))
+            ? Number(storedRules.baseRebuildWins) : 3,
+        extraLossPenalty: [1, 2, 3].includes(Number(storedRules.extraLossPenalty))
+            ? Number(storedRules.extraLossPenalty) : 2
+    };
+}
+
+function getRosterRebuildLossCount(fighter, required = fighter?.rebuild_wins_required) {
+    if (!(Number(required) > 0)) return 0;
+    const savedCount = Math.max(0, Math.floor(Number(fighter?.rebuild_loss_count) || 0));
+    if (savedCount > 0) return savedCount;
+    return Math.max(1, Math.ceil((Number(required) - 3) / 2) + 1);
+}
+
+function getRosterRebuildWinsRequired(lossCount, rules = getRosterTitleRules()) {
+    if (!(Number(lossCount) > 0)) return 0;
+    const cap = Math.min(15, Math.max(1, Number(rules.initialTitleWins) || 15));
+    return Math.min(
+        cap,
+        Math.max(1, Number(rules.baseRebuildWins) || 3) +
+            (Math.max(1, Math.floor(Number(lossCount) || 1)) - 1) * Math.max(1, Number(rules.extraLossPenalty) || 2)
+    );
+}
+
+function normalizeRosterTitleGate(fighter, rules = getRosterTitleRules()) {
+    let required = Math.max(0, Math.floor(Number(fighter?.rebuild_wins_required) || 0));
+    let lossCount = getRosterRebuildLossCount(fighter, required);
+    let comebackCompleted = fighter?.title_comeback_completed === true;
+    let dominantExChampionRebuild = fighter?.dominant_ex_champ_rebuild === true;
+    if (required > 0) {
+        required = dominantExChampionRebuild ? 1 : getRosterRebuildWinsRequired(lossCount, rules);
+        if (Math.max(0, Math.floor(Number(fighter?.win_streak) || 0)) >= required) {
+            required = 0;
+            lossCount = 0;
+            comebackCompleted = true;
+            dominantExChampionRebuild = false;
+        } else {
+            comebackCompleted = false;
+        }
+    } else {
+        lossCount = 0;
+        dominantExChampionRebuild = false;
+    }
+    return {
+        rebuildWinsRequired: required,
+        rebuildLossCount: lossCount,
+        comebackCompleted,
+        dominantExChampionRebuild
+    };
+}
+
 function normalizeFighterRecord(fighter) {
     if (!fighter || typeof fighter !== 'object') return null;
     const normalized = { ...fighter };
@@ -1133,6 +1220,38 @@ function normalizeFighterRecord(fighter) {
     normalized.win_ko = Number(normalized.win_ko || 0);
     normalized.win_submission = Number(normalized.win_submission || 0);
     normalized.win_streak = Number(normalized.win_streak || 0);
+    const titleGate = normalizeRosterTitleGate(normalized);
+    normalized.rebuild_wins_required = titleGate.rebuildWinsRequired;
+    normalized.rebuild_loss_count = titleGate.rebuildLossCount;
+    normalized.title_comeback_completed = titleGate.comebackCompleted;
+    normalized.dominant_ex_champ_rebuild = titleGate.dominantExChampionRebuild;
+    normalized.peak_win_streak = getRosterCareerPeakWinStreak(normalized);
+    normalized.is_boss = normalized.is_boss === true;
+    normalized.boss_slays = Math.max(0, Math.floor(Number(normalized.boss_slays) || 0));
+    if (Object.prototype.hasOwnProperty.call(normalized, 'lose_streak')) {
+        normalized.lose_streak = Math.max(0, Math.floor(Number(normalized.lose_streak) || 0));
+    } else {
+        const historyCandidates = [
+            normalized.compiled_history_deck,
+            normalized.history_deck,
+            normalized.history
+        ];
+        const history = historyCandidates.find(entries => Array.isArray(entries) && entries.length > 0) ||
+            historyCandidates.find(entries => Array.isArray(entries)) ||
+            [];
+        let loseStreak = 0;
+        if (Array.isArray(history)) {
+            for (let index = history.length - 1; index >= 0; index--) {
+                if (String(history[index]?.outcome || '').toLowerCase() !== 'loss') break;
+                loseStreak++;
+            }
+        }
+        normalized.lose_streak = loseStreak;
+    }
+    normalized.fotn_bonuses = Math.max(0, Math.floor(Number(normalized.fotn_bonuses) || 0));
+    normalized.potn_bonuses = Math.max(0, Math.floor(Number(normalized.potn_bonuses) || 0));
+    normalized.career_bonuses = normalized.fotn_bonuses + normalized.potn_bonuses;
+    normalized.fast_tracked = normalized.fast_tracked === true;
     normalized.retired = normalized.retired === true;
     delete normalized.team;
     delete normalized.partner;
@@ -1438,7 +1557,51 @@ function loadFighters() {
     try {
         const parsed = JSON.parse(stored);
         if (!Array.isArray(parsed)) return [];
-        return parsed.map(normalizeFighterRecord).filter(Boolean);
+        const normalizedRecords = parsed.map(normalizeFighterRecord);
+        const normalized = normalizedRecords.filter(Boolean);
+        const bonusesNeedMigration = parsed.some((fighter, index) =>
+            !fighter || typeof fighter !== 'object' ||
+            Number(fighter.fotn_bonuses) !== normalizedRecords[index]?.fotn_bonuses ||
+            Number(fighter.potn_bonuses) !== normalizedRecords[index]?.potn_bonuses ||
+            Number(fighter.career_bonuses) !== normalizedRecords[index]?.career_bonuses
+        );
+        const loseStreakNeedsMigration = parsed.some((fighter, index) =>
+            fighter && typeof fighter === 'object' &&
+            Number(fighter.lose_streak) !== normalizedRecords[index]?.lose_streak
+        );
+        const peakWinStreakNeedsMigration = parsed.some((fighter, index) =>
+            fighter && typeof fighter === 'object' &&
+            Number(fighter.peak_win_streak) !== normalizedRecords[index]?.peak_win_streak
+        );
+        const titleGateNeedsMigration = parsed.some((fighter, index) =>
+            !fighter || typeof fighter !== 'object' ||
+            Number(fighter.rebuild_wins_required) !== normalizedRecords[index]?.rebuild_wins_required ||
+            Number(fighter.rebuild_loss_count) !== normalizedRecords[index]?.rebuild_loss_count ||
+            fighter.title_comeback_completed !== normalizedRecords[index]?.title_comeback_completed ||
+            fighter.dominant_ex_champ_rebuild !== normalizedRecords[index]?.dominant_ex_champ_rebuild
+        );
+        if (bonusesNeedMigration || loseStreakNeedsMigration || peakWinStreakNeedsMigration || titleGateNeedsMigration) {
+            const migrated = parsed.map((fighter, index) => fighter && typeof fighter === 'object'
+                ? {
+                    ...fighter,
+                    lose_streak: normalizedRecords[index]?.lose_streak || 0,
+                    peak_win_streak: normalizedRecords[index]?.peak_win_streak || 0,
+                    fotn_bonuses: normalizedRecords[index]?.fotn_bonuses || 0,
+                    potn_bonuses: normalizedRecords[index]?.potn_bonuses || 0,
+                    career_bonuses: normalizedRecords[index]?.career_bonuses || 0,
+                    rebuild_wins_required: normalizedRecords[index]?.rebuild_wins_required || 0,
+                    rebuild_loss_count: normalizedRecords[index]?.rebuild_loss_count || 0,
+                    title_comeback_completed: normalizedRecords[index]?.title_comeback_completed === true,
+                    dominant_ex_champ_rebuild: normalizedRecords[index]?.dominant_ex_champ_rebuild === true
+                }
+                : fighter);
+            try {
+                localStorage.setItem('wwe_fighters', JSON.stringify(migrated));
+            } catch (error) {
+                console.error('Unable to initialize career performance bonus counters.', error);
+            }
+        }
+        return normalized;
     } catch {
         return [];
     }
@@ -1448,6 +1611,7 @@ function syncFighterRecordsFromHistory(list) {
     let changed = false;
 
     list.forEach(fighter => {
+        if (fighter.manual_stats_override === true) return;
         const historyCandidates = [
             fighter.compiled_history_deck,
             fighter.history_deck,
@@ -1500,6 +1664,7 @@ async function ensureFightersLoaded(maxAttempts = 4, delayMs = 120) {
 }
 
 function saveFighters(list = fighters) {
+    if (window.wweUniverseResetInProgress) return;
     const normalized = (list || []).map(normalizeFighterRecord).filter(Boolean);
     assignAutoDivision(normalized);
     const payload = normalized.map(f => ({
@@ -1717,6 +1882,7 @@ function auditTitleDefenses() {
 
     let fighterStatsChanged = false;
     fighters.forEach(fighter => {
+        if (fighter.manual_stats_override === true) return;
         const auditedTitleFights = titleFightTotals.get(fighter.id) || 0;
         if (Number(fighter.total_title_fights || 0) !== auditedTitleFights ||
             Number(fighter.title_fights || 0) !== auditedTitleFights) {
@@ -1729,7 +1895,7 @@ function auditTitleDefenses() {
     fighters.forEach(fighter => allDefenseFighterIds.add(fighter.id));
     allDefenseFighterIds.forEach(fighterId => {
         const fighter = fighterById.get(fighterId);
-        if (!fighter) return;
+        if (!fighter || fighter.manual_stats_override === true) return;
         const currentDefenses = Number(fighter.defenses) || 0;
         const auditedDefenses = defenseTotals.get(fighterId) || 0;
         const auditedLifetimeDefenses = lifetimeDefenseTotals.get(fighterId) || 0;
@@ -1759,11 +1925,11 @@ function auditTitleDefenses() {
             if (!Array.isArray(savedFighters) ||
                 Array.from(defenseTotals).some(([id, count]) => {
                     const fighter = savedFighters.find(item => item.id === id);
-                    return !fighter || (Number(fighter.defenses) || 0) < count;
+                    return !fighter || (fighter.manual_stats_override !== true && (Number(fighter.defenses) || 0) < count);
                 }) ||
                 Array.from(lifetimeDefenseTotals).some(([id, count]) => {
                     const fighter = savedFighters.find(item => item.id === id);
-                    return !fighter || (Number(fighter.lifetime_defenses) || 0) < count;
+                    return !fighter || (fighter.manual_stats_override !== true && (Number(fighter.lifetime_defenses) || 0) < count);
                 })) {
                 throw new Error('Saved fighter defense totals did not match the audited values.');
             }
@@ -2005,14 +2171,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     ensureFemaleRosterEntries();
     ensureFighterHistoryButtonStyles();
     refreshFighterNameDatalist();
-    const showRetiredLegends = document.getElementById('showRetiredLegends');
-    if (showRetiredLegends) {
-        showRetiredLegends.checked = localStorage.getItem('showRetiredLegendsState') === 'true';
-    }
     renderRosterGrid();
     setupSidebarFormEngine();
     setupLiveSearchEngine();
-    window.addEventListener('beforeunload', () => saveFighters(fighters));
+    window.addEventListener('beforeunload', () => {
+        if (!window.wweUniverseResetInProgress) saveFighters(fighters);
+    });
     const refreshRosterStreakPortraits = () => {
         document.querySelectorAll('.roster-portrait-frame').forEach(frame => {
             const card = frame.closest('[id^="fighter-card-"]');
@@ -2025,6 +2189,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.addEventListener('pageshow', refreshRosterStreakPortraits);
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) refreshRosterStreakPortraits();
+    });
+    window.addEventListener('storage', event => {
+        if (event.key !== 'wwe_fighters' && event.key !== 'fighters') return;
+        fighters = loadFighters();
+        window.fighters = fighters;
+        scheduleRenderRosterGrid();
+    });
+    window.addEventListener('universeTitleRules:changed', () => {
+        fighters = loadFighters();
+        window.fighters = fighters;
+        scheduleRenderRosterGrid(0);
     });
 });
 
@@ -2079,6 +2254,7 @@ window.openFighterAnalytics = function(fighterName) {
 };
 
 function getRosterWinStreak(fighter) {
+    if (typeof window.getCurrentWinStreak === 'function') return window.getCurrentWinStreak(fighter);
     if (!fighter) return 0;
     const wins = Number(fighter.wins || 0);
     const losses = Number(fighter.losses || 0);
@@ -2086,145 +2262,480 @@ function getRosterWinStreak(fighter) {
     return Number(activeStreak) || 0;
 }
 
+function getRosterTitleWinMinimum() {
+    return getRosterTitleRules().initialTitleWins;
+}
+
+function getTitleEligibilityStatus(fighter) {
+    const minimum = getRosterTitleWinMinimum();
+    const winStreak = Math.max(0, Math.floor(Number(fighter?.win_streak) || 0));
+    const rebuildWinsRequired = Math.max(0, Math.floor(Number(fighter?.rebuild_wins_required) || 0));
+    if (rebuildWinsRequired > 0) {
+        const remaining = Math.max(0, rebuildWinsRequired - winStreak);
+        return {
+            eligible: false,
+            status: winStreak > 0 ? 'rebuilding' : 'locked',
+            label: fighter?.dominant_ex_champ_rebuild === true && rebuildWinsRequired === 1
+                ? `🟡 EX-CHAMP REBUILD (${winStreak}/1 WIN)`
+                : winStreak > 0
+                ? `🟡 REBUILDING (${winStreak}/${rebuildWinsRequired} WINS)`
+                : `🔴 LOCKED (NEEDS ${rebuildWinsRequired}W)`,
+            remaining
+        };
+    }
+    if (fighter?.title_comeback_completed === true || winStreak >= minimum) {
+        return { eligible: true, status: 'eligible', label: '🟢 TITLE ELIGIBLE', remaining: 0 };
+    }
+    return {
+        eligible: false,
+        status: 'contender',
+        label: `⚪ CONTENDER (${winStreak}/${minimum}W)`,
+        remaining: Math.max(0, minimum - winStreak)
+    };
+}
+
+window.getTitleEligibilityStatus = getTitleEligibilityStatus;
+
 function getStreakClass(fighter) {
+    if (typeof window.getWinStreakPortraitClass === 'function') {
+        return window.getWinStreakPortraitClass(fighter);
+    }
     const calculatedStreak = getRosterWinStreak(fighter);
-    if (calculatedStreak >= 10) return 'border-tier-4';
-    if (calculatedStreak >= 7) return 'border-tier-3';
-    if (calculatedStreak >= 5) return 'border-tier-2';
-    if (calculatedStreak >= 3) return 'border-tier-1';
+    if (calculatedStreak >= 47) return 'streak-tier-master-prestige';
+    if (calculatedStreak >= 43) return 'streak-tier-blood-moon';
+    if (calculatedStreak >= 39) return 'streak-tier-cyber';
+    if (calculatedStreak >= 35) return 'streak-tier-cosmic';
+    if (calculatedStreak >= 31) return 'streak-tier-hellfire';
+    if (calculatedStreak >= 26) return 'streak-tier-lightning';
+    if (calculatedStreak >= 22) return 'streak-tier-rainbow';
+    if (calculatedStreak >= 18) return 'streak-tier-gold';
+    if (calculatedStreak >= 13) return 'streak-tier-blue';
+    if (calculatedStreak >= 7) return 'streak-tier-green';
+    if (calculatedStreak >= 3) return 'streak-tier-purple';
     return '';
 }
 
 function applyRosterStreakPortraitClass(frame, fighter) {
     if (!frame) return;
-    frame.classList.add('portrait-frame-base');
-    frame.classList.remove('streak-purple', 'streak-green', 'streak-blue', 'streak-rainbow-diamond', 'border-tier-1', 'border-tier-2', 'border-tier-3', 'border-tier-4');
     const streakClass = getStreakClass(fighter);
-    if (streakClass) frame.classList.add(streakClass);
+    if (typeof window.applyWinStreakPortraitClass === 'function') {
+        window.applyWinStreakPortraitClass(frame, fighter);
+    } else {
+        frame.classList.add('portrait-frame-base');
+        frame.classList.remove('streak-tier-purple', 'streak-tier-green', 'streak-tier-blue', 'streak-tier-gold', 'streak-tier-rainbow', 'streak-tier-lightning', 'streak-tier-hellfire', 'streak-tier-cosmic', 'streak-tier-cyber', 'streak-tier-blood-moon', 'streak-tier-master-prestige', 'streak-purple', 'streak-green', 'streak-blue', 'streak-rainbow-diamond', 'border-tier-1', 'border-tier-2', 'border-tier-3', 'border-tier-4');
+        if (streakClass) frame.classList.add(streakClass);
+    }
+
+    const card = frame.closest('.fighter-card');
+    if (card) {
+        card.classList.remove('streak-tier-purple', 'streak-tier-green', 'streak-tier-blue', 'streak-tier-gold', 'streak-tier-rainbow', 'streak-tier-lightning', 'streak-tier-hellfire', 'streak-tier-cosmic', 'streak-tier-cyber', 'streak-tier-blood-moon', 'streak-tier-master-prestige');
+        if (streakClass) card.classList.add(streakClass);
+    }
+    const overlayTarget = frame.closest('.roster-portrait-wrap') || frame;
+    const applyEffects = window.applyWinStreakEffects || window.applyWinStreakLightningOverlay;
+    if (typeof applyEffects === 'function') applyEffects(overlayTarget, fighter);
+    if (typeof window.applyLoseStreakPortraitEffects === 'function') {
+        window.applyLoseStreakPortraitEffects(frame, fighter);
+        if (card) {
+            card.classList.remove('cold-streak-slump', 'cold-streak-freeze', 'cold-streak-hot-seat');
+            const coldStreakClass = window.getLoseStreakPortraitClass?.(fighter);
+            if (coldStreakClass) card.classList.add(coldStreakClass);
+        }
+    }
 }
 
 window.getStreakClass = getStreakClass;
 
-function getRosterFightersForCurrentFilters(showRetired) {
+function getDefenseMilestoneBadgeHtml(fighter, defenseCountsByFighter) {
+    const fighterId = String(fighter?.id || '');
+    const fighterName = String(fighter?.name || '').trim().toLowerCase();
+    const bestReignDefenses = Math.max(
+        0,
+        Number(defenseCountsByFighter?.get(`id:${fighterId}`)) || 0,
+        Number(defenseCountsByFighter?.get(`name:${fighterName}`)) || 0,
+        Number(fighter?.best_reign_defenses) || 0,
+        Number(fighter?.longest_reign_defenses) || 0
+    );
+    const lifetimeDefenses = Math.max(0, Number(fighter?.lifetime_defenses) || 0);
+    const milestone = typeof window.getDefenseMilestone === 'function'
+        ? window.getDefenseMilestone(Math.max(bestReignDefenses, lifetimeDefenses))
+        : { tier: 0, label: '', className: '' };
+    return milestone.tier > 0
+        ? `<span class="defense-milestone-badge ${milestone.className}">${milestone.label}</span>`
+        : '';
+}
+
+function getRosterFightersForCurrentFilters() {
     const searchQuery = getRosterSearchQuery();
     const compareSelection = getRosterCompareSelection().map(name => name.toLowerCase());
+    if (activeRosterQuickFilter === 'p4p') {
+        if (typeof window.getPoundForPoundRankings !== 'function') return [];
+        return window.getPoundForPoundRankings()
+            .map(entry => {
+                const fighterId = String(entry.fighter?.id || '');
+                const fighterName = String(entry.fighter?.name || '').trim().toLowerCase();
+                return fighters.find(fighter => fighterId && String(fighter.id) === fighterId) ||
+                    fighters.find(fighter => fighterName && String(fighter.name || '').trim().toLowerCase() === fighterName) ||
+                    null;
+            })
+            .filter(Boolean)
+            .filter(fighter => {
+                const normalizedName = String(fighter.name || '').trim().toLowerCase();
+                return (!searchQuery || normalizedName.includes(searchQuery))
+                    && (compareSelection.length === 0 || compareSelection.includes(normalizedName));
+            });
+    }
+    const showHallOfFame = activeRosterQuickFilter === 'hall_of_fame';
     return fighters.filter(fighter => {
-        if (fighter.retired && !showRetired?.checked) return false;
+        if (showHallOfFame && fighter.retired !== true) return false;
         const normalizedName = String(fighter.name || '').trim().toLowerCase();
         return (!searchQuery || normalizedName.includes(searchQuery))
             && (compareSelection.length === 0 || compareSelection.includes(normalizedName));
     });
 }
 
+function getGiantKillerBadgeHtml(fighter) {
+    const giantKills = Math.max(0, Math.floor(Number(fighter?.giant_kills) || 0));
+    if (giantKills < 1) return '';
+    const count = giantKills > 1 ? ` (${giantKills}x)` : '';
+    return `<span class="giant-killer-badge">⚔️ GIANT KILLER${count}</span>`;
+}
+
+function escapeRosterHtml(value) {
+    const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(value ?? '').replace(/[&<>"']/g, character => entities[character]);
+}
+
+function createRosterFighterCard(fighter, divisionRankLookup, championships, defenseCountsByFighter) {
+    const card = document.createElement('div');
+    const wins = Number(fighter.wins) || 0;
+    const losses = Number(fighter.losses) || 0;
+    const totalFightsValue = fighter.total_fights ?? fighter.match_count ?? fighter.matches ?? fighter.totalMatches;
+    const totalFights = Number.isFinite(Number(totalFightsValue))
+        ? Math.max(0, Number(totalFightsValue))
+        : wins + losses;
+    const winRate = wins + losses === 0 ? 0 : Math.round((wins / (wins + losses)) * 100);
+    const weightClassLabel = fighter.division || fighter.weightClass || 'Unassigned';
+    const heldBelts = championships.filter(belt => belt.championId === fighter.id);
+    const lifetimeDefenses = Number(fighter.lifetime_defenses) || 0;
+    const defenseMilestoneBadgeHtml = getDefenseMilestoneBadgeHtml(fighter, defenseCountsByFighter);
+    const totalTitleFights = Number(fighter.total_title_fights) || 0;
+    const rankBadgeHtml = typeof window.getDivisionRankBadgeHtml === 'function'
+        ? window.getDivisionRankBadgeHtml(fighter, divisionRankLookup)
+        : '';
+    const streakBadgeHtml = typeof window.getWinStreakBadgeHtml === 'function'
+        ? window.getWinStreakBadgeHtml(fighter)
+        : '';
+    const fightingStyleBadgeHtml = typeof window.getFighterStyleBadge === 'function'
+        ? window.getFighterStyleBadge(fighter)
+        : '';
+    const giantKillerBadgeHtml = getGiantKillerBadgeHtml(fighter);
+    const careerBonuses = Math.max(0, Math.floor(Number(fighter.career_bonuses) || 0));
+    const bonusBadgeHtml = careerBonuses > 0
+        ? `<span class="roster-bonus-badge">🏅 ${careerBonuses}x BONUS</span>`
+        : '';
+    const bossTierBadgeHtml = fighter.is_boss === true
+        ? '<span class="boss-tier-badge">☠️ BOSS TIER</span>'
+        : '';
+    const bossSlays = Math.max(0, Math.floor(Number(fighter.boss_slays) || 0));
+    const bossSlayerBadgeHtml = bossSlays > 0
+        ? `<span class="boss-slayer-badge">🗡️ BOSS SLAYER${bossSlays > 1 ? ` (${bossSlays}x)` : ''}</span>`
+        : '';
+    const activeStreak = getRosterWinStreak(fighter);
+    const titleEligibility = getTitleEligibilityStatus(fighter);
+    const titleEligible = titleEligibility.eligible;
+    const titleEligibleBadgeHtml = `<span class="title-eligibility-badge title-eligibility-badge--${titleEligibility.status}">${titleEligibility.label}</span>`;
+    const fastTrackedBadgeHtml = fighter.fast_tracked === true
+        ? '<span class="fast-tracked-roster-badge">⚡ FAST-TRACKED</span>'
+        : '';
+    const coldStreak = typeof window.getCurrentLoseStreak === 'function'
+        ? window.getCurrentLoseStreak(fighter)
+        : Math.max(0, Math.floor(Number(fighter.lose_streak) || 0));
+    const coldStreakBadgeHtml = typeof window.getLoseStreakBadgeHtml === 'function'
+        ? window.getLoseStreakBadgeHtml(coldStreak)
+        : '';
+    const finishCount = (canonicalKey, legacyKey, fallback = 0) => {
+        const canonical = Number(fighter[canonicalKey]) || 0;
+        const legacy = Number(fighter[legacyKey]) || 0;
+        return Math.max(0, canonical || legacy || fallback);
+    };
+    const koWins = finishCount('win_ko', 'ko_wins');
+    const subWins = finishCount('win_submission', 'sub_wins');
+    const pinWins = finishCount('win_pinfall', 'pin_wins', Math.max(0, wins - koWins - subWins));
+    const effectivePhoto = (typeof fighter.image === 'string' && fighter.image) ||
+        (typeof fighter.profile_pic === 'string' && fighter.profile_pic) ||
+        (typeof fighter.photo === 'string' && fighter.photo) ||
+        (fighter.photo_key && window._fighterPhotoCache?.[String(fighter.photo_key)]) ||
+        '';
+    const avatarContent = effectivePhoto
+        ? `<img src="${effectivePhoto}" alt="${fighter.name}">`
+        : `<span class="roster-portrait-fallback">${String(fighter.name || '?').charAt(0)}</span>`;
+    const beltCount = heldBelts.length;
+    const beltPopoverId = `roster-belt-popover-${escapeRosterHtml(fighter.id)}`;
+    const beltStatHtml = beltCount
+        ? `<button type="button" class="roster-stat-pill roster-stat-pill--belts roster-stat-pill--interactive" aria-label="View ${beltCount} active championship${beltCount === 1 ? '' : 's'}" aria-haspopup="dialog" aria-controls="${beltPopoverId}" aria-expanded="false">🏆 ${beltCount} ${beltCount === 1 ? 'BELT' : 'BELTS'}</button>`
+        : '<span class="roster-stat-pill roster-stat-pill--belts" aria-label="0 current belts" title="Current belts held">🏆 0 BELTS</span>';
+    const beltPopoverHtml = beltCount
+        ? `<div class="roster-belt-popover" id="${beltPopoverId}" role="dialog" aria-labelledby="${beltPopoverId}-heading">
+            <strong id="${beltPopoverId}-heading">👑 ACTIVE CHAMPIONSHIPS (${beltCount})</strong>
+            <ul>${heldBelts.map(belt => `<li>${escapeRosterHtml(belt.name || '')}</li>`).join('')}</ul>
+        </div>`
+        : '';
+    const gender = String(fighter.gender || '').toLowerCase();
+
+    card.className = 'fighter-card roster-fighter-row';
+    card.id = `fighter-card-${fighter.id}`;
+    card.dataset.gender = gender;
+    card.dataset.retired = fighter.retired === true ? 'true' : 'false';
+    card.dataset.ranked = rankBadgeHtml.includes('is-champion') || rankBadgeHtml.includes('is-contender') ? 'true' : 'false';
+    card.dataset.streaking = activeStreak > 0 ? 'true' : 'false';
+    card.dataset.giantKiller = Math.floor(Number(fighter.giant_kills) || 0) > 0 ? 'true' : 'false';
+    card.dataset.coldStreak = coldStreak >= 3 ? 'true' : 'false';
+    card.dataset.titleEligible = titleEligible ? 'true' : 'false';
+    card.dataset.fastTracked = fighter.fast_tracked === true ? 'true' : 'false';
+    card.dataset.bossTier = fighter.is_boss === true ? 'true' : 'false';
+    card.classList.toggle('boss-tier-row', fighter.is_boss === true);
+    card.classList.toggle('has-current-title', heldBelts.length > 0);
+    card.classList.toggle('retired-legend-card', fighter.retired === true);
+    card.innerHTML = `
+        <div class="roster-row__portrait-column">
+            <div class="roster-portrait-wrap">
+                <div class="roster-portrait-frame portrait-frame-base" onclick="uploadFighterPhoto('${fighter.id}')" onkeydown="if(event.key === 'Enter' || event.key === ' '){event.preventDefault();uploadFighterPhoto('${fighter.id}')}" role="button" tabindex="0" aria-label="Edit ${fighter.name}'s photo">
+                    ${avatarContent}
+                </div>
+                ${rankBadgeHtml}
+            </div>
+            <span class="roster-fight-count">FIGHTS ${totalFights}</span>
+        </div>
+        <div class="roster-row__identity">
+            <h3 class="fighter-name-target" data-fighter-id="${fighter.id}">${fighter.name}</h3>
+            <div class="roster-fighter-subtitle">${gender === 'female' ? 'Women' : 'Men'} <span>•</span> ${weightClassLabel}</div>
+            <div class="roster-row__badges">
+                ${streakBadgeHtml}
+                ${coldStreakBadgeHtml}
+                ${fightingStyleBadgeHtml}
+                ${defenseMilestoneBadgeHtml}
+                ${bossTierBadgeHtml}
+                ${bossSlayerBadgeHtml}
+                ${giantKillerBadgeHtml}
+                ${titleEligibleBadgeHtml}
+                ${fastTrackedBadgeHtml}
+                ${bonusBadgeHtml}
+            </div>
+        </div>
+        <div class="roster-row__record${beltCount ? ' roster-row__record--has-belts' : ''}">
+            <span class="roster-row__record-label">W - L</span>
+            <strong>${wins}W <span>-</span> ${losses}L</strong>
+            <div class="roster-row__meta">
+                <span class="roster-stat-pill roster-stat-pill--win-rate" aria-label="${winRate}% win rate" title="Win rate">📈 ${winRate}%</span>
+                <span class="roster-stat-pill roster-stat-pill--defenses" aria-label="${lifetimeDefenses} title defenses" title="Title defenses">🛡️ ${lifetimeDefenses} DEF</span>
+                ${beltStatHtml}
+                <span class="roster-stat-pill roster-stat-pill--title-fights" aria-label="${totalTitleFights} total title fights" title="Total title fights">⚔️ ${totalTitleFights} TITLE</span>
+            </div>
+            ${beltPopoverHtml}
+        </div>
+        <div class="roster-row__finish-stats" aria-label="Finish breakdown">
+            <div class="roster-finish-stat roster-finish-stat--pin"><strong>${pinWins}</strong><span>PIN</span></div>
+            <div class="roster-finish-stat roster-finish-stat--ko"><strong>${koWins}</strong><span>KO</span></div>
+            <div class="roster-finish-stat roster-finish-stat--sub"><strong>${subWins}</strong><span>SUB</span></div>
+        </div>
+        <div class="roster-row__actions">
+            <div class="roster-row__primary-actions">
+                <button type="button" class="roster-action-btn roster-action-btn--photo" onclick="uploadFighterPhoto('${fighter.id}')">📷 Photo</button>
+                <button type="button" class="roster-action-btn roster-action-btn--history" onclick='openFighterHistory(${JSON.stringify(fighter.name)})'>📜 History</button>
+                <button type="button" class="roster-action-btn roster-action-btn--quiet roster-action-btn--stats" onclick='openFighterAnalytics(${JSON.stringify(fighter.name)})'>📊 Stats</button>
+                <label class="roster-retire-control">
+                    <input type="checkbox" ${fighter.retired ? 'checked' : ''} ${fighter.wins < 10 && !fighter.retired ? 'disabled' : ''} onchange="toggleFighterRetirement('${fighter.id}', this)">
+                    <span>🏅 Retire</span>
+                </label>
+            </div>
+            <div class="roster-row__secondary-actions">
+                <button type="button" class="roster-action-btn roster-action-btn--quiet roster-action-btn--edit" onclick="editSuperstar('${fighter.id}')">✏️ Edit</button>
+                <button type="button" class="roster-action-btn roster-action-btn--danger" onclick="fireSuperstar('${fighter.id}')">🗑️ Delete</button>
+            </div>
+        </div>`;
+    const beltToggle = card.querySelector('.roster-stat-pill--interactive');
+    const record = beltToggle?.closest('.roster-row__record');
+    if (beltToggle && record) {
+        beltToggle.addEventListener('click', event => {
+            event.stopPropagation();
+            const isOpen = record.classList.contains('roster-row__record--belt-list-open');
+            record.classList.toggle('roster-row__record--belt-list-open', !isOpen);
+            record.classList.toggle('roster-row__record--belt-list-dismissed', isOpen);
+            if (!isOpen) record.classList.remove('roster-row__record--belt-list-dismissed');
+            const expanded = !isOpen;
+            beltToggle.setAttribute('aria-expanded', String(expanded));
+        });
+        beltToggle.addEventListener('mouseenter', () =>
+            record.classList.remove('roster-row__record--belt-list-dismissed')
+        );
+        beltToggle.addEventListener('focus', () =>
+            record.classList.remove('roster-row__record--belt-list-dismissed')
+        );
+        record.addEventListener('mouseleave', () => {
+            if (!beltToggle.matches(':focus-visible')) {
+                record.classList.remove('roster-row__record--belt-list-dismissed');
+            }
+        });
+        record.addEventListener('keydown', event => {
+            if (event.key !== 'Escape' || !record.classList.contains('roster-row__record--belt-list-open')) return;
+            record.classList.remove('roster-row__record--belt-list-open');
+            record.classList.add('roster-row__record--belt-list-dismissed');
+            beltToggle.setAttribute('aria-expanded', 'false');
+            beltToggle.focus();
+        });
+    }
+    applyRosterStreakPortraitClass(card.querySelector('.roster-portrait-frame'), fighter);
+    return card;
+}
+
+function createHallOfFamePlaqueCard(fighter, divisionRankLookup, defenseCountsByFighter) {
+    const card = document.createElement('div');
+    const wins = Math.max(0, Number(fighter.wins) || 0);
+    const losses = Math.max(0, Number(fighter.losses) || 0);
+    const peakWinStreak = Math.max(
+        0,
+        Math.floor(Number(fighter.peak_win_streak) || 0),
+        Math.floor(Number(fighter.win_streak) || 0)
+    );
+    const finishCount = (canonicalKey, legacyKey, fallback = 0) => {
+        const canonical = Number(fighter[canonicalKey]) || 0;
+        const legacy = Number(fighter[legacyKey]) || 0;
+        return Math.max(0, canonical || legacy || fallback);
+    };
+    const pinWins = finishCount('win_pinfall', 'pin_wins', Math.max(0, wins - finishCount('win_ko', 'ko_wins') - finishCount('win_submission', 'sub_wins')));
+    const koWins = finishCount('win_ko', 'ko_wins');
+    const subWins = finishCount('win_submission', 'sub_wins');
+    const giantKillerBadgeHtml = getGiantKillerBadgeHtml(fighter);
+    const bossSlays = Math.max(0, Math.floor(Number(fighter.boss_slays) || 0));
+    const bossSlayerBadgeHtml = bossSlays > 0
+        ? `<span class="boss-slayer-badge">🗡️ BOSS SLAYER${bossSlays > 1 ? ` (${bossSlays}x)` : ''}</span>`
+        : '';
+    const bossTierBadgeHtml = fighter.is_boss === true
+        ? '<span class="boss-tier-badge">☠️ BOSS TIER</span>'
+        : '';
+    const careerBonuses = Math.max(0, Math.floor(Number(fighter.career_bonuses) || 0));
+    const bonusBadgeHtml = careerBonuses > 0
+        ? `<span class="roster-bonus-badge">🏅 ${careerBonuses}x BONUS</span>`
+        : '';
+    const styleBadgeHtml = typeof window.getFighterStyleBadge === 'function'
+        ? window.getFighterStyleBadge(fighter)
+        : '';
+    const defenseMilestoneBadgeHtml = getDefenseMilestoneBadgeHtml(fighter, defenseCountsByFighter);
+    const rankBadgeHtml = typeof window.getDivisionRankBadgeHtml === 'function'
+        ? window.getDivisionRankBadgeHtml(fighter, divisionRankLookup)
+        : '';
+    const activeStreak = getRosterWinStreak(fighter);
+    const coldStreak = typeof window.getCurrentLoseStreak === 'function'
+        ? window.getCurrentLoseStreak(fighter)
+        : Math.max(0, Math.floor(Number(fighter.lose_streak) || 0));
+    const effectivePhoto = (typeof fighter.image === 'string' && fighter.image) ||
+        (typeof fighter.profile_pic === 'string' && fighter.profile_pic) ||
+        (typeof fighter.photo === 'string' && fighter.photo) ||
+        (fighter.photo_key && window._fighterPhotoCache?.[String(fighter.photo_key)]) ||
+        '';
+    const avatarContent = effectivePhoto
+        ? `<img src="${effectivePhoto}" alt="${fighter.name}">`
+        : `<span class="roster-portrait-fallback">${String(fighter.name || '?').charAt(0)}</span>`;
+    const division = fighter.division || fighter.weightClass || 'Unassigned';
+
+    card.className = 'fighter-card roster-fighter-row hall-of-fame-plaque retired-legend-card';
+    card.id = `fighter-card-${fighter.id}`;
+    card.dataset.retired = 'true';
+    card.dataset.gender = String(fighter.gender || '').toLowerCase();
+    card.dataset.ranked = rankBadgeHtml.includes('is-champion') || rankBadgeHtml.includes('is-contender') ? 'true' : 'false';
+    card.dataset.streaking = activeStreak > 0 ? 'true' : 'false';
+    card.dataset.giantKiller = Math.floor(Number(fighter.giant_kills) || 0) > 0 ? 'true' : 'false';
+    card.dataset.coldStreak = coldStreak >= 3 ? 'true' : 'false';
+    card.dataset.bossTier = fighter.is_boss === true ? 'true' : 'false';
+    card.innerHTML = `
+        <div class="hof-plaque__portrait-column">
+            <div class="roster-portrait-wrap">
+                <div class="roster-portrait-frame portrait-frame-base hof-plaque__portrait-frame" onclick="uploadFighterPhoto('${fighter.id}')" role="button" tabindex="0" aria-label="Edit ${fighter.name}'s photo">
+                    ${avatarContent}
+                </div>
+                <span class="hof-plaque__ribbon">🏛️ HOF INDUCTEE</span>
+            </div>
+        </div>
+        <div class="hof-plaque__legacy">
+            <h3 class="fighter-name-target" data-fighter-id="${fighter.id}">${fighter.name}</h3>
+            <div class="roster-fighter-subtitle">${division}</div>
+            <div class="hof-plaque__summary">
+                <strong>CAREER ${wins}W - ${losses}L</strong>
+                <span>🔥 Peak Streak: ${peakWinStreak}W</span>
+                <span>🏆 Title Defenses: ${Math.max(0, Number(fighter.lifetime_defenses) || 0)}</span>
+            </div>
+            <div class="roster-row__badges">
+                ${styleBadgeHtml}
+                ${defenseMilestoneBadgeHtml}
+                ${giantKillerBadgeHtml}
+                ${bossSlayerBadgeHtml}
+                ${bossTierBadgeHtml}
+                ${bonusBadgeHtml}
+            </div>
+        </div>
+        <div class="roster-row__finish-stats hof-plaque__finish-stats" aria-label="Career finish breakdown">
+            <div class="roster-finish-stat roster-finish-stat--pin"><strong>${pinWins}</strong><span>PIN</span></div>
+            <div class="roster-finish-stat roster-finish-stat--ko"><strong>${koWins}</strong><span>KO</span></div>
+            <div class="roster-finish-stat roster-finish-stat--sub"><strong>${subWins}</strong><span>SUB</span></div>
+        </div>
+        <div class="hof-plaque__actions">
+            <button type="button" class="roster-action-btn" onclick='openFighterHistory(${JSON.stringify(fighter.name)})'>History</button>
+            <button type="button" class="hof-comeback-button" onclick="unretireFighter('${fighter.id}')">Unretire / Comeback</button>
+        </div>`;
+    return card;
+}
+
+function updateRosterHeaderCounts() {
+    const activeCount = fighters.filter(fighter => fighter.retired !== true).length;
+    const inducteeCount = fighters.filter(fighter => fighter.retired === true).length;
+    const rosterCount = document.getElementById('rosterCount');
+    const hallOfFameCount = document.getElementById('hallOfFameCount');
+    if (rosterCount) rosterCount.textContent = `${activeCount} Superstars`;
+    if (hallOfFameCount) hallOfFameCount.textContent = `🏛️ ${inducteeCount} Inductees`;
+}
+
 function renderRosterGrid() {
     const grid = document.getElementById('rosterGrid');
-    const showRetired = document.getElementById('showRetiredLegends');
-    const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
 
     // Use the already-loaded fighter list so hydrated photo data is preserved.
     refreshFighterNameDatalist();
     const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+    const defenseCountsByFighter = typeof window.getTitleReignDefenseCountsByFighter === 'function'
+        ? window.getTitleReignDefenseCountsByFighter(championships, fighters)
+        : new Map();
+    const divisionRankings = typeof window.getDivisionRankings === 'function'
+        ? window.getDivisionRankings()
+        : [];
+    const divisionRankLookup = typeof window.getDivisionRankLookup === 'function'
+        ? window.getDivisionRankLookup(divisionRankings)
+        : null;
 
     buildMasterRankingsPanel();
     buildRosterComparePanel();
 
     grid.innerHTML = '';
-    if (countBadge) countBadge.textContent = `${fighters.filter(fighter => !fighter.retired).length} Superstars`;
+    updateRosterHeaderCounts();
 
     if (fighters.length === 0) {
-        grid.innerHTML = `<div style="grid-column: span 4; background: white; border: 1px dashed #cbd5e1; padding: 40px; text-align: center; font-weight: bold; color: #64748b; border-radius: 12px;">Your locker room is empty. Use the roster form to add your very first wrestler!</div>`;
+        grid.innerHTML = '<div class="roster-empty-state">Your locker room is empty. Use the roster form to add your very first wrestler!</div>';
         return;
     }
 
-    const rosterToRender = getRosterFightersForCurrentFilters(showRetired);
+    const rosterToRender = getRosterFightersForCurrentFilters();
     if (rosterToRender.length === 0) {
-        grid.innerHTML = `<div style="grid-column:1 / -1; background:white; border:1px dashed #cbd5e1; padding:24px; text-align:center; font-weight:bold; color:#64748b; border-radius:12px;">No superstars match the current filters.</div>`;
+        grid.innerHTML = activeRosterQuickFilter === 'hall_of_fame'
+            ? '<div class="roster-empty-state">No Hall of Fame inductees yet. Retire a fighter with at least 10 wins to enshrine a legend.</div>'
+            : '<div class="roster-empty-state">No fighters match the current filters.</div>';
         return;
     }
 
     rosterToRender.forEach(f => {
-        const card = document.createElement('div');
-        card.style.cssText = "background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;";
-        card.id = `fighter-card-${f.id}`;
-        const totalWins = Math.max(0, Number(f.wins || 0));
-        const koWins = Math.min(Math.max(0, Number(f.win_ko || 0)), totalWins);
-        const subWins = Math.min(Math.max(0, Number(f.win_submission || 0)), totalWins - koWins);
-        const totalStandardWins = totalWins - koWins - subWins;
-        
-        let rate = (f.wins + f.losses) === 0 ? 0 : Math.round((f.wins / (f.wins + f.losses)) * 100);
-        let totalFights = Number(f.total_fights ?? f.match_count ?? f.matches ?? f.totalMatches ?? ((Number(f.wins) || 0) + (Number(f.losses) || 0)));
-        if (!Number.isFinite(totalFights) || totalFights < 0) totalFights = (Number(f.wins) || 0) + (Number(f.losses) || 0);
-        let genderColor = f.gender === 'male' ? '#0284c7' : '#db2777';
-
-        let heldBelts = championships.filter(b => b.championId === f.id);
-        let goldBadgesHtml = '';
-        
-        if (heldBelts.length > 0) {
-            card.style.border = '2px solid #eab308';
-            card.style.boxShadow = '0 4px 12px rgba(234, 179, 8, 0.15)';
-            
-            heldBelts.forEach(b => {
-                goldBadgesHtml += `<div style="background: #fef9c3; border: 1px solid #fef08a; color: #a16207; font-size: 0.58rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-top: 4px; text-transform: uppercase; display: inline-block;">🏆 ${b.name.replace(' Championship', '')}</div>`;
-            });
-        }
-
-        let totalDefenses = Number(f.lifetime_defenses) || 0;
-        let titleFightsCount = f.total_title_fights || 0;
-
-        const effectivePhoto = (typeof f.image === 'string' && f.image) || (typeof f.profile_pic === 'string' && f.profile_pic) || (typeof f.photo === 'string' && f.photo) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
-        let avatarContent = '';
-        if (effectivePhoto) {
-            avatarContent = `<img src="${effectivePhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
-        } else {
-            avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
-        }
-
-        card.innerHTML = `
-            <div style="position:absolute; left:10px; top:10px; background:#e0f2fe; color:#075985; border:1px solid #bae6fd; border-radius:999px; font-size:0.58rem; font-weight:800; letter-spacing:0.06em; padding:3px 7px; line-height:1.2; box-shadow:0 1px 2px rgba(14,116,144,0.12); text-transform:uppercase;">Fights ${totalFights}</div>
-            <div class="roster-portrait-frame portrait-frame-base" onclick="uploadFighterPhoto('${f.id}')" style="width: 60px; height: 60px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
-            <button class="fighter-history-btn" onclick='openFighterHistory(${JSON.stringify(f.name)})' title="View history" aria-label="View history">📊</button>
-            <button class="fighter-analytics-btn" onclick='openFighterAnalytics(${JSON.stringify(f.name)})' title="Open analytics" aria-label="Open analytics">📈</button>
-            <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a; cursor: text; user-select: text; -webkit-user-select: text;">${f.name}</h4>
-            <span style="font-size: 0.65rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 2px;">${f.division} • ${f.gender}</span>
-            
-            <div style="margin-top: 2px; display: flex; flex-direction: row; gap: 6px; align-items: center; justify-content: center;">${goldBadgesHtml}</div>
-
-            <div style="margin-top:8px; display:flex; flex-direction:column; align-items:center; width:100%; box-sizing:border-box;">
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <span style="background:#052e17; color:#d1fae5; padding:4px 8px; border-radius:8px; font-weight:900; font-size:0.85rem;">${f.wins}W</span>
-                    <span style="background:#3b0b0b; color:#fecaca; padding:4px 8px; border-radius:8px; font-weight:900; font-size:0.85rem;">${f.losses}L</span>
-                    <span style="font-size:0.65rem; color:#94a3b8; font-weight:700; margin-left:6px;">${rate}%</span>
-                </div>
-                <div style="margin-top:6px; font-size:0.62rem; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:0.02em; display:flex; gap:8px;">
-                    <span>🛡️ Defenses: <strong style="color:#0f172a; margin-left:4px;">${totalDefenses}</strong></span>
-                    <span>🏅 Belts: <strong style="color:#0f172a; margin-left:4px;">${heldBelts.length}</strong></span>
-                    <span>🥊 Title Fights: <strong style="color:#0f172a; margin-left:4px;">${titleFightsCount}</strong></span>
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 6px; font-size: 0.58rem; color: #64748b; gap: 2px;">
-                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${totalStandardWins}</span><span>PIN</span></div>
-                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${koWins}</span><span>KO</span></div>
-                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${subWins}</span><span>SUB</span></div>
-            </div>
-            <div style="margin-top: 10px; display: flex; gap: 4px; width: 100%;">
-                <button onclick="editSuperstar('${f.id}')" style="flex: 1; background: #f1f5f9; border: none; padding: 4px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #475569; cursor: pointer;">✏️ Edit</button>
-                <button onclick="fireSuperstar('${f.id}')" style="background: #fee2e2; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #ef4444; cursor: pointer;">✕</button>
-            </div>
-            <label style="display:flex; align-items:center; gap:6px; margin-top:10px; color:${f.retired ? '#92400e' : '#475569'}; font-size:0.68rem; font-weight:800; cursor:pointer;">
-                <input type="checkbox" ${f.retired ? 'checked' : ''} ${f.wins < 10 && !f.retired ? 'disabled' : ''} onchange="toggleFighterRetirement('${f.id}', this)" style="width:auto;">
-                ${f.retired ? 'Retired Legend' : 'Retire Fighter'}
-            </label>
-        `;
-        applyRosterStreakPortraitClass(card.querySelector('.roster-portrait-frame'), f);
-        if (f.retired) {
-            card.classList.add('retired-legend-card');
-            card.style.boxShadow = '';
-        }
-        if (!f.retired || showRetired?.checked) {
-            grid.appendChild(card);
-        }
+        const card = f.retired === true
+            ? createHallOfFamePlaqueCard(f, divisionRankLookup, defenseCountsByFighter)
+            : createRosterFighterCard(f, divisionRankLookup, championships, defenseCountsByFighter);
+        grid.appendChild(card);
     });
 
     // Re-apply any saved roster comparison filter after cards are recreated
@@ -2248,14 +2759,6 @@ function renderRosterGrid() {
 
 }
 
-window.toggleRetiredLegends = function() {
-    const checkbox = document.getElementById('showRetiredLegends');
-    if (checkbox) {
-        localStorage.setItem('showRetiredLegendsState', String(checkbox.checked));
-        renderRosterGrid();
-    }
-};
-
 window.toggleFighterRetirement = function(id, checkbox) {
     const fighter = fighters.find(item => item.id === id);
     if (!fighter) return;
@@ -2267,7 +2770,17 @@ window.toggleFighterRetirement = function(id, checkbox) {
     }
     fighter.retired = checkbox.checked;
     saveFighters(fighters);
-    scheduleRenderRosterGrid();
+    activeRosterQuickFilter = fighter.retired ? 'hall_of_fame' : 'all';
+    renderRosterGrid();
+};
+
+window.unretireFighter = function(id) {
+    const fighter = fighters.find(item => String(item.id) === String(id));
+    if (!fighter) return;
+    fighter.retired = false;
+    saveFighters(fighters);
+    activeRosterQuickFilter = 'all';
+    renderRosterGrid();
 };
 
 // Debounced scheduler to avoid rapid consecutive renders which cause visual glitches
@@ -2321,8 +2834,6 @@ window.renderRoster = function() {
     } catch (e) { /* ignore */ }
 function renderRosterGridWithoutReload() {
     const grid = document.getElementById('rosterGrid');
-    const showRetired = document.getElementById('showRetiredLegends');
-    const countBadge = document.getElementById('rosterCount');
     if (!grid) return;
 
     ensureMissingPortraits(fighters);
@@ -2357,101 +2868,38 @@ function renderRosterGridWithoutReload() {
         } catch (e) { /* ignore */ }
 
     const championships = JSON.parse(localStorage.getItem('wwe_titles')) || [];
+    const defenseCountsByFighter = typeof window.getTitleReignDefenseCountsByFighter === 'function'
+        ? window.getTitleReignDefenseCountsByFighter(championships, fighters)
+        : new Map();
+        const divisionRankings = typeof window.getDivisionRankings === 'function'
+            ? window.getDivisionRankings()
+            : [];
+        const divisionRankLookup = typeof window.getDivisionRankLookup === 'function'
+            ? window.getDivisionRankLookup(divisionRankings)
+            : null;
 
     buildMasterRankingsPanel();
     buildRosterComparePanel();
 
     grid.innerHTML = '';
-    if (countBadge) countBadge.textContent = `${fighters.filter(fighter => !fighter.retired).length} Superstars`;
+    updateRosterHeaderCounts();
 
     if (fighters.length === 0) {
-        grid.innerHTML = `<div style="grid-column: span 4; background: white; border: 1px dashed #cbd5e1; padding: 40px; text-align: center; font-weight: bold; color: #64748b; border-radius: 12px;">Your locker room is empty. Use the roster form to add your very first wrestler!</div>`;
+        grid.innerHTML = '<div class="roster-empty-state">Your locker room is empty. Use the roster form to add your very first wrestler!</div>';
         return;
     }
 
-    fighters.forEach(f => {
-        const card = document.createElement('div');
-        card.style.cssText = "background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; align-items: center; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.05); text-align: center;";
-        card.id = `fighter-card-${f.id}`;
-        const totalWins = Math.max(0, Number(f.wins || 0));
-        const koWins = Math.min(Math.max(0, Number(f.win_ko || 0)), totalWins);
-        const subWins = Math.min(Math.max(0, Number(f.win_submission || 0)), totalWins - koWins);
-        const totalStandardWins = totalWins - koWins - subWins;
-        
-        let rate = (f.wins + f.losses) === 0 ? 0 : Math.round((f.wins / (f.wins + f.losses)) * 100);
-        let totalFights = Number(f.total_fights ?? f.match_count ?? f.matches ?? f.totalMatches ?? ((Number(f.wins) || 0) + (Number(f.losses) || 0)));
-        if (!Number.isFinite(totalFights) || totalFights < 0) totalFights = (Number(f.wins) || 0) + (Number(f.losses) || 0);
-        let genderColor = f.gender === 'male' ? '#0284c7' : '#db2777';
-
-        let heldBelts = championships.filter(b => b.championId === f.id);
-        let goldBadgesHtml = '';
-        
-        if (heldBelts.length > 0) {
-            card.style.border = '2px solid #eab308';
-            card.style.boxShadow = '0 4px 12px rgba(234, 179, 8, 0.15)';
-            
-            heldBelts.forEach(b => {
-                goldBadgesHtml += `<div style="background: #fef9c3; border: 1px solid #fef08a; color: #a16207; font-size: 0.58rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-top: 4px; text-transform: uppercase; display: inline-block;">🏆 ${b.name.replace(' Championship', '')}</div>`;
-            });
-        }
-
-        let totalDefenses = Number(f.lifetime_defenses) || 0;
-        let titleFightsCount = f.total_title_fights || 0;
-
-        const effectivePhoto = (typeof f.image === 'string' && f.image) || (typeof f.profile_pic === 'string' && f.profile_pic) || (typeof f.photo === 'string' && f.photo) || (f.photo_key && window._fighterPhotoCache[String(f.photo_key)]) || '';
-        let avatarContent = '';
-        if (effectivePhoto) {
-            avatarContent = `<img src="${effectivePhoto}" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; object-position: center center; display: block;" alt="${f.name}">`;
-        } else {
-            avatarContent = `<span style="font-size: 1.25rem; font-weight: bold;">${f.name.charAt(0)}</span>`;
-        }
-
-        card.innerHTML = `
-            <div style="position:absolute; left:10px; top:10px; background:#e0f2fe; color:#075985; border:1px solid #bae6fd; border-radius:999px; font-size:0.58rem; font-weight:800; letter-spacing:0.06em; padding:3px 7px; line-height:1.2; box-shadow:0 1px 2px rgba(14,116,144,0.12); text-transform:uppercase;">Fights ${totalFights}</div>
-            <div class="roster-portrait-frame portrait-frame-base" onclick="uploadFighterPhoto('${f.id}')" style="width: 60px; height: 60px; background: #f1f5f9; border: 2px solid ${genderColor}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; font-weight: bold; color: ${genderColor}; margin-bottom: 8px; cursor: pointer; position: relative; overflow: hidden; transition: 0.2s;">${avatarContent}</div>
-            <button class="fighter-history-btn" onclick='openFighterHistory(${JSON.stringify(f.name)})' title="View history" aria-label="View history">📊</button>
-            <button class="fighter-analytics-btn" onclick='openFighterAnalytics(${JSON.stringify(f.name)})' title="Open analytics" aria-label="Open analytics">📈</button>
-            <h4 class="fighter-name-target" style="margin: 0; font-size: 1rem; font-weight: 800; color: #0f172a; cursor: text; user-select: text; -webkit-user-select: text;">${f.name}</h4>
-            <span style="font-size: 0.65rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 2px;">${f.division} • ${f.gender}</span>
-            
-            <div style="margin-top: 2px; display: flex; flex-direction: row; gap: 6px; align-items: center; justify-content: center;">${goldBadgesHtml}</div>
-
-            <div style="margin-top:8px; display:flex; flex-direction:column; align-items:center; width:100%; box-sizing:border-box;">
-                <div style="display:flex; gap:8px; align-items:center;">
-                    <span style="background:#052e17; color:#d1fae5; padding:4px 8px; border-radius:8px; font-weight:900; font-size:0.85rem;">${f.wins}W</span>
-                    <span style="background:#3b0b0b; color:#fecaca; padding:4px 8px; border-radius:8px; font-weight:900; font-size:0.85rem;">${f.losses}L</span>
-                    <span style="font-size:0.65rem; color:#94a3b8; font-weight:700; margin-left:6px;">${rate}%</span>
-                </div>
-                <div style="margin-top:6px; font-size:0.62rem; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:0.02em; display:flex; gap:8px;">
-                    <span>🛡️ Defenses: <strong style="color:#0f172a; margin-left:4px;">${totalDefenses}</strong></span>
-                    <span>🏅 Belts: <strong style="color:#0f172a; margin-left:4px;">${heldBelts.length}</strong></span>
-                    <span>🥊 Title Fights: <strong style="color:#0f172a; margin-left:4px;">${titleFightsCount}</strong></span>
-                </div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 6px; font-size: 0.58rem; color: #64748b; gap: 2px;">
-                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${totalStandardWins}</span><span>PIN</span></div>
-                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${koWins}</span><span>KO</span></div>
-                <div style="display:flex; flex-direction:column; align-items:center; gap:2px;"><span class="finish-stat-value" style="color:#1e293b; width:32px; height:32px; border:1px solid #cbd5e1; border-radius:50%; display:flex; align-items:center; justify-content:center;">${subWins}</span><span>SUB</span></div>
-            </div>
-            <div style="margin-top: 10px; display: flex; gap: 4px; width: 100%;">
-                <button onclick="editSuperstar('${f.id}')" style="flex: 1; background: #f1f5f9; border: none; padding: 4px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #475569; cursor: pointer;">✏️ Edit</button>
-                <button onclick="fireSuperstar('${f.id}')" style="background: #fee2e2; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; color: #ef4444; cursor: pointer;">✕</button>
-            </div>
-            <label style="display:flex; align-items:center; gap:6px; margin-top:8px; color:${f.retired ? '#92400e' : '#475569'}; font-size:0.68rem; font-weight:800; cursor:${f.wins < 10 ? 'not-allowed' : 'pointer'};">
-                <input type="checkbox" ${f.retired ? 'checked' : ''} ${f.wins < 10 && !f.retired ? 'disabled' : ''} onchange="toggleFighterRetirement('${f.id}', this)" style="width:auto;">
-                ${f.retired ? 'Retired Legend' : 'Retire Fighter'}
-            </label>
-        `;
-        applyRosterStreakPortraitClass(card.querySelector('.roster-portrait-frame'), f);
-        if (f.retired) {
-            card.classList.add('retired-legend-card');
-            card.style.boxShadow = '';
-        }
-        if (!f.retired || showRetired?.checked) {
-            grid.appendChild(card);
-        }
+    const rosterToRender = getRosterFightersForCurrentFilters();
+    rosterToRender.forEach(fighter => {
+        grid.appendChild(fighter.retired === true
+            ? createHallOfFamePlaqueCard(fighter, divisionRankLookup, defenseCountsByFighter)
+            : createRosterFighterCard(fighter, divisionRankLookup, championships, defenseCountsByFighter));
     });
+    if (rosterToRender.length === 0) {
+        grid.innerHTML = activeRosterQuickFilter === 'hall_of_fame'
+            ? '<div class="roster-empty-state">No Hall of Fame inductees yet. Retire a fighter with at least 10 wins to enshrine a legend.</div>'
+            : '<div class="roster-empty-state">No fighters match the current filters.</div>';
+    }
 
     // Re-apply any saved roster comparison filter after cards are recreated
     applySavedCompareFilter();
@@ -2515,6 +2963,7 @@ function buildMasterRankingsPanel() {
 
     filterPanel.innerHTML = `
         <span style="font-size: 0.75rem; font-weight: 800; color: #0284c7; text-transform: uppercase; letter-spacing: 0.05em;">📊 Roster Rankings:</span>
+        <button type="button" data-metric="p4p" aria-pressed="${activeRosterQuickFilter === 'p4p'}" style="background: linear-gradient(135deg, #451a03, #b45309); border: 1px solid #f59e0b; padding: 7px 15px; border-radius: 999px; font-size: 0.72rem; font-weight: 950; color: #fffbeb; cursor: pointer;">👑 P4P Top 15</button>
         <button type="button" data-metric="alphabetical" style="background: #f1f5f9; border: 1px solid #e2e8f0; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #475569; cursor: pointer;">🔤 A-Z</button>
         <button type="button" data-metric="wins" style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #16a34a; cursor: pointer;">👑 Most Wins</button>
         <button type="button" data-metric="losses" style="background: #fff5f5; border: 1px solid #fecaca; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #dc2626; cursor: pointer;">📉 Most Losses</button>
@@ -2524,6 +2973,11 @@ function buildMasterRankingsPanel() {
         <button type="button" data-metric="win_submission" style="background: #fbf7ff; border: 1px solid #f3e8ff; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #7c3aed; cursor: pointer;">🥋 Submission Experts</button>
         <button type="button" data-metric="win_rate" style="background: #ecfeff; border: 1px solid #cffafe; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">📈 Win Rate</button>
         <button type="button" data-metric="total_title_fights" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🏆 Most Title Fights</button>
+        <button type="button" data-metric="career_bonuses" style="background: linear-gradient(135deg, #78350f, #b45309); border: 1px solid #f59e0b; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: 900; color: #fff7ed; cursor: pointer;">🏅 Most Bonuses</button>
+        <button type="button" data-metric="giant_kills" aria-pressed="${activeRosterQuickFilter === 'giant_killers'}" style="background: linear-gradient(135deg, #450a0a, #b45309); border: 1px solid #f59e0b; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: 900; color: #fff7ed; cursor: pointer;">⚔️ Giant Killers</button>
+        <button type="button" data-metric="cold_streaks" aria-pressed="${activeRosterQuickFilter === 'cold_streaks'}" style="background: linear-gradient(135deg, #0c4a6e, #0369a1); border: 1px solid #7dd3fc; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: 900; color: #e0f2fe; cursor: pointer;">❄️ Cold Streaks</button>
+        <button type="button" data-metric="boss_tier" aria-pressed="${activeRosterQuickFilter === 'boss_tier'}" style="background: linear-gradient(135deg, #450a0a, #7f1d1d); border: 1px solid #b91c1c; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: 900; color: #fef3c7; cursor: pointer;">☠️ Boss Tier</button>
+        <button type="button" data-metric="hall_of_fame" aria-pressed="${activeRosterQuickFilter === 'hall_of_fame'}" style="background: linear-gradient(135deg, #451a03, #d97706); border: 1px solid #fbbf24; padding: 7px 15px; border-radius: 999px; font-size: 0.72rem; font-weight: 950; color: #fffbeb; cursor: pointer; box-shadow: 0 0 12px rgba(217, 119, 6, 0.2);">🏛️ Hall of Fame</button>
         <button type="button" data-metric="defenses" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🛡️ Most Title Defenses</button>
         <button type="button" data-metric="current_belts" style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 6px 14px; border-radius: 999px; font-size: 0.7rem; font-weight: bold; color: #0f172a; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">🎖️ Most Current Belts</button>
         <button type="button" data-metric="gender_male" style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; font-weight: bold; color: #0284c7; cursor: pointer;">Men</button>
@@ -2540,6 +2994,26 @@ function buildMasterRankingsPanel() {
         if (!btn) return;
         ev.preventDefault();
         const metric = btn.getAttribute('data-metric');
+        if (metric === 'p4p') {
+            setRosterQuickFilter('p4p');
+            return;
+        }
+        if (metric === 'giant_kills') {
+            setRosterQuickFilter('giant_killers');
+            return;
+        }
+        if (metric === 'cold_streaks') {
+            setRosterQuickFilter('cold_streaks');
+            return;
+        }
+        if (metric === 'boss_tier') {
+            setRosterQuickFilter('boss_tier');
+            return;
+        }
+        if (metric === 'hall_of_fame') {
+            setRosterQuickFilter('hall_of_fame');
+            return;
+        }
         try { sortRosterByMetric(metric); } catch (e) { console.error('sortRosterByMetric failed', e); }
     });
 
@@ -2551,7 +3025,8 @@ function buildRosterComparePanel() {
     if (existing) existing.remove();
 
     const gridElement = document.getElementById('rosterGrid');
-    if (!gridElement || !gridElement.parentNode) return;
+    const panelHost = document.getElementById('rosterComparePanelHost');
+    if (!panelHost && (!gridElement || !gridElement.parentNode)) return;
 
     // Restore saved compare values from localStorage
     const savedFighterA = localStorage.getItem('wwe_roster_compare_fighter_a') || '';
@@ -2559,25 +3034,37 @@ function buildRosterComparePanel() {
 
     const comparePanel = document.createElement('div');
     comparePanel.id = 'rosterComparePanel';
-    comparePanel.style.cssText = 'background: white; border: 1px solid #cbd5e1; border-radius: 12px; padding: 18px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); position: relative; z-index: 25; overflow: visible; isolation: isolate;';
+    comparePanel.className = 'roster-compare-controls';
     comparePanel.innerHTML = `
-        <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end;">
-            <div style="flex: 1 1 220px; min-width: 220px;">
-                <label style="display: block; margin-bottom: 6px; font-size: 0.75rem; font-weight: 700; color: #0c4a6e; text-transform: uppercase;">Fighter A</label>
-                <input id="compareFighterA" list="compareNamesA" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterA}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem; position: relative; z-index: 21; cursor: text;">
+        <div class="roster-compare-fields">
+            <div class="roster-compare-label">Head-to-Head Compare</div>
+            <div class="roster-compare-inputs">
+                <input id="compareFighterA" list="compareNamesA" oninput="updateRosterCompareDatalists(); tryAutoCompare()" aria-label="First fighter to compare" placeholder="Fighter A" value="${savedFighterA}">
+                <span class="roster-compare-vs">VS</span>
+                <input id="compareFighterB" list="compareNamesB" oninput="updateRosterCompareDatalists(); tryAutoCompare()" aria-label="Second fighter to compare" placeholder="Fighter B" value="${savedFighterB}">
+                <button type="button" class="roster-compare-button" onclick="compareRosterFighters()">Compare</button>
+                <button type="button" class="roster-compare-clear" onclick="clearRosterCompare()">Clear</button>
             </div>
-            <div style="flex: 1 1 220px; min-width: 220px;">
-                <label style="display: block; margin-bottom: 6px; font-size: 0.75rem; font-weight: 700; color: #0c4a6e; text-transform: uppercase;">Fighter B</label>
-                <input id="compareFighterB" list="compareNamesB" oninput="updateRosterCompareDatalists(); tryAutoCompare()" placeholder="Type fighter name" value="${savedFighterB}" style="width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.95rem; position: relative; z-index: 21; cursor: text;">
-            </div>
-            <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; position: relative; z-index: 21;">
-                <button onclick="compareRosterFighters()" style="background: #0284c7; color: white; border: none; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer;">Compare</button>
-                <button onclick="clearRosterCompare()" style="background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 16px; font-weight: 700; cursor: pointer;">Clear</button>
-            </div>
+        </div>
+        <div class="roster-quick-filters" role="group" aria-label="Quick roster filters">
+            <button type="button" class="roster-filter-pill" data-roster-filter="all" aria-pressed="${activeRosterQuickFilter === 'all'}">All</button>
+            <button type="button" class="roster-filter-pill" data-roster-filter="male" aria-pressed="${activeRosterQuickFilter === 'male'}">Men</button>
+            <button type="button" class="roster-filter-pill" data-roster-filter="female" aria-pressed="${activeRosterQuickFilter === 'female'}">Women</button>
+            <button type="button" class="roster-filter-pill" data-roster-filter="ranked" aria-pressed="${activeRosterQuickFilter === 'ranked'}">Ranked Top 15</button>
+            <button type="button" class="roster-filter-pill" data-roster-filter="streaks" aria-pressed="${activeRosterQuickFilter === 'streaks'}">Streaks</button>
+            <button type="button" class="roster-filter-pill" data-roster-filter="giant_killers" aria-pressed="${activeRosterQuickFilter === 'giant_killers'}">⚔️ Giant Killers</button>
+            <button type="button" class="roster-filter-pill" data-roster-filter="cold_streaks" aria-pressed="${activeRosterQuickFilter === 'cold_streaks'}">❄️ Cold Streaks</button>
+            <button type="button" class="roster-filter-pill" data-roster-filter="boss_tier" aria-pressed="${activeRosterQuickFilter === 'boss_tier'}">☠️ Boss Tier</button>
         </div>
     `;
 
-    gridElement.parentNode.insertBefore(comparePanel, gridElement);
+    if (panelHost) panelHost.appendChild(comparePanel);
+    else gridElement.parentNode.insertBefore(comparePanel, gridElement);
+    comparePanel.addEventListener('click', event => {
+        const filterButton = event.target.closest('[data-roster-filter]');
+        if (!filterButton) return;
+        setRosterQuickFilter(filterButton.dataset.rosterFilter || 'all');
+    });
     updateRosterCompareDatalists();
 
     // If there were saved fighters and the roster is available, apply the comparison quietly.
@@ -2658,15 +3145,74 @@ function getRosterSearchQuery() {
 }
 
 function getRosterCompareSelection() {
+    if (activeRosterQuickFilter === 'hall_of_fame') return [];
     const a = localStorage.getItem('wwe_roster_compare_fighter_a') || '';
     const b = localStorage.getItem('wwe_roster_compare_fighter_b') || '';
     const selection = [a, b].map(value => String(value).trim()).filter(Boolean);
     return selection;
 }
 
+function matchesRosterQuickFilter(card) {
+    if (activeRosterQuickFilter === 'hall_of_fame') return card.dataset.retired === 'true';
+    if (activeRosterQuickFilter === 'male' || activeRosterQuickFilter === 'female') {
+        return card.dataset.gender === activeRosterQuickFilter;
+    }
+    if (activeRosterQuickFilter === 'ranked') return card.dataset.ranked === 'true';
+    if (activeRosterQuickFilter === 'streaks') return card.dataset.streaking === 'true';
+    if (activeRosterQuickFilter === 'giant_killers') return card.dataset.giantKiller === 'true';
+    if (activeRosterQuickFilter === 'cold_streaks') return card.dataset.coldStreak === 'true';
+    if (activeRosterQuickFilter === 'boss_tier') return card.dataset.bossTier === 'true';
+    return true;
+}
+
+function setRosterQuickFilter(filter) {
+    const changesRosterView =
+        (activeRosterQuickFilter === 'hall_of_fame') !== (filter === 'hall_of_fame') ||
+        activeRosterQuickFilter === 'p4p' ||
+        filter === 'p4p';
+    activeRosterQuickFilter = filter;
+    document.querySelectorAll('[data-roster-filter]').forEach(button => {
+        button.setAttribute('aria-pressed', String(button.dataset.rosterFilter === filter));
+    });
+    document.querySelector('#rosterLeaderboardFilters [data-metric="giant_kills"]')
+        ?.setAttribute('aria-pressed', String(filter === 'giant_killers'));
+    document.querySelector('#rosterLeaderboardFilters [data-metric="cold_streaks"]')
+        ?.setAttribute('aria-pressed', String(filter === 'cold_streaks'));
+    document.querySelector('#rosterLeaderboardFilters [data-metric="boss_tier"]')
+        ?.setAttribute('aria-pressed', String(filter === 'boss_tier'));
+    document.querySelector('#rosterLeaderboardFilters [data-metric="hall_of_fame"]')
+        ?.setAttribute('aria-pressed', String(filter === 'hall_of_fame'));
+    document.querySelector('#rosterLeaderboardFilters [data-metric="p4p"]')
+        ?.setAttribute('aria-pressed', String(filter === 'p4p'));
+    if (changesRosterView) {
+        renderRosterGrid();
+    } else {
+        window.filterRosterCards();
+    }
+}
+
+function updateRosterQuickFilterEmptyState(visibleCount) {
+    const grid = document.getElementById('rosterGrid');
+    if (!grid) return;
+    const existing = grid.querySelector('.roster-filter-empty');
+    if (!grid.querySelector('.roster-fighter-row')) {
+        existing?.remove();
+        return;
+    }
+    if (visibleCount === 0 && !existing) {
+        const emptyState = document.createElement('div');
+        emptyState.className = 'roster-empty-state roster-filter-empty';
+        emptyState.textContent = 'No fighters match this quick filter.';
+        grid.appendChild(emptyState);
+    } else if (visibleCount > 0) {
+        existing?.remove();
+    }
+}
+
 function applyCombinedRosterFilters() {
     const searchQuery = getRosterSearchQuery();
     const compareSelection = getRosterCompareSelection();
+    let visibleCount = 0;
 
     document.querySelectorAll('#rosterGrid > div').forEach(card => {
         const nameEl = card.querySelector('.fighter-name-target');
@@ -2683,14 +3229,18 @@ function applyCombinedRosterFilters() {
             matchesCompare = normalizedName === compareSelection[0].toLowerCase();
         }
 
-        card.style.display = (matchesSearch && matchesCompare) ? 'flex' : 'none';
+        const isVisible = matchesSearch && matchesCompare && matchesRosterQuickFilter(card);
+        card.style.display = isVisible ? 'flex' : 'none';
+        if (isVisible) visibleCount++;
     });
+    updateRosterQuickFilterEmptyState(visibleCount);
 }
 
 function filterRosterByComparison(selectedNames = []) {
     const selected = selectedNames.map(value => String(value).trim()).filter(Boolean).map(value => value.toLowerCase());
     const cards = document.querySelectorAll('#rosterGrid > div');
     const searchQuery = getRosterSearchQuery();
+    let visibleCount = 0;
 
     cards.forEach(card => {
         const nameEl = card.querySelector('.fighter-name-target');
@@ -2699,8 +3249,11 @@ function filterRosterByComparison(selectedNames = []) {
         const normalizedName = nameText.toLowerCase();
         const matchesSearch = !searchQuery || normalizedName.includes(searchQuery);
         const matchesCompare = selected.length === 0 || selected.includes(normalizedName);
-        card.style.display = matchesSearch && matchesCompare ? 'flex' : 'none';
+        const isVisible = matchesSearch && matchesCompare && matchesRosterQuickFilter(card);
+        card.style.display = isVisible ? 'flex' : 'none';
+        if (isVisible) visibleCount++;
     });
+    updateRosterQuickFilterEmptyState(visibleCount);
 }
 
 function compareRosterFighters() {
@@ -2749,6 +3302,10 @@ function tryAutoCompare() {
 }
 
 function applySavedCompareFilter() {
+    if (activeRosterQuickFilter === 'hall_of_fame') {
+        applyCombinedRosterFilters();
+        return;
+    }
     const savedA = localStorage.getItem('wwe_roster_compare_fighter_a') || '';
     const savedB = localStorage.getItem('wwe_roster_compare_fighter_b') || '';
 
@@ -2816,42 +3373,115 @@ function getChampionshipCount(fighter) {
 
 
 function setupSidebarFormEngine() {
-    let addBtn = document.getElementById('addFighterButton');
-    if (!addBtn) {
-        addBtn = Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.toLowerCase().includes('add to roster')) || null;
+    const form = document.getElementById('fighterForm');
+    const addBtn = document.getElementById('addFighterButton');
+    const nameInput = document.getElementById('fighterName');
+    const genderSelect = document.getElementById('fighterGender');
+    const divisionSelect = document.getElementById('fighterDivision');
+    const bossTierInput = document.getElementById('fighterBossTier');
+    if (!form || !addBtn || !nameInput || !genderSelect || !divisionSelect || addBtn.dataset.addHandlerBound === 'true') return;
+
+    if (bossTierInput) {
+        bossTierInput.checked = sessionStorage.getItem(BOSS_TIER_DRAFT_SESSION_KEY) === 'true';
+        bossTierInput.addEventListener('change', () => {
+            sessionStorage.setItem(BOSS_TIER_DRAFT_SESSION_KEY, String(bossTierInput.checked));
+        });
     }
-    
-    if (addBtn) {
-        addBtn.removeAttribute('onclick');
-        addBtn.onclick = async function(e) {
-            e.preventDefault();
+
+    addBtn.removeAttribute('onclick');
+    addBtn.dataset.addHandlerBound = 'true';
+    addBtn.addEventListener('click', async event => {
+        event.preventDefault();
+        const name = nameInput.value.trim();
+        if (!name) {
+            alert('Please enter a fighter name.');
+            nameInput.focus();
+            return;
+        }
+
+        const gender = genderSelect.value.toLowerCase();
+        if (gender !== 'male' && gender !== 'female') {
+            alert('Please select a valid gender.');
+            return;
+        }
+
+        const division = normalizeDivisionName(divisionSelect.value);
+        if (!division) {
+            alert('Please select a valid division or weight class.');
+            return;
+        }
+
+        addBtn.disabled = true;
+        try {
             await loadAndHydrateFighters();
-            const divisionInput = document.getElementById('fighterDivision') || document.querySelector('input[placeholder*="Heavyweight"]') || document.querySelector('input[placeholder*="Weight"]');
-            const genderSelect = document.getElementById('fighterGender') || document.querySelector('select');
+            const nameKey = normalizeLookupKey(name);
+            if (fighters.some(fighter => normalizeLookupKey(fighter.name) === nameKey)) {
+                alert(`"${name}" is already in the roster.`);
+                nameInput.focus();
+                return;
+            }
 
-            const nameValue = nameInput ? nameInput.value.trim() : "";
-            if (!nameValue) return alert("Please enter a Superstar name before signing their contract!");
+            const newFighter = normalizeFighterRecord({
+                id: `f-${Date.now()}`,
+                name,
+                gender,
+                division,
+                is_boss: bossTierInput?.checked === true,
+                boss_slays: 0,
+                wins: 0,
+                losses: 0,
+                draws: 0,
+                win_streak: 0,
+                rebuild_wins_required: 0,
+                rebuild_loss_count: 0,
+                title_comeback_completed: false,
+                peak_win_streak: 0,
+                pin_wins: 0,
+                ko_wins: 0,
+                sub_wins: 0,
+                countout_wins: 0,
+                dq_wins: 0,
+                win_pinfall: 0,
+                win_ko: 0,
+                win_submission: 0,
+                defenses: 0,
+                title_fights: 0,
+                total_title_fights: 0,
+                lifetime_defenses: 0,
+                current_titles: [],
+                retired: false,
+                image: '',
+                photo: ''
+            });
+            if (!newFighter) throw new Error('The new fighter record could not be created.');
 
-            const newFighter = {
-                id: 'f-' + Date.now(),
-                name: nameValue,
-                gender: genderSelect ? genderSelect.value.toLowerCase() : 'male',
-                division: normalizeDivisionName((divisionInput && divisionInput.value.trim()) ? divisionInput.value.trim() : 'HeavyWeight'),
-                wins: 0, losses: 0, defenses: 0, title_fights: 0, total_title_fights: 0, win_pinfall: 0, win_ko: 0, win_submission: 0
-            };
-
-            fighters.push(normalizeFighterRecord(newFighter));
+            fighters.push(newFighter);
             assignAutoDivision(fighters);
             saveFighters(fighters);
-            refreshFighterNameDatalist();
-            
-            if (nameInput) nameInput.value = '';
-            if (divisionInput) divisionInput.value = 'HeavyWeight';
-            
-            alert(`Contract Signed! "${newFighter.name}" has officially been added back to your Universe roster!`);
-            scheduleRenderRosterGrid();
-        };
-    }
+
+            const savedRoster = JSON.parse(localStorage.getItem('wwe_fighters') || '[]');
+            const savedFighter = Array.isArray(savedRoster)
+                ? savedRoster.find(fighter => fighter.id === newFighter.id)
+                : null;
+            if (!savedFighter || savedFighter.is_boss !== newFighter.is_boss) {
+                fighters.pop();
+                throw new Error('The fighter could not be saved with the selected Boss Tier status.');
+            }
+
+            window.fighters = fighters;
+            nameInput.value = '';
+            if (window._renderRosterTimer) {
+                clearTimeout(window._renderRosterTimer);
+                window._renderRosterTimer = null;
+            }
+            renderRosterGrid();
+        } catch (error) {
+            console.error('Failed to add fighter to roster:', error);
+            alert(`The fighter could not be added: ${error.message || 'An unexpected error occurred.'}`);
+        } finally {
+            addBtn.disabled = false;
+        }
+    });
 }
 
 function setupLiveSearchEngine() {
@@ -2986,188 +3616,349 @@ window.syncWWE2K24Roster = async function() {
     alert(`WWE 2K24 sync complete. Added ${added} new fighter${added === 1 ? '' : 's'} and updated ${updated} existing fighter${updated === 1 ? '' : 's'}.`);
 };
 
+function closeEditFighterModal() {
+    const modal = document.getElementById('editFighterModal');
+    if (!modal) return;
+    if (modal._onEscape) modal.removeEventListener('keydown', modal._onEscape);
+    modal.remove();
+    document.body.classList.remove('roster-edit-open');
+    if (modal._previousFocus?.isConnected) modal._previousFocus.focus();
+}
+
 window.editSuperstar = function(id) {
-    const card = document.getElementById(`fighter-card-${id}`);
-    const f = fighters.find(fighter => fighter.id === id);
-    if (!card || !f) return;
+    const fighter = fighters.find(item => String(item.id) === String(id));
+    if (!fighter) return;
 
-    const oldPanel = document.getElementById(`inline-editor-${id}`);
-    if (oldPanel) oldPanel.remove();
-
-    if (f.title_fights === undefined) f.title_fights = 0;
-    if (f.total_title_fights === undefined) f.total_title_fights = f.title_fights || 0;
-
-    const editPanel = document.createElement('div');
-    editPanel.id = `inline-editor-${id}`;
-    editPanel.style.cssText = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; border-radius: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 10px; box-sizing: border-box; z-index: 100; border: 2px solid #eab308; align-content: center;";
-
-    editPanel.innerHTML = `
-        <span style="grid-column: span 2; font-size: 0.68rem; font-weight: 800; color: #eab308; text-transform: uppercase; margin-bottom: 2px;">✏️ Adjust ${f.name}</span>
-        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
-            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Fighter Name:</label>
-            <input type="text" id="edit-name-${id}" value="${f.name}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
-        </div>
-        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
-            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Gender:</label>
-            <select id="edit-gender-${id}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
-                <option value="male">Male</option>
-                <option value="female">Female</option>
-            </select>
-        </div>
-        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
-            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Weight Class:</label>
-            <select id="edit-division-${id}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
-                <option value="Cruiser Weight">Cruiser Weight</option>
-                <option value="Light HeavyWeight">Light HeavyWeight</option>
-                <option value="HeavyWeight">HeavyWeight</option>
-                <option value="Super HeavyWeight">Super HeavyWeight</option>
-            </select>
-        </div>
-        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
-            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Wins:</label>
-            <input type="number" id="edit-wins-${id}" value="${f.wins}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
-        </div>
-        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
-            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Losses:</label>
-            <input type="number" id="edit-losses-${id}" value="${f.losses}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
-        </div>
-        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
-            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Pin victories:</label>
-            <input type="number" id="edit-pins-${id}" value="${f.win_pinfall || 0}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
-        </div>
-        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
-            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">KO victories:</label>
-            <input type="number" id="edit-kos-${id}" value="${f.win_ko || 0}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
-        </div>
-        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
-            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Sub victories:</label>
-            <input type="number" id="edit-subs-${id}" value="${f.win_submission || 0}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
-        </div>
-        <div style="display: flex; flex-direction: column; width: 100%; gap: 1px;">
-            <label style="font-size: 0.5rem; font-weight: bold; color: #94a3b8; text-align: left;">Title Fights:</label>
-            <input type="number" id="edit-fights-${id}" value="${f.total_title_fights}" style="width: 100%; padding: 2px 4px; border-radius: 4px; border: 1px solid #334155; background: #1e293b; color: white; font-weight: bold; font-size: 0.65rem;">
-        </div>
-        <div style="grid-column: span 2; display: flex; gap: 4px; width: 100%; margin-top: 4px;">
-            <button onclick="saveInlineEdit('${id}')" style="flex: 1; background: #10b981; border: none; color: white; font-weight: bold; padding: 4px; border-radius: 4px; font-size: 0.65rem; cursor: pointer;">Save Changes</button>
-            <button onclick="deleteFighterPhoto('${id}', true)" style="flex: 1; background: #f97316; border: none; color: white; font-weight: bold; padding: 4px; border-radius: 4px; font-size: 0.65rem; cursor: pointer;">🗑️ Delete Photo</button>
-            <button onclick="document.getElementById('inline-editor-${id}').remove()" style="background: #475569; border: none; color: white; font-weight: bold; padding: 4px; border-radius: 4px; font-size: 0.65rem; cursor: pointer;">Cancel</button>
-        </div>
-    `;
-    card.appendChild(editPanel);
-    // Keep roster search focused on this fighter so it stays visible while editing
-    try {
-        const rosterSearch = document.getElementById('rosterSearchInput');
-        if (rosterSearch) {
-            rosterSearch.value = f.name;
-            filterRosterCards();
-        }
-        const nameEl = document.getElementById(`edit-name-${id}`);
-        if (nameEl) nameEl.focus();
-    } catch (e) { console.warn('Could not focus roster search or edit name', e); }
-    // Ensure input values are set programmatically to avoid HTML attribute parsing issues
-    try {
-        const nameEl = document.getElementById(`edit-name-${id}`);
-        const genderEl = document.getElementById(`edit-gender-${id}`);
-        const divEl = document.getElementById(`edit-division-${id}`);
-        const winsEl = document.getElementById(`edit-wins-${id}`);
-        const lossesEl = document.getElementById(`edit-losses-${id}`);
-        const pinsEl = document.getElementById(`edit-pins-${id}`);
-        const kosEl = document.getElementById(`edit-kos-${id}`);
-        const subsEl = document.getElementById(`edit-subs-${id}`);
-        const fightsEl = document.getElementById(`edit-fights-${id}`);
-        if (nameEl) nameEl.value = f.name || '';
-        if (genderEl) {
-            genderEl.value = (f.gender || 'male').toString().toLowerCase();
-        }
-        if (divEl) {
-            const currentDivision = normalizeDivisionName(f.division || 'HeavyWeight');
-            const optionExists = Array.from(divEl.options).some(option => option.value === currentDivision);
-            if (optionExists) {
-                divEl.value = currentDivision;
-            } else {
-                const customOption = document.createElement('option');
-                customOption.value = currentDivision;
-                customOption.textContent = currentDivision;
-                customOption.selected = true;
-                divEl.prepend(customOption);
-            }
-        }
-        if (winsEl) winsEl.value = f.wins || 0;
-        if (lossesEl) lossesEl.value = f.losses || 0;
-        if (pinsEl) pinsEl.value = f.win_pinfall || 0;
-        if (kosEl) kosEl.value = f.win_ko || 0;
-        if (subsEl) subsEl.value = f.win_submission || 0;
-        if (fightsEl) fightsEl.value = f.total_title_fights || 0;
-    } catch (err) {
-        console.error('failed to set inline editor values', err);
+    if (window._renderRosterTimer) {
+        clearTimeout(window._renderRosterTimer);
+        window._renderRosterTimer = null;
     }
+    closeEditFighterModal();
+
+    const modal = document.createElement('div');
+    modal.id = 'editFighterModal';
+    modal.className = 'roster-edit-backdrop';
+    modal.setAttribute('role', 'presentation');
+    modal._previousFocus = document.activeElement;
+    const editBadges = [
+        typeof window.getFighterStyleBadge === 'function' ? window.getFighterStyleBadge(fighter) : '',
+        getGiantKillerBadgeHtml(fighter),
+        fighter.is_boss === true ? '<span class="boss-tier-badge">☠️ BOSS TIER</span>' : ''
+    ].filter(Boolean).join('');
+    modal.innerHTML = `
+        <section class="roster-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="editFighterTitle" tabindex="-1">
+            <header class="roster-edit-header">
+                <div>
+                    <h2 id="editFighterTitle">Edit Fighter</h2>
+                    <p>Update roster identity and career statistics.</p>
+                    <div class="roster-edit-badges">${editBadges}</div>
+                </div>
+                <button type="button" class="roster-edit-close" data-edit-close aria-label="Close editor">×</button>
+            </header>
+            <form id="editFighterForm" novalidate>
+                <div class="roster-edit-fields">
+                    <label class="roster-edit-field roster-edit-field--full">Fighter Name
+                        <input name="name" type="text" autocomplete="off" required>
+                    </label>
+                    <label class="roster-edit-field">Gender
+                        <select name="gender" required>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                        </select>
+                    </label>
+                    <label class="roster-edit-field">Weight Class
+                        <select name="division" required>
+                            <option value="Cruiser Weight">Cruiser Weight</option>
+                            <option value="Light HeavyWeight">Light HeavyWeight</option>
+                            <option value="HeavyWeight">HeavyWeight</option>
+                            <option value="Super HeavyWeight">Super HeavyWeight</option>
+                        </select>
+                    </label>
+                    <label class="roster-edit-field roster-edit-field--checkbox">
+                        <input name="is_boss" type="checkbox">
+                        <span>☠️ Mythic / Boss Tier</span>
+                    </label>
+                    <label class="roster-edit-field">Wins
+                        <input name="wins" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                    <label class="roster-edit-field">Losses
+                        <input name="losses" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                    <label class="roster-edit-field">Active Win Streak
+                        <input name="win_streak" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                    <label class="roster-edit-field">Active Losing Streak
+                        <input name="lose_streak" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                    <label class="roster-edit-field">Pin Wins
+                        <input name="pin_wins" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                    <label class="roster-edit-field">KO Wins
+                        <input name="ko_wins" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                    <label class="roster-edit-field">Submission Wins
+                        <input name="sub_wins" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                    <label class="roster-edit-field">Count-Out Wins
+                        <input name="countout_wins" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                    <label class="roster-edit-field">DQ Wins
+                        <input name="dq_wins" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                    <label class="roster-edit-field">Total Title Fights
+                        <input name="total_title_fights" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                    <label class="roster-edit-field">Lifetime Defenses
+                        <input name="lifetime_defenses" type="number" min="0" step="1" inputmode="numeric" required>
+                    </label>
+                </div>
+                <div class="roster-edit-actions">
+                    <button type="submit" class="roster-edit-save">Save Changes</button>
+                    <button type="button" class="roster-edit-photo" data-edit-delete-photo>Delete Photo</button>
+                    <button type="button" class="roster-edit-cancel" data-edit-close>Cancel</button>
+                </div>
+            </form>
+        </section>`;
+
+    const form = modal.querySelector('#editFighterForm');
+    form.dataset.fighterId = String(fighter.id);
+    const values = {
+        name: fighter.name || '',
+        gender: String(fighter.gender || 'male').toLowerCase(),
+        division: normalizeDivisionName(fighter.division || fighter.weightClass || 'HeavyWeight'),
+        is_boss: fighter.is_boss === true,
+        wins: Number(fighter.wins) || 0,
+        losses: Number(fighter.losses) || 0,
+        win_streak: getRosterWinStreak(fighter),
+        lose_streak: Math.max(0, Math.floor(Number(fighter.lose_streak) || 0)),
+        pin_wins: Number(fighter.win_pinfall || fighter.pin_wins || 0),
+        ko_wins: Number(fighter.win_ko || fighter.ko_wins || 0),
+        sub_wins: Number(fighter.win_submission || fighter.sub_wins || 0),
+        countout_wins: Number(fighter.countout_wins) || 0,
+        dq_wins: Number(fighter.dq_wins) || 0,
+        total_title_fights: Number(fighter.total_title_fights ?? fighter.title_fights) || 0,
+        lifetime_defenses: Number(fighter.lifetime_defenses) || 0
+    };
+
+    Object.entries(values).forEach(([name, value]) => {
+        const field = form.elements.namedItem(name);
+        if (!field) return;
+        if (name === 'is_boss') {
+            field.checked = value;
+            return;
+        }
+        if (name === 'division' && !Array.from(field.options).some(option => option.value === value)) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value;
+            field.appendChild(option);
+        }
+        field.value = value;
+    });
+
+    form.dataset.winStreakEdited = 'false';
+    form.dataset.loseStreakEdited = 'false';
+    form.elements.namedItem('win_streak').addEventListener('input', () => {
+        form.dataset.winStreakEdited = 'true';
+    });
+    form.elements.namedItem('lose_streak').addEventListener('input', () => {
+        form.dataset.loseStreakEdited = 'true';
+    });
+
+    document.body.appendChild(modal);
+    document.body.classList.add('roster-edit-open');
+    modal.addEventListener('click', event => {
+        if (event.target === modal) closeEditFighterModal();
+        if (event.target.closest('[data-edit-close]')) closeEditFighterModal();
+    });
+    modal._onEscape = event => {
+        if (event.key === 'Escape') closeEditFighterModal();
+    };
+    modal.addEventListener('keydown', modal._onEscape);
+    form.addEventListener('submit', event => {
+        event.preventDefault();
+        window.saveInlineEdit(fighter.id);
+    });
+    modal.querySelector('[data-edit-delete-photo]').addEventListener('click', async () => {
+        await window.deleteFighterPhoto(fighter.id, true);
+        if (!fighter.photo && !fighter.photo_key) closeEditFighterModal();
+    });
+    form.elements.namedItem('name').focus();
 };
 
 window.saveInlineEdit = function(id) {
-    const f = fighters.find(fighter => fighter.id === id);
-    if (!f) return;
+    const fighter = fighters.find(item => String(item.id) === String(id));
+    const modal = document.getElementById('editFighterModal');
+    const form = modal?.querySelector('#editFighterForm');
+    if (!fighter || !form) return;
 
-    const nameInput = document.getElementById(`edit-name-${id}`);
-    const genderInput = document.getElementById(`edit-gender-${id}`);
-    const divisionInput = document.getElementById(`edit-division-${id}`);
-    const winsInput = document.getElementById(`edit-wins-${id}`);
-    const lossesInput = document.getElementById(`edit-losses-${id}`);
-    const pinsInput = document.getElementById(`edit-pins-${id}`);
-    const kosInput = document.getElementById(`edit-kos-${id}`);
-    const subsInput = document.getElementById(`edit-subs-${id}`);
-    const fightsInput = document.getElementById(`edit-fights-${id}`);
-
-    if (nameInput && genderInput && divisionInput && winsInput && lossesInput && pinsInput && kosInput && subsInput && fightsInput) {
-        const newName = nameInput.value.trim();
-        const newGender = (genderInput.value || 'male').toString().toLowerCase();
-        const newDivision = divisionInput.value.trim() || 'Heavyweight';
-        const newWins = parseInt(winsInput.value) || 0;
-        const newLosses = parseInt(lossesInput.value) || 0;
-        const newPinfalls = parseInt(pinsInput.value) || 0;
-        const newKOs = parseInt(kosInput.value) || 0;
-        const newSubs = parseInt(subsInput.value) || 0;
-        const newTitleFights = parseInt(fightsInput.value) || 0;
-
-        if (!newName) {
-            return alert('Fighter name cannot be empty.');
-        }
-
-        const statsChanged = (
-            newWins !== f.wins ||
-            newLosses !== f.losses ||
-            newPinfalls !== (f.win_pinfall || 0) ||
-            newKOs !== (f.win_ko || 0) ||
-            newSubs !== (f.win_submission || 0) ||
-            newTitleFights !== (f.total_title_fights || 0)
-        );
-        const identityChanged = (newName !== f.name || newDivision !== f.division || newGender !== f.gender);
-
-        f.name = newName;
-        f.gender = newGender;
-        f.division = normalizeDivisionName(newDivision);
-        f.wins = newWins;
-        f.losses = newLosses;
-        f.win_pinfall = newPinfalls;
-        f.win_ko = newKOs;
-        f.win_submission = newSubs;
-        f.title_fights = newTitleFights;
-        f.total_title_fights = newTitleFights;
-
-        if (statsChanged) {
-            f.compiled_history_deck = [];
-            f.history_deck = [];
-            f.history = [];
-        }
-
-        // Use the central save method to ensure normalization and auto-division mapping
-        saveFighters(fighters);
-        scheduleRenderRosterGrid();
-        refreshFighterNameDatalist();
+    const nameField = form.elements.namedItem('name');
+    const genderField = form.elements.namedItem('gender');
+    const divisionField = form.elements.namedItem('division');
+    const isBossField = form.elements.namedItem('is_boss');
+    const newName = nameField.value.trim();
+    const newGender = String(genderField.value || '').toLowerCase();
+    const newDivision = normalizeDivisionName(divisionField.value);
+    if (!newName) {
+        alert('Fighter name cannot be empty.');
+        nameField.focus();
+        return;
     }
+    if (!['male', 'female'].includes(newGender) || !newDivision) {
+        alert('Choose a valid gender and weight class.');
+        return;
+    }
+    if (newName !== String(fighter.name || '').trim()) {
+        const duplicate = fighters.find(item =>
+            item !== fighter && normalizeLookupKey(item.name) === normalizeLookupKey(newName)
+        );
+        if (duplicate) {
+            alert('A fighter with that name is already in the roster.');
+            nameField.focus();
+            return;
+        }
+    }
+
+    const numericFields = [
+        'wins', 'losses', 'win_streak', 'lose_streak', 'pin_wins', 'ko_wins', 'sub_wins',
+        'countout_wins', 'dq_wins', 'total_title_fights', 'lifetime_defenses'
+    ];
+    const stats = {};
+    for (const name of numericFields) {
+        const field = form.elements.namedItem(name);
+        const rawValue = field.value.trim();
+        const value = Number(rawValue);
+        if (!rawValue || !Number.isSafeInteger(value) || value < 0) {
+            alert(`${field.labels?.[0]?.textContent || name} must be a non-negative whole number.`);
+            field.focus();
+            return;
+        }
+        stats[name] = value;
+    }
+
+    const explicitLowerWinStreak = stats.losses === 0 && stats.wins > 0 &&
+        form.dataset.winStreakEdited === 'true' && stats.win_streak < stats.wins;
+    if (stats.losses === 0 && stats.wins > 0 && !explicitLowerWinStreak) {
+        stats.win_streak = stats.wins;
+    }
+    if (form.dataset.loseStreakEdited !== 'true' && stats.losses > Number(fighter.losses || 0)) {
+        stats.lose_streak = Math.max(0, Number(fighter.lose_streak) || 0) +
+            stats.losses - Number(fighter.losses || 0);
+        stats.win_streak = 0;
+    }
+    if (form.dataset.loseStreakEdited === 'true' && stats.lose_streak > 0) {
+        stats.win_streak = 0;
+    } else if (form.dataset.winStreakEdited === 'true' && stats.win_streak > 0) {
+        stats.lose_streak = 0;
+    }
+
+    const titleRules = getRosterTitleRules();
+    let rebuildWinsRequired = Math.max(0, Math.floor(Number(fighter.rebuild_wins_required) || 0));
+    let rebuildLossCount = getRosterRebuildLossCount(fighter, rebuildWinsRequired);
+    let titleComebackCompleted = fighter.title_comeback_completed === true;
+    let dominantExChampionRebuild = fighter.dominant_ex_champ_rebuild === true;
+    const addedLosses = Math.max(0, stats.losses - Number(fighter.losses || 0));
+    if (addedLosses > 0) {
+        for (let loss = 0; loss < addedLosses; loss++) {
+            rebuildLossCount = rebuildWinsRequired > 0 ? rebuildLossCount + 1 : 1;
+            rebuildWinsRequired = getRosterRebuildWinsRequired(rebuildLossCount, titleRules);
+        }
+        titleComebackCompleted = false;
+        dominantExChampionRebuild = false;
+        stats.win_streak = 0;
+    } else if (rebuildWinsRequired > 0 && stats.win_streak >= rebuildWinsRequired) {
+        rebuildWinsRequired = 0;
+        rebuildLossCount = 0;
+        titleComebackCompleted = true;
+        dominantExChampionRebuild = false;
+    } else if (rebuildWinsRequired === 0) {
+        rebuildLossCount = 0;
+        dominantExChampionRebuild = false;
+        titleComebackCompleted = titleComebackCompleted &&
+            stats.win_streak >= Number(fighter.win_streak || 0);
+        if (stats.win_streak >= titleRules.initialTitleWins) titleComebackCompleted = false;
+    }
+
+    const previousFighter = { ...fighter };
+    const peakWinStreak = Math.max(
+        0,
+        Math.floor(Number(fighter.peak_win_streak) || 0),
+        stats.win_streak
+    );
+    fighter.name = newName;
+    fighter.gender = newGender;
+    fighter.division = newDivision;
+    fighter.is_boss = isBossField.checked;
+    if (Object.prototype.hasOwnProperty.call(fighter, 'weightClass')) fighter.weightClass = newDivision;
+    fighter.wins = stats.wins;
+    fighter.losses = stats.losses;
+    fighter.win_streak = stats.win_streak;
+    fighter.rebuild_wins_required = rebuildWinsRequired;
+    fighter.rebuild_loss_count = rebuildLossCount;
+    fighter.title_comeback_completed = titleComebackCompleted;
+    fighter.dominant_ex_champ_rebuild = dominantExChampionRebuild;
+    fighter.peak_win_streak = peakWinStreak;
+    fighter.lose_streak = stats.lose_streak;
+    fighter.win_pinfall = stats.pin_wins;
+    fighter.pin_wins = stats.pin_wins;
+    fighter.win_ko = stats.ko_wins;
+    fighter.ko_wins = stats.ko_wins;
+    fighter.win_submission = stats.sub_wins;
+    fighter.sub_wins = stats.sub_wins;
+    fighter.countout_wins = stats.countout_wins;
+    fighter.dq_wins = stats.dq_wins;
+    fighter.total_title_fights = stats.total_title_fights;
+    fighter.title_fights = stats.total_title_fights;
+    fighter.lifetime_defenses = stats.lifetime_defenses;
+    fighter.manual_stats_override = true;
+    fighter.manual_win_streak_override = explicitLowerWinStreak;
+
+    saveFighters(fighters);
+    let persistedRoster;
+    try {
+        persistedRoster = JSON.parse(localStorage.getItem('wwe_fighters') || '[]');
+    } catch (error) {
+        persistedRoster = null;
+        console.error('Unable to verify saved fighter edits.', error);
+    }
+    const persistedFighter = Array.isArray(persistedRoster)
+        ? persistedRoster.find(item => String(item.id) === String(fighter.id))
+        : null;
+    const savedValuesMatch = persistedFighter &&
+        persistedFighter.name === newName &&
+        persistedFighter.gender === newGender &&
+        persistedFighter.division === newDivision &&
+        persistedFighter.is_boss === isBossField.checked &&
+        Number(persistedFighter.rebuild_wins_required) === rebuildWinsRequired &&
+        Number(persistedFighter.rebuild_loss_count) === rebuildLossCount &&
+        persistedFighter.title_comeback_completed === titleComebackCompleted &&
+        persistedFighter.dominant_ex_champ_rebuild === dominantExChampionRebuild &&
+        Number(persistedFighter.peak_win_streak) === peakWinStreak &&
+        numericFields.every(name => Number(
+            name === 'pin_wins' ? (persistedFighter.win_pinfall ?? persistedFighter.pin_wins) :
+            name === 'ko_wins' ? (persistedFighter.win_ko ?? persistedFighter.ko_wins) :
+            name === 'sub_wins' ? (persistedFighter.win_submission ?? persistedFighter.sub_wins) :
+            persistedFighter[name]
+        ) === stats[name]) &&
+        persistedFighter.manual_stats_override === true &&
+        persistedFighter.manual_win_streak_override === explicitLowerWinStreak;
+    if (!savedValuesMatch) {
+        Object.keys(fighter).forEach(key => {
+            if (!Object.prototype.hasOwnProperty.call(previousFighter, key)) delete fighter[key];
+        });
+        Object.assign(fighter, previousFighter);
+        alert('The fighter changes could not be saved. Your previous roster values were restored.');
+        return;
+    }
+
+    closeEditFighterModal();
+    refreshFighterNameDatalist();
+    renderRosterGrid();
 };
 
 window.sortRosterByMetric = function(metricType) {
     if (!fighters || fighters.length === 0) return;
+    if (activeRosterQuickFilter === 'hall_of_fame') activeRosterQuickFilter = 'all';
 
     const divisionFilters = {
         division_cruiser: 'Cruiser Weight',

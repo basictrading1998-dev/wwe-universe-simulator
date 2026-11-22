@@ -37,7 +37,7 @@
         .border-tier-4 { border: 4px solid transparent !important; box-sizing: border-box; background: linear-gradient(45deg, #ff007f, #7f00ff, #00bfff, #00ff7f, #ffea00, #ff007f) border-box; box-shadow: 0 0 18px rgba(0, 191, 255, 0.7); animation: rainbowCamo 4s linear infinite; }
         .avatar-circle img { width: 100%; height: 100%; object-fit: cover; display: block; }
         .fighter-name { font-size: 0.85rem; font-weight: 800; margin: 0; color: white; }
-        .record-subtext { font-size: 0.68rem; font-weight: 800; color: #64748b; margin-top: 2px; text-transform: uppercase; }
+        .record-subtext { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: 0.68rem; font-weight: 800; color: #64748b; margin-top: 2px; text-transform: uppercase; }
         .history-slider-deck { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; width: 100%; min-width: 0; flex-wrap: nowrap; }
         .history-slider-deck::-webkit-scrollbar { height: 4px; }
         .history-slider-deck::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
@@ -56,6 +56,7 @@
         .brick-opp-record.win { color: #86efac; }
         .brick-opp-record.loss { color: #fecaca; }
         .brick-method { font-size: 0.58rem; font-weight: bold; color: #64748b; text-transform: uppercase; margin-top: 1px; }
+        .fight-time-badge { display: inline-flex; align-items: center; margin-left: 5px; padding: 2px 6px; border: 1px solid rgba(56,189,248,0.28); border-radius: 999px; background: rgba(15,23,42,0.75); color: #7dd3fc; font-size: 0.56rem; font-weight: 800; letter-spacing: 0; white-space: nowrap; vertical-align: middle; }
         .brick-show { font-size: 14px; line-height: 1.2; font-weight: 800; color: #94a3b8; overflow-wrap: anywhere; }
         .empty-history-text { font-size: 0.7rem; color: #475569; font-style: italic; font-weight: bold; }
     </style>
@@ -68,11 +69,21 @@
             <a href="index.html" class="nav-btn">Fight Cards</a>
             <a href="fighters.html" class="nav-btn">Master Roster</a>
             <a href="future_fighters.html" class="nav-btn">FUTURE FIGHTERS</a>
+            <a href="trading_cards.html" class="nav-btn">TRADING CARDS</a>
+            <a href="alliances.html" class="nav-btn">ALLIANCES &amp; COUPLES</a>
             <a href="history.html" class="nav-btn">Event History</a>
             <a href="fighter-history.html" class="nav-btn active">Fight History Log</a>
             <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="tournaments.html" class="nav-btn">TOURNAMENTS</a>
             <a href="charts.html?v=10.16" class="nav-btn">Roster Analytics</a>
             <a href="match_analyzer.html" class="nav-btn">CHAMPIONSHIP ANALYZER</a>
+        </div>
+        <div class="sidebar-settings">
+            <button type="button" class="settings-toggle" aria-expanded="false" aria-controls="sidebarSettingsMenu">⚙️ SETTINGS ▾</button>
+            <div class="settings-menu" id="sidebarSettingsMenu" hidden>
+                <button type="button" data-settings-action="export">💾 Export Full Backup</button>
+                <button type="button" class="settings-reset" data-settings-action="reset">🔄 Reset Records, Titles &amp; Cards</button>
+            </div>
         </div>
         </nav>
 
@@ -114,6 +125,7 @@
         </div>
     </main>
 
+    <script src="streaks.js"></script>
     <script>
         // SMART DETECTOR: Parses all possible variations of the local storage keys so nothing gets skipped
         let fighters = JSON.parse(localStorage.getItem('wwe_fighters')) || JSON.parse(localStorage.getItem('fighters')) || [];
@@ -121,6 +133,29 @@
         // the master `fighters` array stored by the roster. Photos hydrated here will not
         // be written back to localStorage.
         let historyFighters = [];
+
+        function formatEventTimestamp(isoString) {
+            if (typeof isoString !== 'string' || !isoString.trim()) return '';
+            const date = new Date(isoString);
+            if (!Number.isFinite(date.getTime())) return '';
+
+            const now = new Date();
+            const dayDifference = (
+                Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) -
+                Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+            ) / 86400000;
+            const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            if (dayDifference === 0) return `Today • ${time}`;
+            if (dayDifference === 1) return `Yesterday • ${time}`;
+
+            const dateLabel = date.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+            return `${dateLabel} • ${time}`;
+        }
 
         async function openFighterPhotoDB() {
             return new Promise((resolve, reject) => {
@@ -294,6 +329,33 @@
             })();
         });
 
+        window.addEventListener('storage', event => {
+            if (event.key !== 'wwe_fighters' && event.key !== 'fighters') return;
+            try {
+                const cachedPhotos = new Map(historyFighters.map(fighter => [String(fighter.id || fighter.name), fighter.photo]));
+                fighters = JSON.parse(localStorage.getItem('wwe_fighters') || localStorage.getItem('fighters') || '[]');
+                if (!Array.isArray(fighters)) throw new Error('Stored fighter roster is not an array.');
+                fighters.sort((a, b) => a.name.localeCompare(b.name));
+                historyFighters = fighters.map(fighter => {
+                    const normalized = normalizeHistoryFighterRecord(fighter);
+                    if (!normalized.photo) {
+                        normalized.photo = cachedPhotos.get(String(normalized.id || normalized.name)) || '';
+                    }
+                    return normalized;
+                });
+                buildHistoryDatalist();
+                updateHistoryCompareDatalists();
+                renderWidescreenHistoryMatrix();
+                const savedA = localStorage.getItem('wwe_history_compare_fighter_a') || '';
+                const savedB = localStorage.getItem('wwe_history_compare_fighter_b') || '';
+                const savedSearch = localStorage.getItem('wwe_history_search_query') || '';
+                if (savedA && savedB) applySavedHistoryCompareFilter();
+                else if (savedSearch) liveFilterHistoryRows();
+            } catch (error) {
+                console.error('Unable to refresh fight history after roster changes.', error);
+            }
+        });
+
         // Also restore on visibility/focus
         window.addEventListener('visibilitychange', () => {
             if (document.hidden) return;
@@ -306,29 +368,70 @@
         });
 
         function getStreakClass(fighter) {
-            const wins = Number(fighter?.wins || 0);
-            const losses = Number(fighter?.losses || 0);
-            const activeStreak = losses === 0 ? wins : (fighter?.win_streak || 0);
-            const calculatedStreak = Number(activeStreak) || 0;
-            if (calculatedStreak >= 10) return 'border-tier-4';
-            if (calculatedStreak >= 7) return 'border-tier-3';
-            if (calculatedStreak >= 5) return 'border-tier-2';
-            if (calculatedStreak >= 3) return 'border-tier-1';
+            if (typeof window.getWinStreakPortraitClass === 'function') {
+                return window.getWinStreakPortraitClass(fighter);
+            }
+            const streak = Number(fighter?.win_streak || 0);
+            if (streak >= 47) return 'streak-tier-master-prestige';
+            if (streak >= 43) return 'streak-tier-blood-moon';
+            if (streak >= 39) return 'streak-tier-cyber';
+            if (streak >= 35) return 'streak-tier-cosmic';
+            if (streak >= 31) return 'streak-tier-hellfire';
+            if (streak >= 26) return 'streak-tier-lightning';
+            if (streak >= 22) return 'streak-tier-rainbow';
+            if (streak >= 18) return 'streak-tier-gold';
+            if (streak >= 13) return 'streak-tier-blue';
+            if (streak >= 7) return 'streak-tier-green';
+            if (streak >= 3) return 'streak-tier-purple';
             return '';
         }
 
         function applyHistoryStreakPortraitClass(portrait, fighter) {
             if (!portrait) return;
-            portrait.classList.remove('streak-purple', 'streak-green', 'streak-blue', 'streak-rainbow-diamond', 'border-tier-1', 'border-tier-2', 'border-tier-3', 'border-tier-4');
-            const streakClass = getStreakClass(fighter);
-            if (streakClass) portrait.classList.add(streakClass);
+            if (typeof window.applyWinStreakPortraitClass === 'function') {
+                window.applyWinStreakPortraitClass(portrait, fighter);
+            } else {
+                portrait.classList.remove('streak-tier-purple', 'streak-tier-green', 'streak-tier-blue', 'streak-tier-gold', 'streak-tier-rainbow', 'streak-tier-lightning', 'streak-tier-hellfire', 'streak-tier-cosmic', 'streak-tier-cyber', 'streak-tier-blood-moon', 'streak-tier-master-prestige', 'streak-purple', 'streak-green', 'streak-blue', 'streak-rainbow-diamond', 'border-tier-1', 'border-tier-2', 'border-tier-3', 'border-tier-4');
+                const streakClass = getStreakClass(fighter);
+                if (streakClass) portrait.classList.add(streakClass);
+            }
+            const applyEffects = window.applyWinStreakEffects || window.applyWinStreakLightningOverlay;
+            if (typeof applyEffects === 'function') {
+                applyEffects(portrait, fighter);
+            }
+            if (typeof window.applyLoseStreakPortraitEffects === 'function') {
+                window.applyLoseStreakPortraitEffects(portrait, fighter);
+            }
+            const historyRow = portrait.closest('.fighter-history-row');
+            if (historyRow) {
+                historyRow.classList.remove('streak-tier-purple', 'streak-tier-green', 'streak-tier-blue', 'streak-tier-gold', 'streak-tier-rainbow', 'streak-tier-lightning', 'streak-tier-hellfire', 'streak-tier-cosmic', 'streak-tier-cyber', 'streak-tier-blood-moon', 'streak-tier-master-prestige');
+                const streakClass = getStreakClass(fighter);
+                if (streakClass) historyRow.classList.add(streakClass);
+                historyRow.classList.remove('cold-streak-slump', 'cold-streak-freeze', 'cold-streak-hot-seat');
+                const coldStreakClass = typeof window.getLoseStreakPortraitClass === 'function'
+                    ? window.getLoseStreakPortraitClass(fighter)
+                    : '';
+                if (coldStreakClass) historyRow.classList.add(coldStreakClass);
+            }
         }
 
         function refreshHistoryStreakPortraits() {
             const fightersByName = new Map(historyFighters.map(fighter => [fighter.name.toLowerCase(), fighter]));
             document.querySelectorAll('#historyMasterLogContainer .avatar-circle').forEach(portrait => {
-                const name = portrait.closest('.fighter-history-row')?.querySelector('.fighter-name')?.textContent?.trim().toLowerCase();
-                applyHistoryStreakPortraitClass(portrait, name ? fightersByName.get(name) : null);
+                const row = portrait.closest('.fighter-history-row');
+                const name = row?.querySelector('.fighter-name')?.textContent?.trim().toLowerCase();
+                const fighter = name ? fightersByName.get(name) : null;
+                applyHistoryStreakPortraitClass(portrait, fighter);
+                const record = row?.querySelector('.record-subtext');
+                if (record && fighter) {
+                    const streakBadge = typeof window.getWinStreakBadgeHtml === 'function'
+                        ? window.getWinStreakBadgeHtml(fighter)
+                        : '';
+                    const coldStreakBadge = typeof window.getLoseStreakBadgeHtml === 'function'
+                        ? window.getLoseStreakBadgeHtml(fighter)
+                        : '';
+                    record.innerHTML = `${Number(fighter.wins || 0)}W ${Number(fighter.losses || 0)}L ${streakBadge} ${coldStreakBadge}`;
+                }
             });
             updateComparePortrait('A');
             updateComparePortrait('B');
@@ -347,23 +450,32 @@
                 row.className = 'fighter-history-row';
 
                 const streakClass = getStreakClass(f);
-                const portraitClasses = `avatar-circle portrait-frame-base ${streakClass}`.trim();
+                const streakBadge = typeof window.getWinStreakBadgeHtml === 'function'
+                    ? window.getWinStreakBadgeHtml(f)
+                    : '';
+                const coldStreakClass = typeof window.getLoseStreakPortraitClass === 'function'
+                    ? window.getLoseStreakPortraitClass(f)
+                    : '';
+                const coldStreakBadge = typeof window.getLoseStreakBadgeHtml === 'function'
+                    ? window.getLoseStreakBadgeHtml(f)
+                    : '';
+                const portraitClasses = `avatar-circle portrait-frame-base ${streakClass} ${coldStreakClass}`.trim();
                 let avatarHtml = `<div class="${portraitClasses}">👤</div>`;
                 if (f.photo) {
-                    avatarHtml = `<div class="${portraitClasses}"><img src="${f.photo}" alt="${f.name}" onerror="this.onerror=null; this.parentNode.innerHTML='👤'"></div>`;
+                    avatarHtml = `<div class="${portraitClasses}"><img src="${f.photo}" alt="${f.name}" onerror="this.onerror=null; this.parentNode.insertBefore(document.createTextNode('👤'), this); this.remove();"></div>`;
                 }
 
                 let leftProfileHtml = `
                     <div class="fighter-profile-block">
                         ${avatarHtml}
                         <div class="name-wrapper">
-                            <h3 class="fighter-name">${f.name}</h3>
-                            <div class="record-subtext">${f.wins || 0}W ${f.losses || 0}L</div>
+                            <h3 class="fighter-name" data-fighter-id="${f.id}">${f.name}</h3>
+                            <div class="record-subtext">${Number(f.wins || 0)}W ${Number(f.losses || 0)}L ${streakBadge} ${coldStreakBadge}</div>
                         </div>
                     </div>`;
 
                 // Searches through fallback histories to catch old logs safely
-                let historyArray = f.compiled_history_deck || f.history_deck || f.history || [];
+                let historyArray = getFighterHistorySource(f).entries;
                 historyArray.sort((a, b) => {
                     const numA = parseInt(String(a.showName || a.cardNumber || '').replace(/\D/g, ''), 10) || 0;
                     const numB = parseInt(String(b.showName || b.cardNumber || '').replace(/\D/g, ''), 10) || 0;
@@ -384,18 +496,67 @@
                         const statusClass = isWin ? 'lbl-w' : 'lbl-l';
                         const opponentClass = isWin ? 'win' : 'loss';
                         const recordClass = isWin ? 'win' : 'loss';
+                        const loggedTimestamp = formatEventTimestamp(fight.loggedAt || '');
+                        const fightTime = String(fight.fightTime || '').trim();
+                        const fightTimeBadge = /^\d+:[0-5]\d$/.test(fightTime) && fightTime !== '00:00'
+                            ? `<span class="fight-time-badge">⏱️ ${fightTime}</span>`
+                            : '';
 
                         // CROSS-REFERENCE ENGINE: Pulls the OPPONENT'S live win/loss record directly out of the main roster data
                         const oppObj = historyFighters.find(item => item.name === fight.opponent);
                         let oppLiveRecord = oppObj ? `${oppObj.wins || 0}W ${oppObj.losses || 0}L` : "0W 0L";
 
                         const rematchText = fight.rematchNumber ? `Rematch #${fight.rematchNumber}` : '';
+                        const rivalryBadge = fight.rivalryTag === 'trilogy'
+                            ? '<span class="history-rivalry-pill history-rivalry-pill--trilogy">🔥 TRILOGY</span>'
+                            : fight.rivalryTag === 'rivalry'
+                                ? '<span class="history-rivalry-pill history-rivalry-pill--rivalry">👑 RIVALRY</span>'
+                                : '';
+                        const upsetBadge = fight.upsetAlert === true
+                            ? '<span class="upset-history-pill">🚨 UPSET</span>'
+                            : '';
+                        const fastTrackBadge = fight.fastTrackAlert === true
+                            ? '<span class="fast-track-history-pill">⚡ FAST-TRACKED</span>'
+                            : '';
+                        const shortNoticeBadge = fight.shortNotice === true
+                            ? '<span class="short-notice-history-pill">⚡ SHORT NOTICE</span>'
+                            : '';
+                        const bossSlayerBadge = fight.bossSlain === true
+                            ? '<span class="boss-slayer-history-pill">🗡️ BOSS SLAYER</span>'
+                            : '';
+                        const rebuildWinsRequired = Math.max(0, Math.floor(Number(fight.rebuildWinsRequired) || 0));
+                        const titleGateWinStreak = Math.max(0, Math.floor(Number(fight.winStreak) || 0));
+                        const titleGateBadge = fight.titleComebackCompleted === true
+                            ? '<span class="title-gate-history-pill title-gate-history-pill--eligible">🟢 TITLE ELIGIBLE</span>'
+                            : rebuildWinsRequired > 0
+                                ? `<span class="title-gate-history-pill title-gate-history-pill--locked">${titleGateWinStreak > 0
+                                    ? `🟡 REBUILDING • ${titleGateWinStreak}/${rebuildWinsRequired}W`
+                                    : `🔒 LOCKED • NEEDS ${rebuildWinsRequired}W`}</span>`
+                                : '';
+                        const coldStreakBadge = !isWin && typeof window.getLoseStreakBadgeHtml === 'function'
+                            ? window.getLoseStreakBadgeHtml(Math.max(0, Math.floor(Number(fight.loseStreak) || 0)))
+                            : '';
+                        const bonusType = String(fight.bonusType || '').toUpperCase();
+                        const bonusBadge = bonusType === 'FOTN'
+                            ? '<span class="performance-bonus-pill performance-bonus-pill--fotn">🏆 FOTN</span>'
+                            : bonusType === 'POTN'
+                                ? '<span class="performance-bonus-pill performance-bonus-pill--potn">💥 POTN</span>'
+                                : '';
                         rightDeckHtml += `
                             <div class="history-badge-brick ${classBrick}">
                                 <div class="brick-status-lbl ${statusClass}">${statusLetter}</div>
                                 <div class="brick-opponent ${opponentClass}" title="${fight.opponent}">${fight.opponent}</div>
                                 <div class="brick-opp-record ${recordClass}">${oppLiveRecord}</div>
-                                <div class="brick-method">${fight.method || 'Result'}</div>
+                                <div class="brick-method">${fight.method || 'Result'}${fightTimeBadge}</div>
+                                ${rivalryBadge}
+                                ${upsetBadge}
+                                ${fastTrackBadge}
+                                ${shortNoticeBadge}
+                                ${bossSlayerBadge}
+                                ${titleGateBadge}
+                                ${coldStreakBadge}
+                                ${bonusBadge}
+                                ${loggedTimestamp ? `<div class="brick-timestamp">${loggedTimestamp}</div>` : ''}
                                 <div class="brick-show">${fight.showName || 'Show'}</div>
                                 ${rematchText ? `<div class="brick-show">${rematchText}</div>` : ''}
                             </div>`;
@@ -416,14 +577,97 @@
                     brick.appendChild(deleteButton);
                 });
                 container.appendChild(row);
+                applyHistoryStreakPortraitClass(row.querySelector('.avatar-circle'), f);
             });
         }
 
         function getFighterHistorySource(fighter) {
             for (const key of ['compiled_history_deck', 'history_deck', 'history']) {
+                if (Array.isArray(fighter[key]) && fighter[key].length > 0) {
+                    return { key, entries: fighter[key] };
+                }
+            }
+            for (const key of ['compiled_history_deck', 'history_deck', 'history']) {
                 if (Array.isArray(fighter[key])) return { key, entries: fighter[key] };
             }
             return { key: 'compiled_history_deck', entries: [] };
+        }
+
+        function rebuildCurrentStreaksFromHistory(fighter, fallbackWinStreak, fallbackLoseStreak) {
+            const history = getFighterHistorySource(fighter).entries;
+            const hasResults = history.some(entry =>
+                ['win', 'loss'].includes(String(entry?.outcome || '').toLowerCase())
+            );
+            if (!hasResults) {
+                fighter.win_streak = Math.max(0, Math.floor(Number(fallbackWinStreak) || 0));
+                fighter.lose_streak = Math.max(0, Math.floor(Number(fallbackLoseStreak) || 0));
+                return;
+            }
+
+            let winStreak = 0;
+            let loseStreak = 0;
+            for (let index = history.length - 1; index >= 0; index--) {
+                const outcome = String(history[index]?.outcome || '').toLowerCase();
+                if (outcome === 'win' && loseStreak === 0) winStreak++;
+                else if (outcome === 'loss' && winStreak === 0) loseStreak++;
+                else break;
+            }
+            fighter.win_streak = winStreak;
+            fighter.lose_streak = loseStreak;
+        }
+
+        function rebuildTitleGateFromHistory(fighter) {
+            const history = getFighterHistorySource(fighter).entries;
+            const legacyMinimum = localStorage.getItem('titleWinMinimum') === '10' ? 10 : 5;
+            let storedRules = {};
+            try {
+                storedRules = JSON.parse(localStorage.getItem('universeTitleRules') || '{}') || {};
+            } catch (error) {
+                console.error('Unable to read title eligibility rules while rebuilding history.', error);
+            }
+            const rules = {
+                initialTitleWins: Number(storedRules.initialTitleWins) === 10 ? 10
+                    : Number(storedRules.initialTitleWins) === 5 ? 5 : legacyMinimum,
+                baseRebuildWins: [3, 4, 5].includes(Number(storedRules.baseRebuildWins))
+                    ? Number(storedRules.baseRebuildWins) : 3,
+                extraLossPenalty: [1, 2, 3].includes(Number(storedRules.extraLossPenalty))
+                    ? Number(storedRules.extraLossPenalty) : 2
+            };
+            let rebuildWinsRequired = 0;
+            let rebuildLossCount = 0;
+            let winStreak = 0;
+            let titleComebackCompleted = false;
+            let dominantExChampionRebuild = false;
+            history.forEach(entry => {
+                const outcome = String(entry?.outcome || '').toLowerCase();
+                if (outcome === 'loss') {
+                    rebuildLossCount = rebuildWinsRequired > 0 ? rebuildLossCount + 1 : 1;
+                    const cap = Math.min(15, rules.initialTitleWins || 15);
+                    dominantExChampionRebuild = entry.dominantExChampionException === true;
+                    rebuildWinsRequired = dominantExChampionRebuild
+                        ? 1
+                        : Math.min(
+                            cap,
+                            rules.baseRebuildWins + (rebuildLossCount - 1) * rules.extraLossPenalty
+                        );
+                    winStreak = 0;
+                    titleComebackCompleted = false;
+                } else if (outcome === 'win') {
+                    winStreak++;
+                    if (rebuildWinsRequired > 0 && winStreak >= rebuildWinsRequired) {
+                        rebuildWinsRequired = 0;
+                        rebuildLossCount = 0;
+                        titleComebackCompleted = true;
+                        dominantExChampionRebuild = false;
+                    } else if (rebuildWinsRequired === 0 && winStreak >= rules.initialTitleWins) {
+                        titleComebackCompleted = false;
+                    }
+                }
+            });
+            fighter.rebuild_wins_required = rebuildWinsRequired;
+            fighter.rebuild_loss_count = rebuildLossCount;
+            fighter.title_comeback_completed = titleComebackCompleted;
+            fighter.dominant_ex_champ_rebuild = dominantExChampionRebuild;
         }
 
         function sameHistoryMatch(first, second) {
@@ -512,6 +756,11 @@
                     .slice(0, historyIndex)
                     .filter(entry => isMatchingHistoryEntry(entry, match, sourceOutcome, match.opponent))
                     .length;
+                const opponentHistoryBefore = getFighterHistorySource(opponent).entries;
+                const matchingOpponentEntries = opponentHistoryBefore.filter(entry =>
+                    isMatchingHistoryEntry(entry, match, mirrorOutcome, sourceFighter.name)
+                );
+                const opponentEntryBefore = matchingOpponentEntries[matchingSourcesBefore] || null;
                 const updatedFighters = fighters.slice();
                 const updatedSource = { ...sourceFighter };
                 const updatedOpponent = { ...opponent };
@@ -544,7 +793,26 @@
                 const winner = sourceOutcome === 'win' ? updatedSource : updatedOpponent;
                 const loser = sourceOutcome === 'loss' ? updatedSource : updatedOpponent;
                 winner.wins = Math.max(0, Number(winner.wins || 0) - 1);
+                if (match.bossSlain === true) {
+                    winner.boss_slays = Math.max(0, Math.floor(Number(winner.boss_slays) || 0) - 1);
+                }
+                if (match.upsetAlert === true) {
+                    winner.giant_kills = Math.max(0, Math.floor(Number(winner.giant_kills) || 0) - 1);
+                }
                 loser.losses = Math.max(0, Number(loser.losses || 0) - 1);
+                const bonusType = String(match.bonusType || '').toUpperCase();
+                const adjustBonusCounter = (fighter, field) => {
+                    fighter[field] = Math.max(0, Math.floor(Number(fighter[field]) || 0) - 1);
+                    fighter.career_bonuses =
+                        Math.max(0, Math.floor(Number(fighter.fotn_bonuses) || 0)) +
+                        Math.max(0, Math.floor(Number(fighter.potn_bonuses) || 0));
+                };
+                if (bonusType === 'FOTN') {
+                    adjustBonusCounter(winner, 'fotn_bonuses');
+                    adjustBonusCounter(loser, 'fotn_bonuses');
+                } else if (bonusType === 'POTN') {
+                    adjustBonusCounter(winner, 'potn_bonuses');
+                }
                 const method = String(match.method || '').toLowerCase();
                 const methodStat = method.includes('pinfall') ? 'win_pinfall'
                     : method.includes('submission') ? 'win_submission'
@@ -552,13 +820,24 @@
                     : null;
                 if (methodStat) winner[methodStat] = Math.max(0, Number(winner[methodStat] || 0) - 1);
 
-                const winnerHistory = getFighterHistorySource(winner).entries;
-                let streak = 0;
-                for (let index = winnerHistory.length - 1; index >= 0; index--) {
-                    if (String(winnerHistory[index].outcome || '').toLowerCase() !== 'win') break;
-                    streak++;
-                }
-                winner.win_streak = streak;
+                rebuildCurrentStreaksFromHistory(
+                    updatedSource,
+                    match.winStreakBefore,
+                    match.loseStreakBefore
+                );
+                rebuildCurrentStreaksFromHistory(
+                    updatedOpponent,
+                    opponentEntryBefore?.winStreakBefore,
+                    opponentEntryBefore?.loseStreakBefore
+                );
+                rebuildTitleGateFromHistory(updatedSource);
+                rebuildTitleGateFromHistory(updatedOpponent);
+                [winner, loser].forEach(fighter => {
+                    const history = getFighterHistorySource(fighter).entries;
+                    const latestEntry = history[history.length - 1];
+                    fighter.fast_tracked = latestEntry?.fastTrackAlert === true &&
+                        String(latestEntry.outcome || '').toLowerCase() === 'win';
+                });
 
                 const winnerName = winner.name;
                 const loserName = loser.name;
@@ -594,7 +873,6 @@
                     lifetimeDefenseCounted: archivedRecord?.match.lifetimeDefenseCounted === true || storedMatch?.state?.lifetimeDefenseCounted === true,
                     titleId: archivedRecord?.match.titleId || storedMatch?.state?.titleId || ''
                 };
-
                 const updatedEvents = eventHistory.map(event => ({ ...event }));
                 if (archivedRecord) {
                     updatedEvents[archivedRecord.eventIndex] = {
@@ -861,6 +1139,8 @@
             if (inputB) inputB.value = '';
             if (portraitA) portraitA.textContent = '👤';
             if (portraitB) portraitB.textContent = '👤';
+            applyHistoryStreakPortraitClass(portraitA, null);
+            applyHistoryStreakPortraitClass(portraitB, null);
             updateHistoryCompareDatalists();
             // Clear persisted compare state
             localStorage.removeItem('wwe_history_compare_fighter_a');
@@ -881,5 +1161,7 @@
         }
     </script>
     
+    <script src="settings.js"></script>
+    <script src="romantic-partners.js"></script>
 </body>
 </html>

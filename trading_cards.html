@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Universe - Trading Cards</title>
+    <link rel="stylesheet" href="layout.css">
+    <style>
+        :root {
+            color-scheme: dark;
+            --broadcast-bg: #0b1120;
+            --broadcast-panel: #162032;
+            --broadcast-border: #29384d;
+            --broadcast-text: #f8fafc;
+        }
+        * { box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            margin: 0;
+            background: var(--broadcast-bg);
+            color: var(--broadcast-text);
+            font-family: Inter, "Segoe UI", sans-serif;
+        }
+        .navbar-sidebar-left .nav-links a[href="trading_cards.html"] {
+            border-left: 3px solid #e11d48 !important;
+            background: #e11d48 !important;
+            color: #f8fafc !important;
+        }
+        main {
+            width: calc(100% - 48px);
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 34px 0 48px;
+        }
+        .page-heading { margin-bottom: 22px; }
+        .page-heading h2 {
+            margin: 0 0 7px;
+            color: var(--broadcast-text);
+            font-size: clamp(1.6rem, 3vw, 2.2rem);
+            letter-spacing: .04em;
+            text-transform: uppercase;
+        }
+        .page-heading p { margin: 0; color: #94a3b8; }
+        .collection-toolbar {
+            display: grid;
+            grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(120px, auto));
+            gap: 10px;
+            margin-bottom: 18px;
+            padding: 14px;
+            border: 1px solid var(--broadcast-border);
+            border-radius: 12px;
+            background: var(--broadcast-panel);
+        }
+        .collection-toolbar input, .collection-toolbar select {
+            min-width: 0;
+            width: 100%;
+            padding: 11px 12px;
+            border: 1px solid var(--broadcast-border);
+            border-radius: 8px;
+            background: #0b1120;
+            color: var(--broadcast-text);
+            font: inherit;
+        }
+        .collection-toolbar input:focus, .collection-toolbar select:focus {
+            outline: 2px solid rgba(225, 29, 72, .45);
+            border-color: #e11d48;
+        }
+        .collection-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin: 0 2px 12px;
+            color: #94a3b8;
+            font-size: .82rem;
+            font-weight: 700;
+        }
+        .collection-meta .status-error { color: #fda4af; }
+        .trading-card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+            gap: 22px;
+        }
+        .trading-card {
+            position: relative;
+            height: 430px;
+            min-width: 0;
+            perspective: 1200px;
+            cursor: pointer;
+            outline: none;
+        }
+        .trading-card:focus-visible { outline: 2px solid #f8fafc; outline-offset: 4px; border-radius: 14px; }
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transform-style: preserve-3d;
+            transition: transform .65s cubic-bezier(.2,.7,.2,1);
+        }
+        .trading-card.is-flipped .card-inner { transform: rotateY(180deg); }
+        .card-face {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 2px solid var(--broadcast-border);
+            border-radius: 14px;
+            background: linear-gradient(155deg, #1a2639, #101827 72%);
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, .28);
+        }
+        .card-face::after {
+            position: absolute;
+            inset: -80%;
+            z-index: 3;
+            background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,.16) 49%, rgba(255,255,255,.04) 53%, transparent 60%);
+            content: "";
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(-45%) rotate(12deg);
+            transition: opacity .25s ease, transform .7s ease;
+        }
+        .trading-card:hover .card-face::after { opacity: 1; transform: translateX(45%) rotate(12deg); }
+        .card-front { z-index: 1; }
+        .card-back { padding: 6px 8px; transform: rotateY(180deg); }
+        .foil-champion .card-face { border-color: #f5c451; box-shadow: 0 0 20px rgba(245, 196, 81, .2), 0 12px 28px rgba(0,0,0,.28); }
+        .foil-champion .card-face::before {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            border-radius: inherit;
+            background: linear-gradient(135deg, rgba(255,226,137,.16), transparent 35%, rgba(245,196,81,.08));
+            content: "";
+            pointer-events: none;
+        }
+        .foil-mythic .card-face {
+            border-color: #c2414f;
+            box-shadow: 0 0 20px rgba(225, 29, 72, .22), 0 0 28px rgba(34, 211, 238, .12), 0 12px 28px rgba(0,0,0,.28);
+            animation: mythicAura 2s ease-in-out infinite alternate;
+        }
+        .foil-contender .card-face { border-color: #7aa4ce; box-shadow: 0 0 15px rgba(96, 165, 250, .14), 0 12px 28px rgba(0,0,0,.28); }
+        @keyframes mythicAura {
+            from { box-shadow: 0 0 13px rgba(225,29,72,.19), 0 0 18px rgba(34,211,238,.08), 0 12px 28px rgba(0,0,0,.28); }
+            to { box-shadow: 0 0 22px rgba(225,29,72,.3), 0 0 25px rgba(34,211,238,.22), 0 12px 28px rgba(0,0,0,.28); }
+        }
+        .card-badges {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            left: 12px;
+            z-index: 4;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 8px;
+            pointer-events: none;
+        }
+        .rank-badge, .style-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 27px;
+            padding: 4px 9px;
+            border: 1px solid var(--broadcast-border);
+            border-radius: 7px;
+            background: rgba(11, 17, 32, .88);
+            color: var(--broadcast-text);
+            font-size: .72rem;
+            font-weight: 900;
+            letter-spacing: .04em;
+        }
+        .rank-badge.is-champion { border-color: #f5c451; color: #ffe08a; }
+        .rank-badge.is-contender { border-color: #7aa4ce; color: #bfdbfe; }
+        .style-badge { gap: 5px; color: #cbd5e1; }
+        .card-art {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 3 / 4;
+            overflow: hidden;
+            background: radial-gradient(ellipse at 50% 25%, #29384d, #0b1120 75%);
+        }
+        .card-art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+        .art-fallback {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            color: rgba(248, 250, 252, .65);
+            font-size: 4rem;
+            font-weight: 900;
+            text-shadow: 0 3px 18px rgba(0,0,0,.55);
+        }
+        .card-nameplate {
+            position: relative;
+            z-index: 4;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            grid-template-rows: auto auto auto;
+            align-items: center;
+            gap: 4px 8px;
+            min-height: 124px;
+            padding: 10px 12px;
+            border-top: 1px solid rgba(148, 163, 184, .15);
+            background: linear-gradient(180deg, rgba(22,32,50,.96), #111827);
+        }
+        .fighter-copy { display: contents; }
+        .fighter-name {
+            grid-column: 1 / -1;
+            display: block;
+            margin: 0;
+            overflow-wrap: anywhere;
+            color: var(--broadcast-text);
+            font-size: 14px;
+            font-weight: 900;
+            line-height: 1.2;
+            white-space: normal;
+        }
+        .fighter-division { grid-column: 1 / -1; display: block; color: #94a3b8; font-size: .68rem; font-weight: 800; text-transform: uppercase; }
+        .fighter-record { grid-column: 1; grid-row: 3; color: #e2e8f0; font-size: .79rem; font-weight: 900; }
+        .upload-button {
+            grid-column: 2;
+            grid-row: 3;
+            align-self: center;
+            justify-self: end;
+            max-width: 116px;
+            padding: 6px 8px;
+            border: 1px solid #3b4e69;
+            border-radius: 7px;
+            background: #1d2b40;
+            color: #f8fafc;
+            font-size: .67rem;
+            font-weight: 800;
+            line-height: 1.25;
+            cursor: pointer;
+        }
+        .upload-button:hover { border-color: #e11d48; background: #302036; }
+        .back-heading {
+            margin: 0 0 4px;
+            color: #f8fafc;
+            font-size: 1.2rem;
+            font-weight: 900;
+            line-height: 1.2;
+        }
+        .back-subheading {
+            margin: 0 0 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--broadcast-border);
+            color: #94a3b8;
+            font-size: .65rem;
+            font-weight: 800;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+        .stat-sheet { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .stat-cell {
+            min-height: 0;
+            padding: 6px 8px;
+            border: 1px solid var(--broadcast-border);
+            border-radius: 9px;
+            background: rgba(11,17,32,.52);
+            font-size: 11px;
+        }
+        .stat-label { display: block; margin-bottom: 4px; color: #94a3b8; font-size: 11px; font-weight: 800; line-height: 1.15; letter-spacing: .05em; text-transform: uppercase; }
+        .stat-value { display: block; color: #f8fafc; font-size: 14px; font-weight: 900; }
+        .foil-champion .back-heading { color: #ffe08a; }
+        .foil-mythic .back-heading { color: #fda4af; }
+        .foil-contender .back-heading { color: #bfdbfe; }
+        .empty-state {
+            grid-column: 1 / -1;
+            padding: 42px 20px;
+            border: 1px dashed var(--broadcast-border);
+            border-radius: 12px;
+            color: #94a3b8;
+            text-align: center;
+        }
+        .cropper-modal[hidden] { display: none; }
+        .cropper-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: grid;
+            place-items: center;
+            padding: 18px;
+            background: rgba(2, 6, 23, .82);
+        }
+        .cropper-panel {
+            width: min(520px, 100%);
+            padding: 20px;
+            border: 1px solid var(--broadcast-border);
+            border-radius: 14px;
+            background: #162032;
+            box-shadow: 0 22px 70px rgba(0,0,0,.5);
+        }
+        .cropper-panel h2 { margin: 0 0 6px; color: var(--broadcast-text); font-size: 1.15rem; }
+        .cropper-help { margin: 0 0 14px; color: #94a3b8; font-size: .82rem; }
+        .crop-viewport {
+            position: relative;
+            width: min(300px, 100%);
+            aspect-ratio: 3 / 4;
+            margin: 0 auto 14px;
+            overflow: hidden;
+            border: 2px solid #e11d48;
+            border-radius: 8px;
+            background: #0b1120;
+            cursor: grab;
+            touch-action: none;
+        }
+        .crop-viewport:active { cursor: grabbing; }
+        .crop-viewport img { position: absolute; max-width: none; max-height: none; user-select: none; pointer-events: none; }
+        .cropper-zoom { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 12px; color: #cbd5e1; font-size: .78rem; font-weight: 800; }
+        .cropper-zoom input { width: 100%; accent-color: #e11d48; }
+        .cropper-status { min-height: 1.3em; margin: 10px 0 0; color: #fda4af; font-size: .78rem; }
+        .cropper-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 12px; }
+        .cropper-actions button {
+            padding: 9px 14px;
+            border: 1px solid var(--broadcast-border);
+            border-radius: 7px;
+            background: #0b1120;
+            color: var(--broadcast-text);
+            font: inherit;
+            font-size: .82rem;
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .cropper-actions button.primary { border-color: #e11d48; background: #be123c; }
+        .cropper-actions button:disabled { cursor: wait; opacity: .65; }
+        @media (max-width: 920px) {
+            .collection-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .collection-toolbar input { grid-column: 1 / -1; }
+        }
+        @media (max-width: 600px) {
+            main { width: calc(100% - 32px); padding-top: 24px; }
+            .collection-toolbar { grid-template-columns: 1fr; }
+            .collection-toolbar input { grid-column: auto; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar-sidebar-left">
+        <h1 class="logo">WWE Universe</h1>
+        <div class="nav-links">
+            <a href="index.html" class="nav-btn">Fight Cards</a>
+            <a href="fighters.html" class="nav-btn">Master Roster</a>
+            <a href="future_fighters.html" class="nav-btn">FUTURE FIGHTERS</a>
+            <a href="trading_cards.html" class="nav-btn" aria-current="page">TRADING CARDS</a>
+            <a href="alliances.html" class="nav-btn">ALLIANCES &amp; COUPLES</a>
+            <a href="history.html" class="nav-btn">Event History</a>
+            <a href="fighter-history.html" class="nav-btn">Fighter History</a>
+            <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="tournaments.html" class="nav-btn">TOURNAMENTS</a>
+            <a href="charts.html?v=10.16" class="nav-btn">Roster Analytics</a>
+            <a href="match_analyzer.html" class="nav-btn">CHAMPIONSHIP ANALYZER</a>
+        </div>
+        <div class="sidebar-settings">
+            <button type="button" class="settings-toggle" aria-expanded="false" aria-controls="sidebarSettingsMenu">⚙️ SETTINGS ▾</button>
+            <div class="settings-menu" id="sidebarSettingsMenu" hidden>
+                <button type="button" data-settings-action="export">💾 Export Full Backup</button>
+                <button type="button" class="settings-reset" data-settings-action="reset">🔄 Reset Records, Titles &amp; Cards</button>
+            </div>
+        </div>
+    </nav>
+    <main>
+        <header class="page-heading">
+            <h2>🃏 Trading Cards</h2>
+            <p>Collect torso-up portraits, discover each fighter’s foil tier, and flip cards for the career stat sheet.</p>
+        </header>
+        <section class="collection-toolbar" aria-label="Trading card filters">
+            <input id="fighterSearch" type="search" placeholder="Search fighter..." aria-label="Search fighter">
+            <select id="genderFilter" aria-label="Filter by gender">
+                <option value="all">All</option>
+                <option value="men">Men</option>
+                <option value="women">Women</option>
+            </select>
+            <select id="rankFilter" aria-label="Filter by championship ranking">
+                <option value="all">All</option>
+                <option value="ranked">Champions &amp; Top 15</option>
+            </select>
+            <select id="foilFilter" aria-label="Filter by foil rarity">
+                <option value="all">All</option>
+                <option value="foil">Gold &amp; Mythic Foil</option>
+            </select>
+            <span id="collectionCount" aria-live="polite"></span>
+        </section>
+        <div class="collection-meta">
+            <span id="pageStatus" role="status" aria-live="polite">Loading roster…</span>
+            <span id="visibleCount"></span>
+        </div>
+        <section id="tradingCardGrid" class="trading-card-grid" aria-label="Fighter trading cards"></section>
+    </main>
+    <input id="torsoImageInput" type="file" accept="image/*" hidden>
+    <div id="cropperModal" class="cropper-modal" role="dialog" aria-modal="true" aria-labelledby="cropperTitle" hidden>
+        <div class="cropper-panel">
+            <h2 id="cropperTitle">Frame Torso Render</h2>
+            <p class="cropper-help">Drag to position the fighter, then adjust the crop for a vertical 3:4 card portrait.</p>
+            <div id="cropViewport" class="crop-viewport">
+                <img id="cropImage" alt="Image crop preview">
+            </div>
+            <label class="cropper-zoom" for="cropZoom">
+                <span>Zoom</span>
+                <input id="cropZoom" type="range" min="1" max="3" step="0.01" value="1">
+            </label>
+            <p id="cropperStatus" class="cropper-status" role="status" aria-live="polite"></p>
+            <div class="cropper-actions">
+                <button id="cancelCrop" type="button">Cancel</button>
+                <button id="saveCrop" class="primary" type="button">Save Torso Render</button>
+            </div>
+        </div>
+    </div>
+    <script src="rankings.js"></script>
+    <script src="settings.js"></script>
+    <script src="trading_cards.js"></script>
+</body>
+</html>

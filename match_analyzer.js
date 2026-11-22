@@ -27,6 +27,17 @@ function formatTitleMatchMethod(match) {
     return knownMethods[method.toLowerCase()] || method || 'Unknown method';
 }
 
+function createFighterNameLabel(name, fightersByName) {
+    const label = document.createElement('span');
+    const normalizedName = String(name || '').normalize('NFC').trim().toLocaleLowerCase();
+    const fighter = fightersByName.get(normalizedName);
+    label.className = 'romantic-partner-name';
+    label.setAttribute('data-romantic-fighter-name', name);
+    if (fighter?.id) label.setAttribute('data-fighter-id', String(fighter.id));
+    label.textContent = name;
+    return label;
+}
+
 function populateFighterTitleMatchNames() {
     const datalist = document.getElementById('fighterTitleMatchNames');
     if (!datalist) return;
@@ -47,6 +58,10 @@ function lookupFighterTitleMatches(selectedName) {
     const exactName = selectedName.trim();
     if (!exactName) return;
 
+    const fightersByName = new Map(loadRosterFighters().map(fighter => [
+        String(fighter.name || '').normalize('NFC').trim().toLocaleLowerCase(),
+        fighter
+    ]));
     const championships = loadChampionships();
     const matchHistoryArray = getArchivedMatchHistory()
         .map((event, index) => ({
@@ -105,27 +120,37 @@ function lookupFighterTitleMatches(selectedName) {
             const loserIsChampion = championBeforeMatch === loser;
             const selectedIsWinner = exactName === winner;
             let outcomeClass;
-            let outcomeText;
-
             if (selectedIsWinner) {
                 if (winnerIsChampion) {
                     outcomeClass = 'defended';
-                    outcomeText = `DEFENDED the ${titleName} against ${loser}`;
                 } else {
                     outcomeClass = 'won';
-                    outcomeText = `WON the ${titleName} by defeating ${loser}`;
                 }
             } else if (loserIsChampion) {
                 outcomeClass = 'lost';
-                outcomeText = `LOST the ${titleName} to ${winner}`;
             } else {
                 outcomeClass = 'challenger-fail';
-                outcomeText = `Challenged for the ${titleName} but lost to ${winner}`;
             }
 
             const line = document.createElement('div');
             line.className = `title-match-result ${outcomeClass}`;
-            line.textContent = `${showName} - ${outcomeText} via ${formatTitleMatchMethod(match)}`;
+            line.append(document.createTextNode(`${showName} - `));
+            if (selectedIsWinner) {
+                if (winnerIsChampion) {
+                    line.append(document.createTextNode(`DEFENDED the ${titleName} against `));
+                    line.append(createFighterNameLabel(loser, fightersByName));
+                } else {
+                    line.append(document.createTextNode(`WON the ${titleName} by defeating `));
+                    line.append(createFighterNameLabel(loser, fightersByName));
+                }
+            } else if (loserIsChampion) {
+                line.append(document.createTextNode(`LOST the ${titleName} to `));
+                line.append(createFighterNameLabel(winner, fightersByName));
+            } else {
+                line.append(document.createTextNode(`Challenged for the ${titleName} but lost to `));
+                line.append(createFighterNameLabel(winner, fightersByName));
+            }
+            line.append(document.createTextNode(` via ${formatTitleMatchMethod(match)}`));
             resultsContainer.appendChild(line);
 
             if (state) {

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WWE Universe - Tournaments</title>
+    <link rel="stylesheet" href="layout.css">
+</head>
+<body class="tournaments-page">
+    <nav class="navbar-sidebar-left">
+        <h1 class="logo">WWE Universe</h1>
+        <div class="nav-links">
+            <a href="index.html" class="nav-btn">Fight Cards</a>
+            <a href="fighters.html" class="nav-btn">Master Roster</a>
+            <a href="future_fighters.html" class="nav-btn">FUTURE FIGHTERS</a>
+            <a href="trading_cards.html" class="nav-btn">TRADING CARDS</a>
+            <a href="alliances.html" class="nav-btn">ALLIANCES &amp; COUPLES</a>
+            <a href="history.html" class="nav-btn">Event History</a>
+            <a href="fighter-history.html" class="nav-btn">Fight History Log</a>
+            <a href="lineage.html" class="nav-btn">Championship Lineage</a>
+            <a href="tournaments.html" class="nav-btn active" aria-current="page">TOURNAMENTS</a>
+            <a href="charts.html?v=10.16" class="nav-btn">Roster Analytics</a>
+            <a href="match_analyzer.html" class="nav-btn">CHAMPIONSHIP ANALYZER</a>
+        </div>
+        <div class="sidebar-settings">
+            <button type="button" class="settings-toggle" aria-expanded="false" aria-controls="sidebarSettingsMenu">⚙️ SETTINGS ▾</button>
+            <div class="settings-menu" id="sidebarSettingsMenu" hidden>
+                <button type="button" data-settings-action="export">💾 Export Full Backup</button>
+                <button type="button" class="settings-reset" data-settings-action="reset">🔄 Reset Records, Titles &amp; Cards</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="tournaments-main">
+        <header class="tournaments-heading">
+            <span class="tournaments-heading__eyebrow">Single elimination • Live advancement • Tournament archive</span>
+            <h2>Tournament / Grand Prix Bracket Generator</h2>
+            <p>Seed contenders, book bracket fights on your active card, and crown a tournament champion.</p>
+        </header>
+
+        <section class="tournament-builder" aria-labelledby="tournamentBuilderHeading">
+            <div class="tournament-builder__header">
+                <h3 id="tournamentBuilderHeading">Create New Tournament / Grand Prix</h3>
+                <p>Auto-seed ranked contenders, randomize an active roster, or enter each seed manually.</p>
+            </div>
+            <form id="tournamentCreatorForm" class="tournament-creator-form">
+                <div class="tournament-field">
+                    <label for="tournamentName">Tournament Name</label>
+                    <input id="tournamentName" name="name" type="text" maxlength="80" placeholder="King of the Ring Grand Prix" required>
+                </div>
+                <div class="tournament-field">
+                    <label for="tournamentSize">Bracket Size</label>
+                    <select id="tournamentSize" name="size">
+                        <option value="8">8 Fighters (3 Rounds)</option>
+                        <option value="16">16 Fighters (4 Rounds)</option>
+                    </select>
+                </div>
+                <div class="tournament-field">
+                    <label for="tournamentDivision">Division Filter</label>
+                    <select id="tournamentDivision" name="division">
+                        <option value="male">Men</option>
+                        <option value="female">Women</option>
+                        <option value="open">Open-Weight</option>
+                    </select>
+                </div>
+                <div class="tournament-field">
+                    <label for="tournamentPrize">Optional Championship Belt Prize</label>
+                    <select id="tournamentPrize" name="prizeTitleId"></select>
+                </div>
+
+                <div class="tournament-seeding-controls" role="group" aria-label="Tournament seeding">
+                    <button id="autoSeedTournament" class="tournament-button tournament-button--secondary" type="button">⚡ Auto-Seed Top Contenders</button>
+                    <button id="randomizeTournament" class="tournament-button tournament-button--secondary" type="button">🎲 Randomize Bracket</button>
+                    <button id="toggleManualSetup" class="tournament-button tournament-button--secondary" type="button" aria-expanded="false" aria-controls="manualTournamentSetup">✏️ Manual Setup</button>
+                </div>
+
+                <p id="tournamentSeedStatus" class="tournament-seed-status" role="status" aria-live="polite">Choose a seeding option to fill the bracket.</p>
+                <div id="manualTournamentSetup" class="manual-tournament-setup" hidden>
+                    <div class="manual-tournament-setup__heading">
+                        <strong>Set each seed</strong>
+                        <span>Type a fighter name or choose from the suggestions.</span>
+                    </div>
+                    <div id="tournamentSeedInputs" class="tournament-seed-inputs"></div>
+                </div>
+                <div id="tournamentSeedPreview" class="tournament-seed-preview" aria-live="polite"></div>
+                <button class="tournament-button tournament-button--primary tournament-create-button" type="submit">🏁 Create Tournament</button>
+            </form>
+            <p id="tournamentFeedback" class="tournament-feedback" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="tournament-arena" aria-labelledby="tournamentArenaHeading">
+            <div class="tournament-arena__heading">
+                <div>
+                    <span class="tournaments-heading__eyebrow">Bracket board</span>
+                    <h3 id="tournamentArenaHeading">Active &amp; Past Tournaments</h3>
+                </div>
+                <label class="tournament-archive-control" for="tournamentArchiveSelect">
+                    <span>View tournament</span>
+                    <select id="tournamentArchiveSelect"></select>
+                </label>
+            </div>
+            <div id="tournamentEmptyState" class="tournament-empty-state">
+                <strong>No tournaments yet</strong>
+                <span>Create and seed a tournament above to get started.</span>
+            </div>
+            <div id="tournamentDisplay" hidden>
+                <div id="tournamentSummary" class="tournament-summary"></div>
+                <p id="tournamentBracketFeedback" class="tournament-bracket-feedback" role="status" aria-live="polite"></p>
+                <div id="tournamentBracket" class="tournament-bracket" aria-label="Tournament bracket"></div>
+            </div>
+        </section>
+    </main>
+
+    <script src="rankings.js"></script>
+    <script src="settings.js"></script>
+    <script src="tournaments.js"></script>
+</body>
+</html>

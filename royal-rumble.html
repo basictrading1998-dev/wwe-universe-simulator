@@ -57,6 +57,8 @@
             <a href="index.html" style="background: transparent; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fight Cards</a>
             <a href="fighters.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Master Roster</a>
             <a href="future_fighters.html">FUTURE FIGHTERS</a>
+            <a href="trading_cards.html" class="nav-btn">TRADING CARDS</a>
+            <a href="alliances.html" class="nav-btn">ALLIANCES &amp; COUPLES</a>
             <a href="history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Event History</a>
             <a href="fighter-history.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Fighter History</a>
             <a href="lineage.html" style="background: transparent; border: none; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.85rem; text-decoration: none; text-transform: uppercase;">Championship Lineage</a>
@@ -68,6 +70,13 @@
                     <div id="betting-money-display" style="background: rgba(255, 255, 255, 0.2); color: white; padding: 8px 16px; border-radius: 6px; font-weight: bold; font-size: 0.95rem; text-align: right;">$1,000</div>
                     <button onclick="resetBettingMoney()" style="background:#ffffff33; color:white; border:1px solid rgba(255,255,255,0.35); padding:6px 10px; border-radius:6px; cursor:pointer; font-size:0.8rem; font-weight:700;">Reset</button>
         </div>
+<div class="sidebar-settings">
+    <button type="button" class="settings-toggle" aria-expanded="false" aria-controls="sidebarSettingsMenu">⚙️ SETTINGS ▾</button>
+    <div class="settings-menu" id="sidebarSettingsMenu" hidden>
+        <button type="button" data-settings-action="export">💾 Export Full Backup</button>
+        <button type="button" class="settings-reset" data-settings-action="reset">🔄 Reset Records, Titles &amp; Cards</button>
+    </div>
+</div>
     </nav>
 
     <div style="background-color: #0284c7; padding: 12px 18px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
@@ -497,5 +506,6 @@
             }
         }, 500);
     </script>
+    <script src="settings.js"></script>
 </body>
 </html>
