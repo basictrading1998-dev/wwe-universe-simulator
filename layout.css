@@ -35,6 +35,19 @@
     width: 100%;
 }
 
+.show-reroll-control {
+    display: inline-flex;
+    align-items: center;
+}
+
+.randomize-show-button:disabled,
+.smart-book-card-button:disabled {
+    opacity: 0.45 !important;
+    cursor: not-allowed !important;
+    pointer-events: none !important;
+    filter: grayscale(0.6) !important;
+}
+
 .win-streak-badge {
     display: inline-flex;
     align-items: center;
@@ -2766,6 +2779,24 @@ body.roster-edit-open {
 
 .title-gate-warning[hidden] {
     display: none;
+}
+
+.title-match-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 1;
+    cursor: pointer;
+}
+
+.title-match-toggle--locked {
+    opacity: 0.42;
+    cursor: not-allowed;
+    filter: grayscale(1);
+}
+
+.title-match-toggle--locked input {
+    cursor: not-allowed;
 }
 
 .fast-tracked-roster-badge {

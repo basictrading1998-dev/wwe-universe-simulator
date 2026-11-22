@@ -124,6 +124,56 @@ function getTitleEligibilityStatus(fighter) {
     };
 }
 
+function getCurrentBeltsCount(fighter) {
+    let titles;
+    try {
+        titles = JSON.parse(localStorage.getItem('wwe_titles') || '[]');
+    } catch (error) {
+        console.error('Unable to read active championships for title-match eligibility.', error);
+        return 0;
+    }
+    if (!Array.isArray(titles)) {
+        console.error('The saved championship list is not valid for title-match eligibility.');
+        return 0;
+    }
+
+    const fighterId = String(fighter?.id || '');
+    const fighterName = normalizeLookupKey(fighter?.name);
+    return titles.filter(title => {
+        if (!title || title.retired === true || title.active === false) return false;
+        const champion = title.champion && typeof title.champion === 'object'
+            ? title.champion
+            : null;
+        const championId = String(title.championId || champion?.id || '');
+        if (championId) return !!fighterId && championId === fighterId;
+        const championName = normalizeLookupKey(
+            champion?.name ||
+            (typeof title.champion === 'string' ? title.champion : '') ||
+            title.championName
+        );
+        return !!fighterName && championName === fighterName;
+    }).length;
+}
+
+function isTitleMatchEligibleFighter(fighter, rules = getCardsTitleRules()) {
+    if (!fighter) return false;
+    return getCurrentBeltsCount(fighter) >= 1 ||
+        (Number(fighter.win_streak) >= rules.initialTitleWins &&
+            Number(fighter.rebuild_wins_required || 0) === 0);
+}
+
+function canBookTitleMatch(fighter1, fighter2) {
+    if (!fighter1 || !fighter2) return false;
+    const fighter1Id = String(fighter1.id || normalizeLookupKey(fighter1.name));
+    const fighter2Id = String(fighter2.id || normalizeLookupKey(fighter2.name));
+    if (!fighter1Id || fighter1Id === fighter2Id) return false;
+    const rules = getCardsTitleRules();
+    return isTitleMatchEligibleFighter(fighter1, rules) &&
+        isTitleMatchEligibleFighter(fighter2, rules);
+}
+
+window.canBookTitleMatch = canBookTitleMatch;
+
 function applyTitleGateWin(fighter, rules) {
     const required = Math.max(0, Math.floor(Number(fighter.rebuild_wins_required) || 0));
     if (required > 0 && Number(fighter.win_streak) >= required) {
@@ -2037,20 +2087,31 @@ function buildShowSchedulerHeader() {
         headerRow.appendChild(locatorFragment);
     }
     const randomBtn = document.createElement('button');
+    randomBtn.id = 'randomizeShowButton';
+    randomBtn.className = 'randomize-show-button';
     randomBtn.textContent = 'RANDOMIZE ALL';
     randomBtn.style.cssText = 'background:#7c3aed; color:white; border:none; padding:6px 10px; border-radius:4px; cursor:pointer; font-weight:bold;';
+    randomBtn.title = 'Randomize all matchups in the active show.';
     randomBtn.addEventListener('click', window.randomizeEntireShow);
-    headerRow.appendChild(randomBtn);
+    const randomBtnWrapper = document.createElement('span');
+    randomBtnWrapper.className = 'show-reroll-control';
+    randomBtnWrapper.appendChild(randomBtn);
+    headerRow.appendChild(randomBtnWrapper);
 
     const smartBookButtonTemplate = document.getElementById('smartBookCardButtonTemplate');
     const smartBookBtn = smartBookButtonTemplate?.content.firstElementChild?.cloneNode(true) ||
         document.createElement('button');
     smartBookBtn.type = 'button';
+    smartBookBtn.id = 'smartBookCardButton';
     smartBookBtn.className = 'smart-book-card-button';
     smartBookBtn.textContent = '🧠 SMART BOOK CARD';
     smartBookBtn.title = 'Book open-weight matchups using gender divisions, rankings, records, streaks, titles, and show tier';
     smartBookBtn.addEventListener('click', window.smartBookFightCard);
-    headerRow.appendChild(smartBookBtn);
+    const smartBookBtnWrapper = document.createElement('span');
+    smartBookBtnWrapper.className = 'show-reroll-control';
+    smartBookBtnWrapper.title = smartBookBtn.title;
+    smartBookBtnWrapper.appendChild(smartBookBtn);
+    headerRow.appendChild(smartBookBtnWrapper);
     
     const addBtn = document.createElement('button');
     addBtn.textContent = 'ADD SHOW';
@@ -2245,11 +2306,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits on focus.', error));
     });
     window.addEventListener('storage', event => {
-        if (event.key !== 'wwe_fighters') return;
-        refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits after roster storage changed.', error));
+        const activeMatchesStorageKey = getActiveShowMatchesStorageKey();
+        if (activeMatchesStorageKey && event.key === activeMatchesStorageKey) {
+            updateRandomizerState();
+            return;
+        }
+        if (event.key === 'wwe_fighters') {
+            refreshFightCardView()
+                .catch(error => console.warn('Unable to refresh fight-card portraits after roster storage changed.', error))
+                .then(refreshAllTitleFightStates);
+            return;
+        }
+        if (['wwe_titles', 'universeTitleRules', 'titleWinMinimum'].includes(event.key)) {
+            refreshAllTitleFightStates();
+        }
     });
     window.addEventListener('wwe_fighters:changed', () => {
-        refreshFightCardView().catch(error => console.warn('Unable to refresh fight-card portraits after roster update.', error));
+        refreshFightCardView()
+            .catch(error => console.warn('Unable to refresh fight-card portraits after roster update.', error))
+            .then(refreshAllTitleFightStates);
+    });
+    window.addEventListener('wwe_titles:changed', () => {
+        window.requestAnimationFrame(refreshAllTitleFightStates);
     });
     window.addEventListener('universeTitleRules:changed', () => {
         refreshFightersFromStorage(true);
@@ -2630,7 +2708,7 @@ function renderCardRows(box, num, tierId, isMain) {
                 </div>
                                 <div style="width:30%; display:flex; justify-content:flex-end; gap:8px; font-size:0.7rem; font-weight:bold; color:#475569; align-items:center;">
                     <span id="${uId}-title-gate-warning" class="title-gate-warning" hidden></span>
-                    <label style="display:flex; align-items:center; gap:4px; cursor:pointer;"><input type="checkbox" id="${uId}-title-check" onchange="toggleTitleFight('${uId}', this)"> 🏆 TITLE / BELT MATCH</label>
+                    <label class="title-match-toggle"><input type="checkbox" id="${uId}-title-check" onchange="toggleTitleFight('${uId}', this)"> 🏆 TITLE / BELT MATCH</label>
                     <div style="display:flex; align-items:center; gap:6px;">
                         <select id="${uId}-title-name-input" style="display:none; padding:6px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.65rem; font-weight:bold; width:180px; outline:none; background:white; color:#1e293b;"></select>
                         <div id="${uId}-title-defense-milestone" class="title-defense-milestone" hidden aria-live="polite"></div>
@@ -2640,6 +2718,7 @@ function renderCardRows(box, num, tierId, isMain) {
 
             </div>`;
         box.appendChild(matchRow);
+        refreshTitleFightState(uId);
         updateTaleOfTheTapeButton(uId);
         restoreSessionRematchWarningForRow(uId);
         clearMatchWinnerBadges(uId);
@@ -3696,7 +3775,7 @@ function clearMatchRowTitleGlow(matchRow) {
 function updateTitleGateWarning(matchRowId, fighter1, fighter2) {
     const warning = document.getElementById(`${matchRowId}-title-gate-warning`);
     const titleCheckbox = document.getElementById(`${matchRowId}-title-check`);
-    if (!warning || !titleCheckbox?.checked) {
+    if (!warning || !titleCheckbox?.checked || completedMatches[matchRowId]?.isTitle === true) {
         if (warning) {
             warning.hidden = true;
             warning.textContent = '';
@@ -3704,7 +3783,7 @@ function updateTitleGateWarning(matchRowId, fighter1, fighter2) {
         return;
     }
     const lockedFighters = [fighter1, fighter2].filter(fighter =>
-        fighter && !getTitleEligibilityStatus(fighter).eligible
+        fighter && !isTitleMatchEligibleFighter(fighter)
     );
     if (!lockedFighters.length) {
         warning.hidden = true;
@@ -3731,33 +3810,42 @@ function refreshTitleFightState(matchRowId) {
     const fighter2Identifier = slot2Input?.getAttribute('data-fighter-id') || slot2Input?.value.trim();
     const fighter1 = getFighterByIdOrName(fighter1Identifier);
     const fighter2 = getFighterByIdOrName(fighter2Identifier);
-    const hasCompleteFighters = !!slot1Input?.value.trim() && !!slot2Input?.value.trim();
-    const hasValidFighterSelection = fighter1 && fighter2 && fighter1.id !== fighter2.id;
-    const validTitleFight = matchRow.dataset.smartBookedTitle === 'true' || hasValidFighterSelection;
+    const savedMatch = completedMatches[matchRowId];
+    const isSavedMatch = !!savedMatch || isShowCompleted(activeShowId);
+    const isSavedTitleMatch = savedMatch?.isTitle === true;
+    const canBook = canBookTitleMatch(fighter1, fighter2);
+    let shouldSaveDraft = false;
 
-    if (!hasCompleteFighters || !hasValidFighterSelection) {
-        if (titleCheckbox) {
-            titleCheckbox.checked = false;
+    if (titleCheckbox) {
+        if (isSavedMatch) {
+            titleCheckbox.checked = isSavedTitleMatch;
             titleCheckbox.disabled = true;
+        } else {
+            titleCheckbox.disabled = !canBook;
+            if (!canBook && titleCheckbox.checked) {
+                titleCheckbox.checked = false;
+                shouldSaveDraft = true;
+            }
         }
+    }
+
+    if ((!canBook && !isSavedTitleMatch) || (isSavedMatch && !isSavedTitleMatch)) {
         if (titleInput) {
             titleInput.style.display = 'none';
             titleInput.value = '';
             titleInput.innerHTML = '';
         }
-    } else {
-        if (titleCheckbox) {
-            titleCheckbox.disabled = !validTitleFight;
-            if (!validTitleFight && titleCheckbox.checked) {
-                titleCheckbox.checked = false;
-                if (titleInput) {
-                    titleInput.style.display = 'none';
-                    titleInput.value = '';
-                    titleInput.innerHTML = '';
-                }
-                clearMatchRowTitleGlow(matchRow);
-            }
-        }
+    }
+
+    const titleLabel = titleCheckbox?.closest('.title-match-toggle');
+    const titleEligibilityLocked = !canBook && !isSavedTitleMatch;
+    if (titleLabel) {
+        titleLabel.classList.toggle('title-match-toggle--locked', !!titleCheckbox?.disabled);
+        titleLabel.title = isSavedMatch
+            ? (isSavedTitleMatch ? 'Saved title match; preserved from the finalized result.' : 'This match is finalized.')
+            : titleEligibilityLocked
+                ? `Requires both fighters to be Title Eligible (${getCardsTitleRules().initialTitleWins}+ wins) or a reigning Champion.`
+                : '';
     }
 
     if (titleCheckbox && titleCheckbox.checked) {
@@ -3766,8 +3854,15 @@ function refreshTitleFightState(matchRowId) {
         clearMatchRowTitleGlow(matchRow);
     }
     updateTitleGateWarning(matchRowId, fighter1, fighter2);
+    if (shouldSaveDraft) saveCurrentCardDraft();
     updateProspectProtectionBadge(matchRowId);
     updateTitleDefenseMilestone(matchRowId);
+}
+
+function refreshAllTitleFightStates() {
+    document.querySelectorAll('.match-row').forEach(matchRow => {
+        refreshTitleFightState(matchRow.id);
+    });
 }
 
 function resetMatchRowRematchState(matchRowId) {
@@ -4527,6 +4622,19 @@ window.toggleTitleFight = function(matchRowId, checkbox) {
         customAlert('Select both competitors before enabling a Title fight.', 'Title Fight');
         checkbox.checked = false;
         if (titleInput) { titleInput.style.display = 'none'; titleInput.value = ''; }
+        refreshTitleFightState(matchRowId);
+        return;
+    }
+
+    if (!canBookTitleMatch(fighter1, fighter2)) {
+        checkbox.checked = false;
+        if (titleInput) { titleInput.style.display = 'none'; titleInput.value = ''; }
+        refreshTitleFightState(matchRowId);
+        saveCurrentCardDraft();
+        customAlert(
+            `Requires both fighters to be Title Eligible (${getCardsTitleRules().initialTitleWins}+ wins) or a reigning Champion.`,
+            'Title Fight'
+        );
         return;
     }
 
@@ -6036,12 +6144,21 @@ function getFighterDivisionRank(fighter, rankings = window.getDivisionRankings()
     return '';
 }
 
+function isProvenUpsetOpponent(fighter, rank) {
+    const wins = Math.max(0, Math.floor(Number(fighter?.wins) || 0));
+    return wins >= 3 || (rank === 'C' && wins >= 1);
+}
+
 function getMatchUpsetStatus(winner, loser, rankings = window.getDivisionRankings()) {
     const winnerRank = getFighterDivisionRank(winner, rankings);
     const loserRank = getFighterDivisionRank(loser, rankings);
     const winnerRankNumber = Number(String(winnerRank).match(/^#(\d+)$/)?.[1]) || 0;
     const loserRankNumber = Number(String(loserRank).match(/^#(\d+)$/)?.[1]) || 0;
     const reasons = [];
+
+    if (!isProvenUpsetOpponent(loser, loserRank)) {
+        return { upsetAlert: false, upsetReason: '' };
+    }
 
     if (loserRank === 'C' &&
         (!winnerRank || (winnerRankNumber >= 8 && winnerRankNumber <= 15))) {
@@ -6541,6 +6658,7 @@ window.logMatchResult = function(id) {
     const opponentRankNumber = Number(opponentRank.match(/^#(\d+)$/)?.[1]) || 0;
     const defeatedRankedOpponent = opponentRank === 'C' ||
         (opponentRankNumber >= 1 && opponentRankNumber <= 15);
+    const provenOpponent = isProvenUpsetOpponent(l, opponentRank);
     const fightTime = window.stopMatchTimer(id);
     const fightTimeMs = parseMatchFightTime(fightTime);
     const titleRules = getCardsTitleRules();
@@ -6585,7 +6703,7 @@ window.logMatchResult = function(id) {
     const winnerActiveStreak = typeof window.getCurrentWinStreak === 'function'
         ? window.getCurrentWinStreak(w)
         : Math.max(0, Number(w.win_streak) || 0);
-    const fastTrackAlert = defeatedRankedOpponent &&
+    const fastTrackAlert = provenOpponent && defeatedRankedOpponent &&
         fightTimeMs > 0 &&
         fightTimeMs < 3 * 60 * 1000 &&
         !(Number(w.wins) >= titleWinMinimum && winnerActiveStreak > 0);
@@ -7205,12 +7323,17 @@ function getFinalizeEventButton() {
     return document.getElementById('finalizeEventButton');
 }
 
-window.hasActiveShowResults = function() {
+window.hasAnyLoggedMatch = function() {
     const storageKey = getActiveShowMatchesStorageKey();
     if (!storageKey) return false;
     const saved = JSON.parse(localStorage.getItem(storageKey)) || {};
-    return Object.keys(saved).length > 0;
+    return Object.values(saved).some(match => match && (
+        String(match.winnerName || '').trim() ||
+        String(match.winner || '').trim()
+    ));
 };
+
+window.hasActiveShowResults = window.hasAnyLoggedMatch;
 
 window.makeOpponentPairKey = function(idA, idB) {
     const a = idA || '';
@@ -7237,23 +7360,38 @@ window.getReservedOpponentPairsFromOtherShows = function() {
 
 window.updateRandomizerState = function() {
     const showButton = document.getElementById('randomizeShowButton');
+    const smartBookButton = document.getElementById('smartBookCardButton');
     const rowButtons = Array.from(document.querySelectorAll('.randomizer-btn'));
     const activeShowCompleted = isShowCompleted(activeShowId);
-    const showHasResults = window.hasActiveShowResults();
+    const showHasResults = window.hasAnyLoggedMatch();
     const disable = activeShowCompleted || showHasResults;
+    const lockTitle = 'Locked while fights are logged on this show — unlog results or switch to a fresh card to re-book';
 
-    if (showButton) {
-        showButton.disabled = disable;
-        showButton.style.opacity = disable ? '0.45' : '1';
-        showButton.style.cursor = disable ? 'not-allowed' : 'pointer';
-        if (activeShowCompleted) {
-            showButton.title = 'This show has been finalized and can no longer be randomized.';
-        } else if (showHasResults) {
-            showButton.title = 'Randomization disabled after match results have started. Reset or switch cards to randomize again.';
-        } else {
-            showButton.title = 'Randomize all matchups in the active show.';
+    [
+        {
+            button: showButton,
+            title: 'Randomize all matchups in the active show.'
+        },
+        {
+            button: smartBookButton,
+            title: 'Book open-weight matchups using gender divisions, rankings, records, streaks, titles, and show tier'
         }
-    }
+    ].forEach(({ button, title }) => {
+        if (!button) return;
+        const tooltip = showHasResults ? lockTitle : activeShowCompleted
+            ? 'This show has been finalized and can no longer be re-booked.'
+            : title;
+        button.disabled = disable;
+        button.style.opacity = disable ? '0.45' : '1';
+        button.style.cursor = disable ? 'not-allowed' : 'pointer';
+        button.style.pointerEvents = disable ? 'none' : 'auto';
+        button.style.filter = disable ? 'grayscale(0.6)' : 'none';
+        button.title = tooltip;
+        button.setAttribute('aria-disabled', String(disable));
+        const wrapper = button.closest('.show-reroll-control');
+        if (wrapper) wrapper.title = tooltip;
+    });
+
     rowButtons.forEach(btn => {
         btn.disabled = disable;
         btn.style.opacity = disable ? '0.45' : '1';
