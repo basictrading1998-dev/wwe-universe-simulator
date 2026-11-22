@@ -30,9 +30,27 @@
     let editingId = '';
     let activeFilter = 'all';
     let allianceStorageInvalid = false;
+    let portraitCacheLoadPromise = null;
+    let portraitHydrationVersion = 0;
 
     function normalizeName(value) {
         return String(value || '').normalize('NFC').trim().toLocaleLowerCase();
+    }
+
+    function normalizeLookupKey(value) {
+        return (value || '').toString()
+            .normalize('NFC')
+            .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
+            .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+            .replace(/[\u2010-\u2015]/g, '-')
+            .replace(/\u00A0/g, ' ')
+            .replace(/\s*['’]\s*(?:[0-9]{2}|[0-9]{4})\b/g, '')
+            .replace(/\s*["“”][^"“”]*["“”]\s*/g, ' ')
+            .replace(/\b(?:64|32)-Bit\b/gi, '')
+            .replace(/\b(?:PS[ -]?5|PS[ -]?4|Xbox(?:\s*One)?|Switch|Steam|PC|64-Bit|32-Bit|GameCube|Dreamcast|N64|Genesis)\b/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
     }
 
     function setFeedback(message, isError = true) {
@@ -101,11 +119,101 @@
         alliances = readAlliances();
         populateFighterOptions();
         renderAlliances();
+        void hydrateFighterPortraits();
     }
 
     function getFighterByName(name) {
-        const key = normalizeName(name);
-        return fighters.find(fighter => normalizeName(fighter.name) === key) || null;
+        const key = normalizeLookupKey(name);
+        return fighters.find(fighter => normalizeLookupKey(fighter.name) === key) || null;
+    }
+
+    function getFighterPortraitKeys(fighter) {
+        const normalizedName = normalizeLookupKey(fighter.name);
+        return [
+            fighter.photo_key,
+            fighter.photoKey,
+            fighter.id && `fighter-photo-${fighter.id}`,
+            normalizedName && `fighter-photo-${normalizedName}`,
+            normalizedName && `wwe2k24-${normalizedName}`
+        ].filter((key, index, list) => key && list.indexOf(key) === index);
+    }
+
+    function getFighterPortrait(fighter) {
+        if (!fighter) return '';
+        const directPhoto = [fighter.image, fighter.photo, fighter.avatar, fighter.profile_pic]
+            .find(value => typeof value === 'string' && value.trim());
+        if (directPhoto) return directPhoto.trim();
+
+        const normalizedName = normalizeLookupKey(fighter.name);
+        const mappedPhoto = typeof window.getWWE2K24Portrait === 'function'
+            ? window.getWWE2K24Portrait(fighter.name || '')
+            : (window.wwe2k24PortraitMapNormalized || {})[normalizedName];
+        if (typeof mappedPhoto === 'string' && mappedPhoto.trim()) return mappedPhoto.trim();
+
+        const cache = window._fighterPhotoCache || {};
+        for (const key of getFighterPortraitKeys(fighter)) {
+            const cachedPhoto = cache[String(key)];
+            if (typeof cachedPhoto === 'string' && cachedPhoto.trim()) return cachedPhoto.trim();
+        }
+        return '';
+    }
+
+    function loadPortraitCacheFromIndexedDB() {
+        if (!('indexedDB' in window)) return Promise.resolve();
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open('wwe_fighter_photos', 1);
+            request.onupgradeneeded = event => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos');
+            };
+            request.onsuccess = event => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains('photos')) {
+                    db.close();
+                    reject(new Error('The fighter photo database has no photos store.'));
+                    return;
+                }
+
+                const cache = window._fighterPhotoCache =
+                    window._fighterPhotoCache || Object.create(null);
+                const transaction = db.transaction('photos', 'readonly');
+                const request = transaction.objectStore('photos').openCursor();
+                request.onsuccess = () => {
+                    const cursor = request.result;
+                    if (!cursor) {
+                        db.close();
+                        resolve();
+                        return;
+                    }
+                    if (typeof cursor.value === 'string' && cursor.value.trim()) {
+                        cache[String(cursor.key)] = cursor.value;
+                    }
+                    cursor.continue();
+                };
+                request.onerror = () => {
+                    db.close();
+                    reject(request.error || new Error('Unable to read fighter portraits.'));
+                };
+                transaction.onerror = () => {
+                    db.close();
+                    reject(transaction.error || new Error('Unable to read fighter portraits.'));
+                };
+            };
+            request.onerror = () => reject(request.error || new Error('Unable to open the fighter photo database.'));
+        });
+    }
+
+    async function hydrateFighterPortraits() {
+        const hydrationVersion = ++portraitHydrationVersion;
+        if (!portraitCacheLoadPromise) {
+            portraitCacheLoadPromise = loadPortraitCacheFromIndexedDB().catch(error => {
+                portraitCacheLoadPromise = null;
+                console.warn('Unable to load saved fighter portraits for Alliances & Couples.', error);
+            });
+        }
+        await portraitCacheLoadPromise;
+        if (hydrationVersion !== portraitHydrationVersion) return;
+        renderAlliances();
     }
 
     function populateFighterOptions() {
@@ -372,7 +480,7 @@
         const portrait = document.createElement('div');
         portrait.className = 'alliance-member__portrait portrait-frame-base';
         if (fighter) {
-            const photo = String(fighter.photo || fighter.image || fighter.profile_pic || '').trim();
+            const photo = getFighterPortrait(fighter);
             if (photo) {
                 const image = document.createElement('img');
                 image.src = photo;
@@ -558,9 +666,15 @@
         if (button.dataset.action === 'delete') deleteAlliance(button.dataset.allianceId);
     });
     window.addEventListener('storage', event => {
+        if (event.key === 'wwe_fighters' || event.key === 'fighters') {
+            portraitCacheLoadPromise = null;
+        }
         if ([ALLIANCES_KEY, 'wwe_fighters', 'fighters', 'wwe_titles'].includes(event.key)) refreshData();
     });
-    window.addEventListener('wwe_fighters:changed', refreshData);
+    window.addEventListener('wwe_fighters:changed', () => {
+        portraitCacheLoadPromise = null;
+        refreshData();
+    });
     window.addEventListener('wwe_titles:changed', refreshData);
 
     refreshData();

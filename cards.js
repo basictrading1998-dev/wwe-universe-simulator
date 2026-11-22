@@ -2596,30 +2596,6 @@ function renderCardRows(box, num, tierId, isMain) {
                     <button id="${uId}-duplicate-allow" type="button" style="background:#15803d; border:none; color:white; padding:6px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:0.75rem;">Allow</button>
                 </div>
             </div>
-            <div id="${uId}-result-panel" style="display:none; flex-direction:column; align-items:center; width:100%; background:#0f172a; border:1px solid #1e293b; border-radius:8px; padding:12px 16px; text-align:center; box-shadow:inset 0 2px 4px rgba(0,0,0,0.3);">
-                <div style="font-size:0.6rem; font-weight:800; color:#64748b; tracking-letter:0.1em; text-transform:uppercase; margin-bottom:4px;">Official Ring Result</div>
-                <div style="display:flex; justify-content:space-between; align-items:center; width:100%; font-size:1.1rem; font-weight:900;">
-                    <div id="${uId}-showcase-winner" style="width:40%; text-align:left; font-weight:bold;"></div>
-                    <div style="width:20%; display:flex; flex-direction:column; align-items:center; justify-content:center;">
-                        <span style="font-size:0.65rem; color:#64748b; font-weight:bold; font-style:italic;">DEFEATED BY</span>
-                        <span id="${uId}-showcase-method" style="font-size:0.85rem; color:#38bdf8; font-weight:800; letter-spacing:0.05em; margin-top:1px;"></span>
-                        <span id="${uId}-showcase-fight-time" class="fight-time-badge" style="display:none;"></span>
-                        <span id="${uId}-upset-alert" class="upset-alert-badge" hidden></span>
-                        <span id="${uId}-fast-track-alert" class="fast-track-alert-badge" hidden></span>
-                        <span id="${uId}-boss-slain-alert" class="boss-slain-alert" hidden></span>
-                    </div>
-                    <div id="${uId}-showcase-loser" style="width:40%; text-align:right; color:#ef4444; text-decoration:line-through; font-size:0.95rem; font-weight:700; opacity:0.6;"></div>
-                </div>
-                <div class="performance-bonus-controls">
-                    <label for="${uId}-performance-bonus">🏅 Award Bonus</label>
-                    <select id="${uId}-performance-bonus" class="performance-bonus-select" onchange="setMatchBonus('${uId}', this.value)">
-                        <option value="">None</option>
-                        <option value="FOTN">🏆 Fight of the Night (FOTN)</option>
-                        <option value="POTN">💥 Performance of the Night (POTN)</option>
-                    </select>
-                    <span id="${uId}-performance-bonus-badge" class="performance-bonus-badge" hidden></span>
-                </div>
-            </div>
             <div class="controls-area" style="display:flex; align-items:center; justify-content:space-between; width:100%; margin-top:4px; border-top:1px solid #f1f5f9; padding-top:8px;">
                 <div style="width:70%; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
                     <select id="${uId}-winner-select" style="padding:4px 8px; border-radius:6px; background:white; border:1px solid #cbd5e1; font-size:0.7rem; font-weight:bold; color:#334155; width:140px;">
@@ -2633,6 +2609,18 @@ function renderCardRows(box, num, tierId, isMain) {
                     </select>
                         <button id="${uId}-log-btn" onclick="logMatchResult('${uId}')" style="background:#ef4444; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Log Result</button>
                         <button id="${uId}-unlog-btn" onclick="unlogMatchResult('${uId}')" style="display:none; background:#d946ef; border:none; color:white; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.7rem; font-weight:bold; text-transform:uppercase;">Unlog Result</button>
+                    <div id="${uId}-performance-bonus-controls" class="performance-bonus-controls" hidden>
+                        <label for="${uId}-performance-bonus">🏅 Award Bonus</label>
+                        <select id="${uId}-performance-bonus" class="performance-bonus-select" onchange="setMatchBonus('${uId}', this.value)">
+                            <option value="">None</option>
+                            <option value="FOTN">🏆 Fight of the Night (FOTN)</option>
+                            <option value="POTN">💥 Performance of the Night (POTN)</option>
+                        </select>
+                        <span id="${uId}-performance-bonus-badge" class="performance-bonus-pill" hidden></span>
+                    </div>
+                    <span id="${uId}-upset-alert" class="upset-alert-badge" hidden></span>
+                    <span id="${uId}-fast-track-alert" class="fast-track-alert-badge" hidden></span>
+                    <span id="${uId}-boss-slain-alert" class="boss-slain-alert" hidden></span>
                     <div class="match-timer-widget" role="group" aria-label="Fight timer">
                         <span id="${uId}-timer-display" class="match-timer-display">00:00</span>
                         <button type="button" class="match-timer-button" onclick="startMatchTimer('${uId}')">▶ Start</button>
@@ -6044,8 +6032,10 @@ function adjustPerformanceBonusCounter(fighter, bonusType, delta) {
 
 function setMatchBonusDisplay(matchRowId, state) {
     const bonusType = normalizePerformanceBonusType(state?.bonusType);
+    const controls = document.getElementById(`${matchRowId}-performance-bonus-controls`);
     const select = document.getElementById(`${matchRowId}-performance-bonus`);
     const badge = document.getElementById(`${matchRowId}-performance-bonus-badge`);
+    if (controls) controls.hidden = !(state?.winnerName && state?.loserName);
     if (select) {
         select.value = bonusType;
         select.disabled = false;
@@ -6053,11 +6043,11 @@ function setMatchBonusDisplay(matchRowId, state) {
     }
     if (!badge) return;
     badge.hidden = !bonusType;
-    badge.className = `performance-bonus-badge${bonusType ? ` performance-bonus-badge--${bonusType.toLowerCase()}` : ''}`;
+    badge.className = `performance-bonus-pill${bonusType ? ` performance-bonus-pill--${bonusType.toLowerCase()}` : ''}`;
     badge.textContent = bonusType === 'FOTN'
-        ? '🏆 FIGHT OF THE NIGHT'
+        ? '🏆 FOTN'
         : bonusType === 'POTN'
-            ? '💥 PERFORMANCE OF THE NIGHT'
+            ? '💥 POTN'
             : '';
 }
 
@@ -7147,8 +7137,6 @@ window.unlogMatchResult = function(id) {
             row.querySelectorAll('.search-results-floating-panel').forEach(panel => panel.style.display = 'none');
         }
         clearMatchWinnerBadges(id);
-        const resultPanel = document.getElementById(`${id}-result-panel`);
-        if (resultPanel) resultPanel.style.display = 'none';
         const winSelect = document.getElementById(`${id}-winner-select`);
         const methodSelect = document.getElementById(`${id}-method-select`);
         if (winSelect) winSelect.value = '';
@@ -7658,26 +7646,25 @@ function restoreLoggedResult(id, state) {
     const hasSlot2Value = slot2Input?.value?.trim();
     const winSelect = document.getElementById(`${id}-winner-select`);
     const methodSelect = document.getElementById(`${id}-method-select`);
-    const resultPanel = document.getElementById(`${id}-result-panel`);
     const hasCompleteMatch = hasSlot1Value && hasSlot2Value && state.winnerName && state.loserName;
     const upsetBadge = document.getElementById(`${id}-upset-alert`);
     if (upsetBadge) {
-        upsetBadge.hidden = state.upsetAlert !== true;
-        upsetBadge.textContent = state.upsetAlert === true ? '🚨 UPSET ALERT!' : '';
+        upsetBadge.hidden = !hasCompleteMatch || state.upsetAlert !== true;
+        upsetBadge.textContent = state.upsetAlert === true ? '🚨 UPSET' : '';
         upsetBadge.title = state.upsetReason || '';
     }
     const fastTrackBadge = document.getElementById(`${id}-fast-track-alert`);
     if (fastTrackBadge) {
-        fastTrackBadge.hidden = state.fastTrackAlert !== true;
-        fastTrackBadge.textContent = state.fastTrackAlert === true ? '⚡ FAST-TRACKED TO TOP 5' : '';
+        fastTrackBadge.hidden = !hasCompleteMatch || state.fastTrackAlert !== true;
+        fastTrackBadge.textContent = state.fastTrackAlert === true ? '⚡ FAST-TRACKED' : '';
     }
     const bossSlainBadge = document.getElementById(`${id}-boss-slain-alert`);
     if (bossSlainBadge) {
-        bossSlainBadge.hidden = state.bossSlain !== true;
-        bossSlainBadge.textContent = state.bossSlain === true ? '💀 BOUNTY CLAIMED • BOSS SLAYER!' : '';
+        bossSlainBadge.hidden = !hasCompleteMatch || state.bossSlain !== true;
+        bossSlainBadge.textContent = state.bossSlain === true ? '💀 BOSS SLAYER' : '';
         bossSlainBadge.title = state.bossSlainName ? `Defeated ${state.bossSlainName}` : '';
     }
-    setMatchBonusDisplay(id, state);
+    setMatchBonusDisplay(id, hasCompleteMatch ? state : {});
 
     if (winSelect) {
         const ensureWinnerOption = (value, label) => {
@@ -7721,18 +7708,6 @@ function restoreLoggedResult(id, state) {
 
     if (!hasCompleteMatch) {
         clearMatchWinnerBadges(id);
-        if (resultPanel) resultPanel.style.display = 'none';
-        const winnerShowcase = document.getElementById(`${id}-showcase-winner`);
-        const loserShowcase = document.getElementById(`${id}-showcase-loser`);
-        const methodShowcase = document.getElementById(`${id}-showcase-method`);
-        const fightTimeShowcase = document.getElementById(`${id}-showcase-fight-time`);
-        if (winnerShowcase) winnerShowcase.textContent = '';
-        if (loserShowcase) loserShowcase.textContent = '';
-        if (methodShowcase) methodShowcase.textContent = '';
-        if (fightTimeShowcase) {
-            fightTimeShowcase.textContent = '';
-            fightTimeShowcase.style.display = 'none';
-        }
         updateTitleDefenseMilestone(id);
         return;
     }
@@ -7748,39 +7723,21 @@ function restoreLoggedResult(id, state) {
         }
     }
 
-    if (resultPanel) resultPanel.style.display = 'none';
-
-    const winnerShowcase = document.getElementById(`${id}-showcase-winner`);
-    const loserShowcase = document.getElementById(`${id}-showcase-loser`);
-    const methodShowcase = document.getElementById(`${id}-showcase-method`);
-    const fightTimeShowcase = document.getElementById(`${id}-showcase-fight-time`);
     const savedFightTimeMs = parseMatchFightTime(state.fightTime);
     const savedFightTime = savedFightTimeMs > 0 ? formatMatchTimerDisplay(savedFightTimeMs) : '';
     restoreMatchTimerFromSaved(id, savedFightTime);
-    if (winnerShowcase && loserShowcase && methodShowcase) {
-        winnerShowcase.textContent = state.winnerName;
-        winnerShowcase.style.color = state.winnerGender === 'male' ? '#22c55e' : '#f472b6';
-        loserShowcase.textContent = state.loserName;
-        methodShowcase.textContent = state.methodName;
-        if (fightTimeShowcase) {
-            fightTimeShowcase.textContent = savedFightTime ? `⏱️ ${savedFightTime}` : '';
-            fightTimeShowcase.style.display = savedFightTime ? 'inline-flex' : 'none';
-        }
+    let winnerSlot = null;
+    if (state.slot1Name && state.slot1Name === state.winnerName) winnerSlot = 'slot1';
+    else if (state.slot2Name && state.slot2Name === state.winnerName) winnerSlot = 'slot2';
+    else if (state.slot1Name && state.slot1Name === state.loserName) winnerSlot = 'slot2';
+    else if (state.slot2Name && state.slot2Name === state.loserName) winnerSlot = 'slot1';
+    else if (slot1Input && slot1Input.value === state.winnerName) winnerSlot = 'slot1';
+    else if (slot2Input && slot2Input.value === state.winnerName) winnerSlot = 'slot2';
+    else if (slot1Input && slot1Input.value === state.loserName) winnerSlot = 'slot2';
+    else if (slot2Input && slot2Input.value === state.loserName) winnerSlot = 'slot1';
 
-        let winnerSlot = null;
-        if (state.slot1Name && state.slot1Name === state.winnerName) winnerSlot = 'slot1';
-        else if (state.slot2Name && state.slot2Name === state.winnerName) winnerSlot = 'slot2';
-        else if (state.slot1Name && state.slot1Name === state.loserName) winnerSlot = 'slot2';
-        else if (state.slot2Name && state.slot2Name === state.loserName) winnerSlot = 'slot1';
-        else if (slot1Input && slot1Input.value === state.winnerName) winnerSlot = 'slot1';
-        else if (slot2Input && slot2Input.value === state.winnerName) winnerSlot = 'slot2';
-        else if (slot1Input && slot1Input.value === state.loserName) winnerSlot = 'slot2';
-        else if (slot2Input && slot2Input.value === state.loserName) winnerSlot = 'slot1';
-
-        clearMatchWinnerBadges(id);
-        if (winnerSlot) showMatchWinnerBadge(id, winnerSlot, state.methodName);
-    }
-    if (resultPanel) resultPanel.style.display = 'flex';
+    clearMatchWinnerBadges(id);
+    if (winnerSlot) showMatchWinnerBadge(id, winnerSlot, state.methodName);
     updateShortNoticeBadge(id);
 
     const unlogBtn = document.getElementById(`${id}-unlog-btn`);
