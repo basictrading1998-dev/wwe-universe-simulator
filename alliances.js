@@ -122,9 +122,12 @@
         void hydrateFighterPortraits();
     }
 
-    function getFighterByName(name) {
-        const key = normalizeLookupKey(name);
-        return fighters.find(fighter => normalizeLookupKey(fighter.name) === key) || null;
+    function findExactMemberFighter(memberName) {
+        const exactName = String(memberName || '').trim().toLowerCase();
+        if (!exactName) return null;
+        return fighters.find(fighter =>
+            String(fighter.name || '').trim().toLowerCase() === exactName
+        ) || null;
     }
 
     function getFighterPortraitKeys(fighter) {
@@ -267,7 +270,7 @@
 
     function addPendingMember() {
         const requestedName = elements.memberSearch.value.trim();
-        const fighter = getFighterByName(requestedName);
+        const fighter = findExactMemberFighter(requestedName);
         if (!fighter || fighter.retired === true) {
             setFeedback('Choose an active fighter from the roster suggestions.');
             return;
@@ -346,9 +349,8 @@
             setFeedback(`The group could not be saved: ${error.message || 'storage is unavailable'}`);
             return;
         }
-        alliances = updated;
         resetBuilder();
-        renderAlliances();
+        refreshData();
         setFeedback(`${updatedAlliance.name} saved.`, false);
     }
 
@@ -419,7 +421,7 @@
     function calculateStats(alliance) {
         const memberProfiles = alliance.members.map(name => ({
             name,
-            fighter: getFighterByName(name)
+            fighter: findExactMemberFighter(name)
         }));
         const totals = memberProfiles.reduce((stats, item) => {
             const fighter = item.fighter;
