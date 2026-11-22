@@ -35,20 +35,8 @@
     const visibleCount = document.getElementById('visibleCount');
     const collectionCount = document.getElementById('collectionCount');
 
-    function normalizeLookupKey(value) {
-        return (value || '').toString()
-            .normalize('NFC')
-            .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
-            .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
-            .replace(/[\u2010-\u2015]/g, '-')
-            .replace(/\u00A0/g, ' ')
-            .replace(/\s*['’]\s*(?:[0-9]{2}|[0-9]{4})\b/g, '')
-            .replace(/\s*["“”][^"“”]*["“”]\s*/g, ' ')
-            .replace(/\b(?:64|32)-Bit\b/gi, '')
-            .replace(/\b(?:PS[ -]?5|PS[ -]?4|Xbox(?:\s*One)?|Switch|Steam|PC|64-Bit|32-Bit|GameCube|Dreamcast|N64|Genesis)\b/gi, '')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .toLowerCase();
+    function exactFighterNameKey(value) {
+        return String(value || '').trim().toLowerCase();
     }
 
     function escapeHtml(value) {
@@ -94,8 +82,13 @@
             }));
     }
 
+    function findExactRosterFighter(name) {
+        const key = exactFighterNameKey(name);
+        return state.fighters.find(fighter => exactFighterNameKey(fighter.name) === key) || null;
+    }
+
     function getRank(fighter) {
-        return state.ranks.get(normalizeLookupKey(fighter.name)) || null;
+        return state.ranks.get(exactFighterNameKey(fighter.name)) || null;
     }
 
     function getWinStreak(fighter) {
@@ -145,9 +138,13 @@
     }
 
     function getPortraitValue(fighter) {
-        const key = normalizeLookupKey(fighter.name);
-        const portraitMap = window.wwe2k24PortraitMapNormalized || {};
-        return fighter.photo || fighter.image || fighter.profile_pic || portraitMap[key] || '';
+        const rosterFighter = findExactRosterFighter(fighter.name);
+        if (!rosterFighter) return '';
+        const key = exactFighterNameKey(rosterFighter.name);
+        const portraitMap = window.wwe2k24PortraitMap || {};
+        const mapName = Object.keys(portraitMap).find(name => exactFighterNameKey(name) === key);
+        return rosterFighter.photo || rosterFighter.image || rosterFighter.profile_pic ||
+            (mapName ? portraitMap[mapName] : '') || '';
     }
 
     function getFallbackInitials(name) {
@@ -194,7 +191,7 @@
     }
 
     function renderCard(fighter) {
-        const key = normalizeLookupKey(fighter.name);
+        const key = exactFighterNameKey(fighter.name);
         const rank = getRank(fighter);
         const rankLabel = rank ? rank.rank : 'NR';
         const rankClass = rank && rank.rank === 'C' ? 'is-champion' : rank ? 'is-contender' : '';
@@ -306,11 +303,16 @@
                     }
                 };
                 request.onsuccess = () => {
-                    request.result.onversionchange = () => {
-                        request.result.close();
+                    const database = request.result;
+                    database.onversionchange = () => {
+                        database.close();
                         cardsDatabasePromise = null;
                     };
-                    resolve(request.result);
+                    migrateLegacyRenderKeys(database).then(() => resolve(database), error => {
+                        database.close();
+                        cardsDatabasePromise = null;
+                        reject(error);
+                    });
                 };
                 request.onerror = () => reject(request.error || new Error('Unable to open Trading Cards IndexedDB.'));
                 request.onblocked = () => reject(new Error('Trading Cards IndexedDB is blocked by another open tab.'));
@@ -319,7 +321,35 @@
         return cardsDatabasePromise;
     }
 
-    function saveRender(key, name, image) {
+    function migrateLegacyRenderKeys(database) {
+        return new Promise((resolve, reject) => {
+            const transaction = database.transaction(STORE_NAME, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME);
+            const request = store.getAll();
+            request.onsuccess = () => {
+                const records = request.result || [];
+                const existingKeys = new Set(records.map(record => String(record.key || '')));
+                records.forEach(record => {
+                    const previousKey = String(record.key || '');
+                    const exactKey = exactFighterNameKey(record.name);
+                    if (!previousKey || !exactKey || previousKey === exactKey) return;
+                    if (!existingKeys.has(exactKey)) {
+                        store.put({ ...record, key: exactKey });
+                        existingKeys.add(exactKey);
+                    }
+                    store.delete(previousKey);
+                    existingKeys.delete(previousKey);
+                });
+            };
+            request.onerror = () => reject(request.error || new Error('Unable to inspect saved torso renders.'));
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error || new Error('Unable to update saved torso render keys.'));
+            transaction.onabort = () => reject(transaction.error || new Error('Updating saved torso render keys was aborted.'));
+        });
+    }
+
+    function saveRender(name, image) {
+        const key = exactFighterNameKey(name);
         return getDatabase().then(db => new Promise((resolve, reject) => {
             const transaction = db.transaction(STORE_NAME, 'readwrite');
             transaction.objectStore(STORE_NAME).put({
@@ -382,34 +412,34 @@
     function loadCardImages(card) {
         const image = card.querySelector('[data-card-image]');
         if (!image) return;
-        const key = image.dataset.renderKey;
         const fighterName = image.dataset.fighterName;
-        const fighter = state.fighters.find(item => item.name === fighterName);
+        const fighter = findExactRosterFighter(fighterName);
         if (!fighter) return;
-        const savedRender = state.renders.get(key);
+        const exactKey = exactFighterNameKey(fighter.name);
+        const savedRender = state.renders.get(exactKey);
         if (savedRender) {
             setCardImage(image, savedRender.image);
             return;
         }
-        let renderRequest = state.renderLookups.get(key);
+        let renderRequest = state.renderLookups.get(exactKey);
         if (!renderRequest) {
             renderRequest = getDatabase().then(db => new Promise((resolve, reject) => {
                 const transaction = db.transaction(STORE_NAME, 'readonly');
-                const request = transaction.objectStore(STORE_NAME).get(key);
+                const request = transaction.objectStore(STORE_NAME).get(exactKey);
                 request.onsuccess = () => resolve(request.result || null);
                 request.onerror = () => reject(request.error || new Error('Unable to read a saved torso render.'));
                 transaction.onabort = () => reject(transaction.error || new Error('Reading a saved torso render was aborted.'));
             }));
-            state.renderLookups.set(key, renderRequest);
+            state.renderLookups.set(exactKey, renderRequest);
         }
         renderRequest.then(async render => {
             if (render) {
-                state.renders.set(key, render);
+                state.renders.set(exactKey, render);
                 setCardImage(image, render.image);
                 return;
             }
             if (getPortraitValue(fighter)) return;
-            const photoKey = fighter.photo_key || fighter.photoKey || ('wwe2k24-' + key);
+            const photoKey = fighter.photo_key || fighter.photoKey || ('wwe2k24-' + exactKey);
             const portrait = await readRosterPortrait(String(photoKey));
             if (portrait) setCardImage(image, portrait);
         }).catch(error => {
@@ -512,9 +542,9 @@
                 return;
             }
             const fighter = state.crop.fighter;
-            const key = normalizeLookupKey(fighter.name);
+            const key = exactFighterNameKey(fighter.name);
             try {
-                await saveRender(key, fighter.name, blob);
+                await saveRender(fighter.name, blob);
                 state.renders.set(key, { key, name: fighter.name, image: blob });
                 saveCropButton.disabled = false;
                 cancelCropButton.disabled = false;
@@ -540,7 +570,7 @@
         const uploadButton = event.target.closest('[data-upload-key]');
         if (uploadButton) {
             event.stopPropagation();
-            const fighter = state.fighters.find(item => item.name === uploadButton.dataset.fighterName);
+            const fighter = findExactRosterFighter(uploadButton.dataset.fighterName);
             if (fighter) {
                 imageInput.dataset.fighterName = uploadButton.dataset.fighterName;
                 imageInput.click();
@@ -561,7 +591,7 @@
     });
 
     imageInput.addEventListener('change', () => {
-        const fighter = state.fighters.find(item => item.name === imageInput.dataset.fighterName);
+        const fighter = findExactRosterFighter(imageInput.dataset.fighterName);
         if (fighter && imageInput.files && imageInput.files[0]) openCropper(imageInput.files[0], fighter);
     });
 
@@ -625,7 +655,7 @@
         if (typeof window.getDivisionRankings === 'function') {
             window.getDivisionRankings().forEach(group => {
                 group.rankings.forEach(entry => {
-                    state.ranks.set(normalizeLookupKey(entry.fighter.name), entry);
+                    state.ranks.set(exactFighterNameKey(entry.fighter.name), entry);
                 });
             });
         }
@@ -643,7 +673,7 @@
             state.fighters = loadFighters();
             if (typeof window.getDivisionRankings === 'function') {
                 window.getDivisionRankings().forEach(group => {
-                    group.rankings.forEach(entry => state.ranks.set(normalizeLookupKey(entry.fighter.name), entry));
+                    group.rankings.forEach(entry => state.ranks.set(exactFighterNameKey(entry.fighter.name), entry));
                 });
             }
             updateVisibleCards();
